@@ -74,7 +74,7 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
 - `apt` / `dpkg` — preinstalled
 - `curl` — needed for the one-liner / manual install (install with `pkg install curl -y`)
 - [`gum`](https://github.com/charmbracelet/gum) — **recommended** for the full fancy UI. Auto-detected, and the script can install it for you. Without gum it falls back to a clean text menu.
-- **FiraCode Nerd Font** — bundled in this repo (`fonts/`); the installer offers to install it safely (atomic temp-file + rename, then `termux-reload-settings`). Without it, switch to emoji icons from **Settings → Icons**.
+- **Nerd Font** — **CaskaydiaCove** (recommended) or **FiraCode** (alternative), both bundled in this repo (`fonts/`); the installer lets you pick and installs it safely (atomic temp-file + rename, then `termux-reload-settings`). Without one, switch to emoji icons from **Settings → Icons**.
 
 ## 🛠️ Installation
 
@@ -85,7 +85,7 @@ pkg install curl -y
 curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/install.sh | bash
 ```
 
-This installs `gum` (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), and asks if you want to install the bundled **FiraCode Nerd Font**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself.)
+This installs `gum` (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), and asks which **Nerd Font** to install: **CaskaydiaCove** (recommended) or **FiraCode**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself.)
 
 ### Option 2 — Clone & run
 
@@ -187,7 +187,7 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 
 ```
 Easy-Termux-Package-Manager/
-├── fonts/          # FiraCodeNerdFont-Regular.ttf (bundled, ~2.6 MB)
+├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~750 lines, single file)
 ├── LICENSE         # MIT License

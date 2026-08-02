@@ -5,8 +5,8 @@ REPO="https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/ma
 PREFIX="${PREFIX:-/usr/local}"
 BIN="$PREFIX/bin/pkg-manager"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-FONT_LOCAL="$DIR/fonts/FiraCodeNerdFont-Regular.ttf"
-FONT_REMOTE="$REPO/fonts/FiraCodeNerdFont-Regular.ttf"
+FONT_DIR="$DIR/fonts"
+FONT_REMOTE_DIR="$REPO/fonts"
 TERMUX_FONT="$HOME/.termux/font.ttf"
 
 echo "==> Easy Termux Package Manager installer"
@@ -39,17 +39,17 @@ echo "✓ Installed → $BIN"
 echo "  Run it anytime with:  pkg-manager"
 
 install_font() {
-    local tmp
-    echo "==> Installing FiraCode Nerd Font (Regular)..."
+    local font="$1" tmp
+    echo "==> Installing $font ..."
     mkdir -p "$HOME/.termux"
     tmp="$HOME/.termux/.font.ttf.tmp"
-    if [ -f "$FONT_LOCAL" ]; then
-        cp "$FONT_LOCAL" "$tmp"
+    if [ -f "$FONT_DIR/$font" ]; then
+        cp "$FONT_DIR/$font" "$tmp"
     else
-        curl -fsSL "$FONT_REMOTE" -o "$tmp"
+        curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$tmp"
     fi
     mv -f "$tmp" "$TERMUX_FONT"
-    echo "✓ Font installed → $TERMUX_FONT"
+    echo "✓ $font installed → $TERMUX_FONT"
     if command -v termux-reload-settings >/dev/null 2>&1; then
         termux-reload-settings >/dev/null 2>&1 || true
         echo "  Settings reloaded — the font should be live."
@@ -60,11 +60,18 @@ install_font() {
 }
 
 if [ -d "$HOME/.termux" ]; then
-    printf "Install the FiraCode Nerd Font for the icons? [y/N] "
+    echo "Install a Nerd Font for the icons?"
+    echo "  [1] CaskaydiaCove (recommended)"
+    echo "  [2] FiraCode (alternative)"
+    echo "  [s] Skip"
+    printf "Choice [1] or [s]: "
     read -r _ans
-    if [[ "${_ans,,}" == "y" ]]; then
-        install_font
-    fi
+    case "${_ans,,}" in
+        ""|1) install_font "CaskaydiaCoveNerdFont-Regular.ttf";;
+        2)    install_font "FiraCodeNerdFont-Regular.ttf";;
+        s)    echo "Skipping the font install.";;
+        *)    echo "Invalid choice — skipping the font install.";;
+    esac
 else
     echo "Note: running outside Termux — skipping the font install."
 fi
