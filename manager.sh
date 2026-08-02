@@ -578,7 +578,7 @@ do_files() {
 }
 
 do_owner() {
-    ask_name "File path (e.g. /usr/bin/python)"
+    ask_name "File path (e.g. $PREFIX/bin/python)"
     [ -n "$PKG_NAME" ] || { warn "No file given."; return; }
     log "owner $PKG_NAME"
     say "$ICON_OWNER  Which package owns $PKG_NAME:"
