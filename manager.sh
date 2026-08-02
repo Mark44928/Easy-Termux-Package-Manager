@@ -127,35 +127,35 @@ banner() {
 }
 
 OPTION_INSTALL="$ICON_INSTALL Install a package"
-OPTION_UNINSTALL="$ICON_UNINSTALL  Uninstall a package"
+OPTION_UNINSTALL="$ICON_UNINSTALL Uninstall a package"
 OPTION_SEARCH="$ICON_SEARCH Search packages"
 OPTION_LIST="$ICON_LIST List installed packages"
 OPTION_REINSTALL="$ICON_REINSTALL Reinstall / repair a package"
 OPTION_UPDATE="$ICON_UPDATE Update all packages"
 OPTION_CLEAN="$ICON_CLEAN Clean download cache"
-OPTION_INFO="$ICON_INFO  Show package info"
+OPTION_INFO="$ICON_INFO Show package info"
 OPTION_AUTOREMOVE="$ICON_AUTOREMOVE Autoremove cleanup"
 OPTION_DEPENDS="$ICON_DEPENDS Dependencies"
 OPTION_RDEPENDS="$ICON_RDEPENDS Reverse deps"
-OPTION_SIZE="$ICON_SIZE  Package size"
+OPTION_SIZE="$ICON_SIZE Package size"
 OPTION_FILES="$ICON_FILES Installed files"
-OPTION_OWNER="$ICON_OWNER  File owner"
+OPTION_OWNER="$ICON_OWNER File owner"
 OPTION_HOLD="$ICON_HOLD Pin / hold packages"
 OPTION_PURGE="$ICON_PURGE Purge a package"
 OPTION_FIXBROKEN="$ICON_FIXBROKEN Fix broken packages"
 OPTION_UPGRADABLE="$ICON_UPGRADABLE Upgradable list"
 OPTION_BACKUP="$ICON_BACKUP Backup installed packages"
-OPTION_RESTORE="$ICON_RESTORE  Restore from backup"
+OPTION_RESTORE="$ICON_RESTORE Restore from backup"
 OPTION_EXPORT="$ICON_EXPORT Export package list"
 OPTION_IMPORT="$ICON_IMPORT Import package list"
 OPTION_DOCTOR="$ICON_DOCTOR Dependency doctor"
-OPTION_SETTINGS="$ICON_SETTINGS  Settings"
+OPTION_SETTINGS="$ICON_SETTINGS Settings"
 OPTION_HISTORY="$ICON_HISTORY View history log"
 OPTION_EXIT="$ICON_EXIT Exit"
 
 main_menu() {
     if [ "$GUM" = "1" ]; then
-        gum choose --header "  ❯ Pick an option" --cursor "❯ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" --selected 0 \
+        gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" --selected 0 \
             "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL" \
             "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE" \
             "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER" \
@@ -231,7 +231,7 @@ ask_name() {
     local prompt="$1"
     PKG_NAME=""
     if [ "$GUM" = "1" ]; then
-        PKG_NAME=$(gum input --prompt "❯ " --placeholder "$prompt" --width 40)
+        PKG_NAME=$(gum input --prompt "➜ " --placeholder "$prompt" --width 40)
     else
         printf '%s' "$prompt: "
         read -r PKG_NAME
@@ -279,7 +279,7 @@ list_installed_names() {
 pick_file() {
     local title="$1" f=""
     if [ "$GUM" = "1" ]; then
-        f=$(gum file --title "❯ $title" --file 2>/dev/null)
+        f=$(gum file --title "➜ $title" --file 2>/dev/null)
     fi
     if [ -z "$f" ]; then
         printf '%s (full path): ' "$title"
@@ -739,7 +739,7 @@ do_export() {
         *)      ext="txt" ;;
     esac
     if [ "$GUM" = "1" ]; then
-        file=$(gum input --prompt "❯ " --placeholder "Save path" --value "$HOME/pkg-export.$ext")
+        file=$(gum input --prompt "➜ " --placeholder "Save path" --value "$HOME/pkg-export.$ext")
     else
         printf 'Save path [%s]: ' "$HOME/pkg-export.$ext"
         read -r file
