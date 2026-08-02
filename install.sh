@@ -61,6 +61,7 @@ install_font() {
 
 if [ -d "$HOME/.termux" ]; then
     echo "Install a Nerd Font for the icons?"
+    echo "Friendly Warning: Font installation skips if invalid choice or a typo"
     echo "  [1] CaskaydiaCove (recommended)"
     echo "  [2] FiraCode (alternative)"
     echo "  [s] Skip"
@@ -72,8 +73,6 @@ if [ -d "$HOME/.termux" ]; then
         s)    echo "Skipping the font install.";;
         *)    echo "Invalid choice — skipping the font install.";;
     esac
-else
-    echo "Note: running outside Termux — skipping the font install."
 fi
 
 if [ -t 0 ]; then
