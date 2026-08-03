@@ -270,7 +270,7 @@ confirm() {
 
 list_installed_names() {
     if [ "$MGR" = "pkg" ]; then
-        pkg list-installed 2>/dev/null | awk '{print $1}'
+        pkg list-installed 2>/dev/null | tail -n +2 | awk '{print $1}' | cut -d/ -f1
     else
         apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1
     fi
@@ -438,10 +438,20 @@ do_search() {
 do_list() {
     log "list installed packages"
     say "$ICON_LIST Installed packages:"
-    if [ "$GUM" = "1" ]; then
-        "$MGR" list --installed | gum pager 2>/dev/null || "$MGR" list --installed
+    local out
+    if [ "$MGR" = "pkg" ]; then
+        out=$(pkg list-installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
     else
-        "$MGR" list --installed
+        out=$(apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
+    fi
+    if [ -n "$out" ]; then
+        if [ "$GUM" = "1" ]; then
+            printf '%s\n' "$out" | gum pager 2>/dev/null || printf '%s\n' "$out"
+        else
+            printf '%s\n' "$out"
+        fi
+    else
+        err "Could not list installed packages"
     fi
 }
 
@@ -563,7 +573,7 @@ do_rdepends() {
     log "rdepends $PKG_NAME"
     say "$ICON_RDEPENDS Packages that depend on $PKG_NAME:"
     local out
-    out=$("$MGR" rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
+    out=$(apt rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
