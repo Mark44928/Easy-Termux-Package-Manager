@@ -155,7 +155,7 @@ OPTION_EXIT="$ICON_EXIT Exit"
 
 main_menu() {
     if [ "$GUM" = "1" ]; then
-        gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" --selected 0 \
+        gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" \
             "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL" \
             "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE" \
             "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER" \
@@ -279,10 +279,10 @@ list_installed_names() {
 pick_file() {
     local title="$1" f=""
     if [ "$GUM" = "1" ]; then
-        f=$(gum file --title "➜ $title" --file 2>/dev/null)
+        f=$(gum file --header "➜ $title" --file 2>/dev/null)
     fi
     if [ -z "$f" ]; then
-        printf '%s (full path): ' "$title"
+        printf '%s (full path): ' "$title" >&2
         read -r f
     fi
     printf '%s\n' "$f"
@@ -297,13 +297,13 @@ save_config() {
         printf 'GUM_ENABLED=%s\n' "$GUM_ENABLED"
         printf 'ICONS=%s\n' "$ICONS"
     } > "$HOME/.pkg-manager.conf"
-    ok "Settings saved → $HOME/.pkg-manager.conf"
+    printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
 }
 
 set_mgr() {
     local m
     if [ "$GUM" = "1" ]; then
-        m=$(gum choose --header "$ICON_SLIDERS  Select package manager" "apt (default, recommended)" "pkg (Termux wrapper)" --selected 0)
+        m=$(gum choose --header "$ICON_SLIDERS  Select package manager" "apt (default, recommended)" "pkg (Termux wrapper)")
     else
         printf '1) apt\n2) pkg\n> ' >&2
         read -r m
@@ -325,7 +325,7 @@ set_mgr() {
 set_theme_pick() {
     local t
     if [ "$GUM" = "1" ]; then
-        t=$(gum choose --header "$ICON_THEME  Select theme" "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)" --selected 0)
+        t=$(gum choose --header "$ICON_THEME  Select theme" "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)")
     else
         printf '1) green\n2) blue\n3) purple\n4) red\n> ' >&2
         read -r t
@@ -439,7 +439,7 @@ do_list() {
     log "list installed packages"
     say "$ICON_LIST Installed packages:"
     if [ "$GUM" = "1" ]; then
-        "$MGR" list --installed | gum pager --header "Installed packages" 2>/dev/null || "$MGR" list --installed
+        "$MGR" list --installed | gum pager 2>/dev/null || "$MGR" list --installed
     else
         "$MGR" list --installed
     fi
@@ -588,7 +588,7 @@ do_owner() {
 do_hold() {
     local a
     if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_HOLD  Pin / hold" "Hold a package" "Unhold a package" "Show held packages" --selected 0)
+        a=$(gum choose --header "$ICON_HOLD  Pin / hold" "Hold a package" "Unhold a package" "Show held packages")
     else
         printf '1) Hold a package\n2) Unhold a package\n3) Show held packages\n> ' >&2
         read -r a
@@ -723,7 +723,7 @@ do_restore() {
 do_export() {
     local fmt file ext
     if [ "$GUM" = "1" ]; then
-        fmt=$(gum choose --header "$ICON_EXPORT  Export format" "Plain text (.txt)" "JSON (.json)" --selected 0)
+        fmt=$(gum choose --header "$ICON_EXPORT  Export format" "Plain text (.txt)" "JSON (.json)")
     else
         printf '1) Plain text (.txt)\n2) JSON (.json)\n> ' >&2
         read -r fmt
@@ -813,7 +813,7 @@ do_settings() {
             "$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" \
             "$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" \
             "$ICON_FOLDER  Show config file" \
-            "$ICON_BACK  Back" --selected 0)
+            "$ICON_BACK  Back")
     else
         printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Back\n> ' \
             "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" >&2
@@ -849,8 +849,9 @@ do_history() {
         say "No history yet — run some actions first!"
         return
     fi
+    say "$ICON_HISTORY Action history ($LOG_FILE)"
     if [ "$GUM" = "1" ]; then
-        gum pager --header "$ICON_HISTORY Action history ($LOG_FILE)" < "$LOG_FILE" || cat "$LOG_FILE"
+        gum pager < "$LOG_FILE" || cat "$LOG_FILE"
     else
         cat "$LOG_FILE"
     fi
