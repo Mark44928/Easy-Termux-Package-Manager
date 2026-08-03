@@ -515,7 +515,13 @@ do_info() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "show $PKG_NAME"
     say "$ICON_INFO  Info for \"$PKG_NAME\":"
-    "$MGR" show "$PKG_NAME"
+    local out
+    out=$("$MGR" show "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    else
+        err "Package not found — check the name or run $ICON_UPDATE Update all first?"
+    fi
 }
 
 do_autoremove() {
