@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Optional env overrides (e.g. GUM_ENABLED=0 pkg-manager) — conf file still wins otherwise.
+[ -v MGR ] && MGR_ENV=$MGR || MGR_ENV=""
+[ -v THEME ] && THEME_ENV=$THEME || THEME_ENV=""
+[ -v CONFIRM ] && CONFIRM_ENV=$CONFIRM || CONFIRM_ENV=""
+[ -v LOG_ENABLED ] && LOG_ENABLED_ENV=$LOG_ENABLED || LOG_ENABLED_ENV=""
+[ -v GUM_ENABLED ] && GUM_ENABLED_ENV=$GUM_ENABLED || GUM_ENABLED_ENV=""
+[ -v ICONS ] && ICONS_ENV=$ICONS || ICONS_ENV=""
+
 MGR="apt"
 THEME="green"
 CONFIRM=1
@@ -15,6 +23,14 @@ case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
 case "$GUM_ENABLED" in 0|1) ;; *) GUM_ENABLED=1 ;; esac
 case "$ICONS" in nerd|emoji) ;; *) ICONS="nerd" ;; esac
+
+[ -n "$MGR_ENV" ] && MGR=$MGR_ENV
+[ -n "$THEME_ENV" ] && THEME=$THEME_ENV
+[ -n "$CONFIRM_ENV" ] && CONFIRM=$CONFIRM_ENV
+[ -n "$LOG_ENABLED_ENV" ] && LOG_ENABLED=$LOG_ENABLED_ENV
+[ -n "$GUM_ENABLED_ENV" ] && GUM_ENABLED=$GUM_ENABLED_ENV
+[ -n "$ICONS_ENV" ] && ICONS=$ICONS_ENV
+unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV GUM_ENABLED_ENV ICONS_ENV
 
 GREEN=46
 CYAN=45
@@ -78,7 +94,8 @@ init_icons
 LOG_FILE="$HOME/.pkg-manager.log"
 
 refresh_gum() {
-    if [ "$GUM_ENABLED" = "1" ] && command -v gum >/dev/null 2>&1; then
+    if [ "$GUM_ENABLED" = "1" ] && command -v gum >/dev/null 2>&1 \
+        && gum style "probe" >/dev/null 2>&1; then
         GUM=1
     else
         GUM=0
@@ -87,9 +104,9 @@ refresh_gum() {
 
 GUM=0
 if [ "$GUM_ENABLED" = "1" ]; then
-    if command -v gum >/dev/null 2>&1; then
+    if command -v gum >/dev/null 2>&1 && gum style "probe" >/dev/null 2>&1; then
         GUM=1
-    else
+    elif ! command -v gum >/dev/null 2>&1; then
         echo "gum is not installed — needed for the full fancy UI."
         echo "    pkg install gum"
         printf "Install gum now? [y/N] "
@@ -104,6 +121,8 @@ if [ "$GUM_ENABLED" = "1" ]; then
         else
             echo "Continuing in basic text mode."
         fi
+    else
+        echo "gum is present but not working — falling back to basic text mode."
     fi
 fi
 
@@ -126,32 +145,35 @@ banner() {
     fi
 }
 
-OPTION_INSTALL="$ICON_INSTALL Install a package"
-OPTION_UNINSTALL="$ICON_UNINSTALL Uninstall a package"
-OPTION_SEARCH="$ICON_SEARCH Search packages"
-OPTION_LIST="$ICON_LIST List installed packages"
-OPTION_REINSTALL="$ICON_REINSTALL Reinstall / repair a package"
-OPTION_UPDATE="$ICON_UPDATE Update all packages"
-OPTION_CLEAN="$ICON_CLEAN Clean download cache"
-OPTION_INFO="$ICON_INFO Show package info"
-OPTION_AUTOREMOVE="$ICON_AUTOREMOVE Autoremove cleanup"
-OPTION_DEPENDS="$ICON_DEPENDS Dependencies"
-OPTION_RDEPENDS="$ICON_RDEPENDS Reverse deps"
-OPTION_SIZE="$ICON_SIZE Package size"
-OPTION_FILES="$ICON_FILES Installed files"
-OPTION_OWNER="$ICON_OWNER File owner"
-OPTION_HOLD="$ICON_HOLD Pin / hold packages"
-OPTION_PURGE="$ICON_PURGE Purge a package"
-OPTION_FIXBROKEN="$ICON_FIXBROKEN Fix broken packages"
-OPTION_UPGRADABLE="$ICON_UPGRADABLE Upgradable list"
-OPTION_BACKUP="$ICON_BACKUP Backup installed packages"
-OPTION_RESTORE="$ICON_RESTORE Restore from backup"
-OPTION_EXPORT="$ICON_EXPORT Export package list"
-OPTION_IMPORT="$ICON_IMPORT Import package list"
-OPTION_DOCTOR="$ICON_DOCTOR Dependency doctor"
-OPTION_SETTINGS="$ICON_SETTINGS Settings"
-OPTION_HISTORY="$ICON_HISTORY View history log"
-OPTION_EXIT="$ICON_EXIT Exit"
+build_menu() {
+    OPTION_INSTALL="$ICON_INSTALL Install a package"
+    OPTION_UNINSTALL="$ICON_UNINSTALL Uninstall a package"
+    OPTION_SEARCH="$ICON_SEARCH Search packages"
+    OPTION_LIST="$ICON_LIST List installed packages"
+    OPTION_REINSTALL="$ICON_REINSTALL Reinstall / repair a package"
+    OPTION_UPDATE="$ICON_UPDATE Update all packages"
+    OPTION_CLEAN="$ICON_CLEAN Clean download cache"
+    OPTION_INFO="$ICON_INFO Show package info"
+    OPTION_AUTOREMOVE="$ICON_AUTOREMOVE Autoremove cleanup"
+    OPTION_DEPENDS="$ICON_DEPENDS Dependencies"
+    OPTION_RDEPENDS="$ICON_RDEPENDS Reverse deps"
+    OPTION_SIZE="$ICON_SIZE Package size"
+    OPTION_FILES="$ICON_FILES Installed files"
+    OPTION_OWNER="$ICON_OWNER File owner"
+    OPTION_HOLD="$ICON_HOLD Pin / hold packages"
+    OPTION_PURGE="$ICON_PURGE Purge a package"
+    OPTION_FIXBROKEN="$ICON_FIXBROKEN Fix broken packages"
+    OPTION_UPGRADABLE="$ICON_UPGRADABLE Upgradable list"
+    OPTION_BACKUP="$ICON_BACKUP Backup installed packages"
+    OPTION_RESTORE="$ICON_RESTORE Restore from backup"
+    OPTION_EXPORT="$ICON_EXPORT Export package list"
+    OPTION_IMPORT="$ICON_IMPORT Import package list"
+    OPTION_DOCTOR="$ICON_DOCTOR Dependency doctor"
+    OPTION_SETTINGS="$ICON_SETTINGS Settings"
+    OPTION_HISTORY="$ICON_HISTORY View history log"
+    OPTION_EXIT="$ICON_EXIT Exit"
+}
+build_menu
 
 main_menu() {
     if [ "$GUM" = "1" ]; then
@@ -289,6 +311,7 @@ pick_file() {
 }
 
 save_config() {
+    local tmp="$HOME/.pkg-manager.conf.tmp"
     {
         printf 'MGR=%s\n' "$MGR"
         printf 'THEME=%s\n' "$THEME"
@@ -296,7 +319,8 @@ save_config() {
         printf 'LOG_ENABLED=%s\n' "$LOG_ENABLED"
         printf 'GUM_ENABLED=%s\n' "$GUM_ENABLED"
         printf 'ICONS=%s\n' "$ICONS"
-    } > "$HOME/.pkg-manager.conf"
+    } > "$tmp"
+    mv -f "$tmp" "$HOME/.pkg-manager.conf"
     printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
 }
 
@@ -432,7 +456,7 @@ do_search() {
     [ -n "$PKG_NAME" ] || { warn "No search term given."; return; }
     log "search $PKG_NAME"
     say "$ICON_SEARCH Search results for \"$PKG_NAME\":"
-    "$MGR" search "$PKG_NAME"
+    apt search "$PKG_NAME" 2>/dev/null || err "Search failed — run $ICON_UPDATE Update all first?"
 }
 
 do_list() {
@@ -486,7 +510,10 @@ do_reinstall() {
 do_update() {
     log "update all packages"
     say "$ICON_UPDATE Updating package lists..."
-    run_spin "Checking for updates..." "$MGR" update
+    if ! run_spin "Checking for updates..." "$MGR" update; then
+        err "Update failed — not upgrading."
+        return
+    fi
     say "$ICON_UP  Upgrading packages..."
     local out hint
     if out=$("$MGR" upgrade -y 2>&1); then
@@ -612,11 +639,13 @@ do_files() {
 }
 
 do_owner() {
+    local file
     ask_name "File path (e.g. $PREFIX/bin/python)"
-    [ -n "$PKG_NAME" ] || { warn "No file given."; return; }
-    log "owner $PKG_NAME"
-    say "$ICON_OWNER  Which package owns $PKG_NAME:"
-    dpkg -S "$PKG_NAME" 2>/dev/null || err "No installed package owns that file"
+    file="$PKG_NAME"
+    [ -n "$file" ] || { warn "No file given."; return; }
+    log "owner $file"
+    say "$ICON_OWNER  Which package owns $file:"
+    dpkg -S "$file" 2>/dev/null || err "No installed package owns that file"
 }
 
 do_hold() {
@@ -717,8 +746,13 @@ do_fixbroken() {
 do_upgradable() {
     log "upgradable list"
     say "$ICON_UPGRADABLE Packages with available updates:"
-    if apt list --upgradable 2>/dev/null | tail -n +2 | grep -q .; then
-        apt list --upgradable 2>/dev/null | tail -n +2
+    local out
+    if ! out=$(apt list --upgradable 2>/dev/null | tail -n +2); then
+        err "Could not read the upgradable list — run $ICON_UPDATE Update all first?"
+        return
+    fi
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
     else
         ok "All packages are up to date!"
     fi
@@ -737,6 +771,18 @@ do_backup() {
     fi
 }
 
+install_from_list() {
+    local file="$1" action="$2" list fail lines
+    list=$(awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/ {print}' "$file")
+    [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
+    if ! fail=$(printf '%s\n' "$list" | xargs "$MGR" install -y 2>&1); then
+        lines=$(printf '%s\n' "$fail" | tail -n 5)
+        err "$action failed — see output below."
+        [ -n "$lines" ] && printf '%s\n' "$lines"
+        return 1
+    fi
+}
+
 do_restore() {
     local file
     file=$(pick_file "Select a backup file")
@@ -747,15 +793,13 @@ do_restore() {
     fi
     log "restore ← $file"
     say "$ICON_RESTORE  Restoring packages..."
-    if xargs "$MGR" install -y < "$file" 2>/dev/null; then
+    if install_from_list "$file" "Restore"; then
         ok "Restore complete!"
-    else
-        err "Restore failed"
     fi
 }
 
 do_export() {
-    local fmt file ext
+    local fmt file ext list count
     if [ "$GUM" = "1" ]; then
         fmt=$(gum choose --header "$ICON_EXPORT  Export format" "Plain text (.txt)" "JSON (.json)")
     else
@@ -779,18 +823,22 @@ do_export() {
         read -r file
     fi
     [ -n "$file" ] || file="$HOME/pkg-export.$ext"
+    list=$(list_installed_names)
+    count=$(printf '%s\n' "$list" | awk 'NF' | wc -l)
     if [ "$ext" = "json" ]; then
         if command -v python3 >/dev/null 2>&1; then
-            list_installed_names | python3 -c 'import sys,json; p=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps({"packages":p}, indent=2))' > "$file"
+            printf '%s\n' "$list" | python3 -c 'import sys,json; p=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps({"packages":p}, indent=2))' > "$file"
         else
-            warn "python3 not found — exporting as plain text"
-            list_installed_names > "$file"
+            warn "python3 not found — exporting as plain text instead"
+            ext="txt"
+            file="${file%.json}.txt"
+            printf '%s\n' "$list" > "$file"
         fi
     else
-        list_installed_names > "$file"
+        printf '%s\n' "$list" > "$file"
     fi
     log "export → $file"
-    ok "Exported $(wc -l < "$file") packages → $file"
+    ok "Exported $count packages → $file"
 }
 
 do_import() {
@@ -803,10 +851,8 @@ do_import() {
     fi
     log "import ← $file"
     say "$ICON_IMPORT Importing packages..."
-    if xargs "$MGR" install -y < "$file" 2>/dev/null; then
+    if install_from_list "$file" "Import"; then
         ok "Import complete!"
-    else
-        err "Import failed"
     fi
 }
 
@@ -869,7 +915,7 @@ do_settings() {
         *"Package manager"*) set_mgr ;;
         *"Color theme"*)     set_theme_pick ;;
         *"Gum UI"*)          GUM_ENABLED=$((1-GUM_ENABLED)); refresh_gum; save_config ;;
-        *"Icons"*)           if [ "$ICONS" = "nerd" ]; then ICONS="emoji"; else ICONS="nerd"; fi; init_icons; save_config ;;
+        *"Icons"*)           if [ "$ICONS" = "nerd" ]; then ICONS="emoji"; else ICONS="nerd"; fi; init_icons; build_menu; save_config ;;
         *"Safety confirms"*) CONFIRM=$((1-CONFIRM)); save_config ;;
         *"History log"*)     LOG_ENABLED=$((1-LOG_ENABLED)); save_config ;;
         *"Show config"*)     cat "$HOME/.pkg-manager.conf" 2>/dev/null || say "No config yet." ;;
@@ -878,7 +924,6 @@ do_settings() {
 }
 
 do_history() {
-    log "view history"
     if [ ! -f "$LOG_FILE" ]; then
         say "No history yet — run some actions first!"
         return

@@ -8,13 +8,17 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 FONT_DIR="$DIR/fonts"
 FONT_REMOTE_DIR="$REPO/fonts"
 TERMUX_FONT="$HOME/.termux/font.ttf"
+BIN_TMP="$BIN.tmp"
+FONT_TMP="$HOME/.termux/.font.ttf.tmp"
+
+trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
 echo "==> Easy Termux Package Manager installer"
 echo "    Installing globally to: $BIN"
 
 if [ -f "$DIR/manager.sh" ]; then
     echo "==> Using local manager.sh from this repository..."
-    cp "$DIR/manager.sh" "$BIN"
+    cp "$DIR/manager.sh" "$BIN_TMP"
 else
     if ! command -v curl >/dev/null 2>&1; then
         echo "curl not found — aborting. Install it with: pkg install curl"
@@ -29,9 +33,10 @@ else
         fi
     fi
     echo "==> Downloading manager.sh..."
-    curl -fsSL "$REPO/manager.sh" -o "$BIN"
+    curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP"
 fi
 
+mv -f "$BIN_TMP" "$BIN"
 chmod +x "$BIN"
 sed -i "1s|^#!.*|#!$(command -v bash)|" "$BIN"
 
@@ -39,16 +44,15 @@ echo "✓ Installed → $BIN"
 echo "  Run it anytime with:  pkg-manager"
 
 install_font() {
-    local font="$1" tmp
+    local font="$1"
     echo "==> Installing $font ..."
     mkdir -p "$HOME/.termux"
-    tmp="$HOME/.termux/.font.ttf.tmp"
     if [ -f "$FONT_DIR/$font" ]; then
-        cp "$FONT_DIR/$font" "$tmp"
+        cp "$FONT_DIR/$font" "$FONT_TMP"
     else
-        curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$tmp"
+        curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$FONT_TMP"
     fi
-    mv -f "$tmp" "$TERMUX_FONT"
+    mv -f "$FONT_TMP" "$TERMUX_FONT"
     echo "✓ $font installed → $TERMUX_FONT"
     if command -v termux-reload-settings >/dev/null 2>&1; then
         termux-reload-settings >/dev/null 2>&1 || true
@@ -59,20 +63,35 @@ install_font() {
     echo "  then reopen the app."
 }
 
-if [ -d "$HOME/.termux" ]; then
+if [ -n "${FONT:-}" ]; then
+    case "${FONT,,}" in
+        1|cask*|caskaydia*) install_font "CaskaydiaCoveNerdFont-Regular.ttf" ;;
+        2|fira*)            install_font "FiraCodeNerdFont-Regular.ttf" ;;
+        s|skip|none)        echo "Skipping the font install." ;;
+        *)                  echo "Invalid FONT value '$FONT' — skipping the font install." ;;
+    esac
+elif [ -d "$HOME/.termux" ]; then
     echo "Install a Nerd Font for the icons?"
     echo "Friendly Warning: Font installation skips if invalid choice or a typo"
     echo "  [1] CaskaydiaCove (recommended)"
     echo "  [2] FiraCode (alternative)"
     echo "  [s] Skip"
     printf "Choice [1] or [s]: "
-    read -r _ans
+    if [ -t 0 ]; then
+        read -r _ans
+    else
+        read -r _ans < /dev/tty 2>/dev/null || _ans="s"
+    fi
     case "${_ans,,}" in
         ""|1) install_font "CaskaydiaCoveNerdFont-Regular.ttf";;
         2)    install_font "FiraCodeNerdFont-Regular.ttf";;
         s)    echo "Skipping the font install.";;
         *)    echo "Invalid choice — skipping the font install.";;
     esac
+else
+    echo "  ~/.termux not found — skipping the font install."
+    echo "  To see the Nerd Font icon glyphs, install a Nerd Font manually"
+    echo "  (or re-run this installer after creating ~/.termux)."
 fi
 
 if [ -t 0 ]; then

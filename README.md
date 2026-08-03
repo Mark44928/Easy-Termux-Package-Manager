@@ -85,7 +85,7 @@ pkg install curl -y
 curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/install.sh | bash
 ```
 
-This installs `gum` (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), and asks which **Nerd Font** to install: **CaskaydiaCove** (recommended) or **FiraCode**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself.)
+This installs `gum` (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), and asks which **Nerd Font** to install: **CaskaydiaCove** (recommended) or **FiraCode**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself. To pick the font non-interactively, set `FONT=1`, `FONT=2`, or `FONT=skip`.)
 
 ### Option 2 — Clone & run
 
@@ -189,7 +189,7 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~750 lines, single file)
+├── manager.sh      # the entire app (~970 lines, single file)
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -214,7 +214,7 @@ A few ground rules to keep the docs in sync:
 
 - **Menu labels** in the README table must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font, and add it to both branches of `init_icons()` in `manager.sh`.
-- **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v1.3`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
+- **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v1.4`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
 
 ## 📜 License
