@@ -556,7 +556,13 @@ do_rdepends() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "rdepends $PKG_NAME"
     say "$ICON_RDEPENDS Packages that depend on $PKG_NAME:"
-    apt rdepends "$PKG_NAME" 2>/dev/null || err "Could not read reverse dependencies"
+    local out
+    out=$("$MGR" rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    else
+        err "No reverse dependencies found — package not found or has no dependents"
+    fi
 }
 
 do_size() {
@@ -564,9 +570,15 @@ do_size() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "size $PKG_NAME"
     say "$ICON_SIZE  Sizes for $PKG_NAME:"
-    apt-cache show "$PKG_NAME" 2>/dev/null | grep -E '^(Package|Version|Size|Installed-Size):' \
-        | sed 's/^Size:/Download size (bytes):/; s/^Installed-Size:/Installed size (KiB):/' \
-        || err "Package not in cache — run $ICON_UPDATE Update all first?"
+    local out
+    out=$(apt-cache show "$PKG_NAME" 2>/dev/null \
+        | grep -E '^(Package|Version|Size|Installed-Size):' \
+        | sed 's/^Size:/Download size (bytes):/; s/^Installed-Size:/Installed size (KiB):/')
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    else
+        err "Package not in cache — run $ICON_UPDATE Update all first?"
+    fi
 }
 
 do_files() {
@@ -574,7 +586,13 @@ do_files() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "files $PKG_NAME"
     say "$ICON_FILES Files installed by $PKG_NAME:"
-    dpkg -L "$PKG_NAME" 2>/dev/null | tail -n +2 || err "Package may not be installed"
+    local out
+    out=$(dpkg -L "$PKG_NAME" 2>/dev/null | tail -n +2)
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    else
+        err "Package may not be installed"
+    fi
 }
 
 do_owner() {
