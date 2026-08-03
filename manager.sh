@@ -139,7 +139,7 @@ banner() {
         art="TERMUX Pkg Manager v1.4"
     fi
     if [ "$GUM" = "1" ]; then
-        gum style --foreground "$CYAN" --border double --border-foreground "$PINK" --padding "1 1" --align center "$art"
+        gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
     else
         printf '%s\n' "$art"
     fi
