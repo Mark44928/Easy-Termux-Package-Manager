@@ -91,7 +91,7 @@ init_icons() {
         ICON_WAVE=$'\uF259';    ICON_UP=$'\uF062'
         ICON_BACK=$'\uF060';    ICON_PAINT=$'\uF1FC'
         ICON_EYE=$'\uF06E';     ICON_CHART=$'\uF201'
-        ICON_CACHE=$'\uF466';   ICON_TREE=$'\uF0E8'
+        ICON_CACHE=$'\uF1C0';   ICON_TREE=$'\uF0E8'
         ICON_BULK=$'\uF0B2';    ICON_STAR=$'\uF005'
     fi
 }
