@@ -31,6 +31,7 @@ case "$QUIET" in 0|1) ;; *) QUIET=0 ;; esac
 case "$LOCK" in 0|1) ;; *) LOCK=0 ;; esac
 case "$STARTUP_CHECK" in 0|1) ;; *) STARTUP_CHECK=0 ;; esac
 case "$FAVS_PINNED" in 0|1) ;; *) FAVS_PINNED=0 ;; esac
+PREFIX="${PREFIX:-/usr/local}"
 
 [ -n "$MGR_ENV" ] && MGR=$MGR_ENV
 [ -n "$THEME_ENV" ] && THEME=$THEME_ENV
@@ -85,6 +86,7 @@ init_icons() {
         ICON_LOCK="🔒";         ICON_ERROR="🚫"
         ICON_UNDO="↩️";          ICON_PLAY="▶️"
         ICON_FILTER="🧲";       ICON_CHECKBOX="☑️"
+        ICON_BUG="🐞";          ICON_TRASH="🗑️"
     else
         ICON_INSTALL=$'\uEB29'; ICON_UNINSTALL=$'\uEA81'
         ICON_SEARCH=$'\uEA6D';  ICON_LIST=$'\uEB84'
@@ -113,6 +115,7 @@ init_icons() {
         ICON_LOCK=$'\uF023';    ICON_ERROR=$'\uF071'
         ICON_UNDO=$'\uF0E2';    ICON_PLAY=$'\uF04B'
         ICON_FILTER=$'\uF0B0';  ICON_CHECKBOX=$'\uF046'
+        ICON_BUG=$'\uF188';     ICON_TRASH=$'\uF014'
     fi
 }
 init_icons
@@ -225,6 +228,8 @@ build_menu() {
     FAVPIN=()
     if [ "$FAVS_PINNED" = "1" ] && [ -s "$FAVS_FILE" ]; then
         while IFS= read -r p; do
+            p=${p#"${p%%[![:space:]]*}"}
+            p=${p%"${p##*[![:space:]]}"}
             [ -n "$p" ] && FAVPIN+=("$p")
         done < "$FAVS_FILE"
     fi
@@ -238,6 +243,7 @@ main_menu() {
         opts+=( "$ICON_STAR Pinned: $p" )
     done
     if [ "$GUM" = "1" ]; then
+        opts+=( "$OPTION_EXIT" )
         gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" \
             "${opts[@]}"
     else
@@ -1256,9 +1262,10 @@ do_favs() {
                 log "favorite add $PKG_NAME"
                 ok "$PKG_NAME added to favorites"
             fi
+            [ "$FAVS_PINNED" = "1" ] && build_menu
             ;;
         Remove*)
-            [ -f "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
+            [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
             if [ "$GUM" = "1" ]; then
                 name=$(gum choose --header "$ICON_STAR  Pick favorite to remove" $(cat "$FAVS_FILE"))
             else
@@ -1273,10 +1280,11 @@ do_favs() {
             fi
             [ -n "$name" ] || return
             if grep -Fxq "$name" "$FAVS_FILE"; then
-                grep -Fxv "$name" "$FAVS_FILE" > "$FAVS_FILE.tmp" && mv -f "$FAVS_FILE.tmp" "$FAVS_FILE"
+                grep -Fxv "$name" "$FAVS_FILE" > "$FAVS_FILE.tmp"; mv -f "$FAVS_FILE.tmp" "$FAVS_FILE"
                 log "favorite remove $name"
                 ok "$name removed from favorites."
             fi
+            [ "$FAVS_PINNED" = "1" ] && build_menu
             ;;
         Show*)
             if [ ! -s "$FAVS_FILE" ]; then
@@ -1519,7 +1527,7 @@ undo_last_remove() {
     local line rest
     line=$(grep -E '\] (remove|purge|bulk remove|remove multiple)' "$LOG_FILE" | tail -n1)
     [ -n "$line" ] || { say "No previous removal found in history."; return; }
-    rest=$(printf '%s\n' "$line" | sed -E 's/^.*\] (remove|purge|bulk remove:?|remove multiple)[ :]*//')
+    rest=$(printf '%s\n' "$line" | sed -E 's/^.*\] (remove|purge|bulk remove picked:?|bulk remove:?|remove multiple)[ :]*//')
     rest=$(printf '%s\n' "$rest" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
     [ -n "$rest" ] || { say "Nothing to undo."; return; }
     say "$ICON_UNDO Last removal was: $(printf '%s' "$rest" | tr '\n' ' ')"
@@ -1555,7 +1563,7 @@ do_history() {
     fi
     [ -n "$a" ] || return
     case "$a" in
-        *"all"*)
+        *"all history"*)
             say "$ICON_HISTORY Action history ($LOG_FILE)"
             if [ "$GUM" = "1" ]; then
                 gum pager < "$LOG_FILE" || cat "$LOG_FILE"
@@ -1776,25 +1784,26 @@ do_groups() {
             ok "Group \"$gname\" created."
             ;;
         Delete*)
-            if [ ! -f "$GROUPS_FILE" ]; then
+            if [ ! -s "$GROUPS_FILE" ]; then
                 warn "No custom groups to delete."
                 return
             fi
             if [ "$GUM" = "1" ]; then
-                gname=$(gum choose --header "$ICON_TRASH  Pick custom group to delete" $(sed 's/::.*//' "$GROUPS_FILE"))
+                mapfile -t custom_names < <(sed 's/::.*//' "$GROUPS_FILE")
+                gname=$(gum choose --header "$ICON_TRASH  Pick custom group to delete" "${custom_names[@]}")
             else
                 printf 'Custom groups:\n' >&2
                 nl -w2 -s') ' "$GROUPS_FILE" | sed 's/::/ /' >&2
                 printf 'Pick number (0 = cancel): ' >&2
                 read -r a
                 case "$a" in
-                    [1-9]|[1-9][0-9]) gname=$(sed -n "${a}p" "$GROUPS_FILE" | cut -d:: -f1) ;;
+                    [1-9]|[1-9][0-9]) gname=$(sed -n "${a}p" "$GROUPS_FILE" | sed 's/::.*//') ;;
                     *) return ;;
                 esac
             fi
             [ -n "$gname" ] || return
             if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
-                grep -Fxv "${gname}::*" "$GROUPS_FILE" > "$GROUPS_FILE.tmp" && mv -f "$GROUPS_FILE.tmp" "$GROUPS_FILE"
+                grep -v "^${gname}::" "$GROUPS_FILE" > "$GROUPS_FILE.tmp"; mv -f "$GROUPS_FILE.tmp" "$GROUPS_FILE"
                 load_groups
                 log "group delete $gname"
                 ok "Group \"$gname\" deleted."
@@ -1805,9 +1814,10 @@ do_groups() {
 }
 
 pick_group() {
-    local header="$1" a
+    local header="$1" a gnames
     if [ "$GUM" = "1" ]; then
-        gum choose --header "$header" $(group_names)
+        mapfile -t gnames < <(group_names)
+        gum choose --header "$header" "${gnames[@]}"
     else
         printf 'Groups:\n' >&2
         local i=1 n

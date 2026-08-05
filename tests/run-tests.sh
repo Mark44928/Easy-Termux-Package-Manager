@@ -134,6 +134,10 @@ T undo_remove      <(printf '2\npython3\ny\n\n25\n4\ny\n') "Undo complete!"
 T search_install   <(printf '3\npython\npython-tool\ny\n') "Setting up python-tool"
 T quiet_mode       <(printf '2\npython3\n')             "python3 removed!"
 T lock_mode        <(printf '2\npython3\n')             "Canceled."
+T group_delete     <(printf '34\n5\n1\ny\n\n34\n5\n')    "No custom groups to delete" ".pkg-manager-groups|"
+T undo_pick        <(printf '30\n3\n1 2\ny\n\n25\n4\ny\n') "Undo complete!" "||Setting up picked"
+T history_installs <(printf '1\npython3\n\n25\n3\n')    "Install / remove actions:" "||Action history"
+T fav_remove_last  <(printf '31\n2\n1\n\n31\n3\n')      "No favorites yet — add some first!"
 
 # --- v2.0 new features (text/apt) ---
 T simulate_install <(printf '26\n1\npython3\n')        "Simulated install: python3"
@@ -178,6 +182,7 @@ G gum_fav_install  <(printf '⭐ Favorites\nInstall all favorites\ny\n') "Favori
 G gum_inspect      <(printf '🔍 Package inspector\npython3\n') "Inspecting python3"
 G gum_maint        <(printf '🩺 Maintenance wizard\nn\nn\nn\nn\n') "can be upgraded"
 G gum_groups_show  <(printf '🗂️ Package groups\nShow all groups\n') "git tools"
+G gum_group_install <(printf '🗂️ Package groups\nInstall a group\ngit tools\ny\n') "Installing group"
 G gum_stats_disk   <(printf '📊 Package stats & disk\nDisk usage by directory\n') "Disk usage by directory"
 G gum_bulk_pick    <(printf '📚 Bulk operations\nRemove (pick from installed list)\npython3\ny\n') "Removed python3"
 GP gum_pkg_list    <(printf '📜 List installed packages\n') "python3"
