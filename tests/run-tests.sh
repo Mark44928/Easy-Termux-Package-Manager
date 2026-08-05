@@ -105,7 +105,7 @@ T backup_ok        <(printf '19\n')                    "Backed up" "pkg-backup-*
 T export_txt       <(printf '21\n1\n\n')               "Exported 2 packages" "pkg-export.txt|"
 T settings_show    <(printf '24\n7\n')                 "No config yet"
 T settings_icons   <(printf '24\n4\n')                 "Settings saved"
-T history_ok       <(printf '1\npython3\n\n25\n')      "install python3"
+T history_ok       <(printf '1\npython3\n\n25\n1\n')   "install python3"
 
 # --- invalid package errors ---
 T install_bad      <(printf '1\ninvalidpkg\n')         "Package not found"
@@ -113,11 +113,33 @@ T info_bad         <(printf '8\ninvalidpkg\n')         "Package not found"
 T rdepends_bad     <(printf '11\ninvalidpkg\n')        "No reverse dependencies found"
 T size_bad         <(printf '12\ninvalidpkg\n')        "Package not in cache"
 
+# --- v2.0 expansion #2 (text/apt) ---
+T stats_disk       <(printf '27\n2\n')                 "Disk usage by directory"
+T stats_files      <(printf '27\n3\n')                 "Largest files"
+T inspect_ok       <(printf '32\npython3\n')           "Inspecting python3"
+T maint_ok         <(printf '33\nn\nn\nn\nn\n')        "can be upgraded"
+FAKE_UPGRADABLE=empty
+export FAKE_UPGRADABLE
+T maint_clean      <(printf '33\n')                    "System looks healthy!"
+unset FAKE_UPGRADABLE
+T groups_show      <(printf '34\n1\n')                 "git tools"
+T groups_install   <(printf '34\n2\n1\ny\n')           "Installing group"
+T group_create     <(printf '34\n4\nmytools\ncurl wget\n') "created" ".pkg-manager-groups|"
+T bulk_pick_rm     <(printf '30\n3\n1 2\ny\n')         "Removed python3"
+T bulk_pick_up     <(printf '30\n4\n1\ny\n')           "Setting up python3"
+T fav_pin          <(printf '31\n5\n')                 "Favorites pinned"
+T pin_installed    <(printf '35\ny\n')                 "Installing python3"
+T log_errors       <(printf '1\ninvalidpkg\n\n25\n2\n') "No errors in the log"
+T undo_remove      <(printf '2\npython3\ny\n\n25\n4\ny\n') "Undo complete!"
+T search_install   <(printf '3\npython\npython-tool\ny\n') "Setting up python-tool"
+T quiet_mode       <(printf '2\npython3\n')             "python3 removed!"
+T lock_mode        <(printf '2\npython3\n')             "Canceled."
+
 # --- v2.0 new features (text/apt) ---
 T simulate_install <(printf '26\n1\npython3\n')        "Simulated install: python3"
 T simulate_remove  <(printf '26\n2\npython3\n')        "Simulated remove: python3"
 T simulate_upgrade <(printf '26\n3\n')                 "Simulated upgrade"
-T stats_ok         <(printf '27\n')                    "Total installed size: 3.0 MiB"
+T stats_ok         <(printf '27\n1\n')                "Total installed size: 3.0 MiB"
 T cache_clean      <(printf '28\n1\ny\n')              "Cache cleaned!"
 T cache_autoclean  <(printf '28\n2\ny\n')              "Outdated packages cleaned!"
 T cache_show       <(printf '28\n3\n')                 "python3_3.12_arm64.deb"
@@ -145,7 +167,7 @@ G gum_install      <(printf '📦 Install a package\npython3\n') "python3 instal
 G gum_search       <(printf '🔎 Search packages\npython\n')    "python3/stable 3.12 arm64"
 G gum_upgrade      <(printf '🔄 Upgrade center\nAll packages\ny\ny\n') "Cache cleaned!"
 G gum_simulate     <(printf '👁️ Simulate a change\nSimulate install\npython3\n') "Simulated install: python3"
-G gum_stats        <(printf '📊 Package stats\n')      "Total installed size: 3.0 MiB"
+G gum_stats        <(printf '📊 Package stats & disk\nOverview\n') "Total installed size: 3.0 MiB"
 G gum_cache        <(printf '🗃️ Cache manager\nClean all cached files (apt clean)\ny\n') "Cache cleaned!"
 G gum_deptree      <(printf '🌳 Dependency tools\nDependency tree\npython3\n') "termux-exec"
 G gum_orphans      <(printf '🌳 Dependency tools\nOrphan finder\n') "No orphaned packages found!"
@@ -153,6 +175,11 @@ G gum_bulk         <(printf '📚 Bulk operations\nInstall multiple packages\npy
 G gum_fav          <(printf '⭐ Favorites\nAdd favorite\npython3\n') "added to favorites" ".pkg-manager-favs|"
 G gum_upgrade_some <(printf '🔄 Upgrade center\npython3\ny\ny\n') "Cache cleaned!"
 G gum_fav_install  <(printf '⭐ Favorites\nInstall all favorites\ny\n') "Favorites installed!"
+G gum_inspect      <(printf '🔍 Package inspector\npython3\n') "Inspecting python3"
+G gum_maint        <(printf '🩺 Maintenance wizard\nn\nn\nn\nn\n') "can be upgraded"
+G gum_groups_show  <(printf '🗂️ Package groups\nShow all groups\n') "git tools"
+G gum_stats_disk   <(printf '📊 Package stats & disk\nDisk usage by directory\n') "Disk usage by directory"
+G gum_bulk_pick    <(printf '📚 Bulk operations\nRemove (pick from installed list)\npython3\ny\n') "Removed python3"
 GP gum_pkg_list    <(printf '📜 List installed packages\n') "python3"
 GP gum_pkg_upgrade <(printf '🔄 Upgrade center\nAll packages\ny\ny\n') "Cache cleaned!"
 

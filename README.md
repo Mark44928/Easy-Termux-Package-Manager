@@ -44,20 +44,25 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
 
 ## ✨ Highlights
 
-- 🎛️ **32 menu entries** (31 package actions + exit)
+- 🎛️ **37 menu entries** (36 package actions + exit, plus dynamically pinned favorites)
 - 🔄 **Upgrade center** — one flow: refresh → pick what to upgrade → autoremove → clean cache
 - 👁️ **Simulate before changing** — dry-run previews of install/remove/upgrade (`apt -s`)
-- 📊 **Package stats** — installed count, total size, biggest packages, cache size
+- 📊 **Package stats & disk** — installed count, total size, biggest packages, per-directory disk usage, largest files, cache breakdown
 - 🗃️ **Cache manager** — clean all or just outdated `.deb` files, browse the cache
 - 🌳 **Dependency tools** — recursive dependency tree + orphan (unused package) finder
-- 📚 **Bulk operations** — install or remove many packages in one go
-- ⭐ **Favorites** — bookmark packages and reinstall them all with one tap
+- 🔍 **Package inspector** — one-screen drill-down: info, dependencies, reverse deps, installed files, hold status
+- 🩺 **Maintenance wizard** — on-demand (or on-launch) health pass: upgradable, orphans, broken packages, cache, held
+- 📚 **Bulk operations** — install or remove many packages, or multi-select from the live installed/upgradable lists
+- ⭐ **Favorites** — bookmark packages, pin them to the main menu, reinstall them all with one tap
+- 🗂️ **Package groups** — curated bundles (web dev, python dev, media…) plus your own saved groups
+- 📋 **History & log viewer** — filter the log, view errors, **undo** your last removal, re-run past actions
+- 🔒 **Quiet mode + safety lock** — skip all confirms, or force confirmations on destructive ops
 - 💾 **Backup & restore** your exact package set (perfect for device swaps)
 - 📤 **Export/import** your package list as plain text or JSON
 - 🔗 **Deep-dive tools** — dependencies, reverse deps, sizes, file lists
 - 📌 **Pin/hold packages** so upgrades never break them
 - 🩹 **Self-healing** — fix broken dependencies with one tap
-- ⚙️ **Persistent settings** — backend, theme, and safety toggles stored in `~/.pkg-manager.conf`
+- ⚙️ **Persistent settings** — backend, theme, quiet/lock, and safety toggles stored in `~/.pkg-manager.conf`
 - 🎨 **4 color themes**, **Nerd Font or emoji icons**, ASCII banner, spinner, confirm dialogs, status banners
 - 🛟 **Plain-text fallback** — works even before `gum` is installed (and auto-installs it for you)
 - 📋 **Timestamped history** of every action you run
@@ -67,14 +72,14 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
 | Category | What you get |
 |----------|--------------|
 | 📦 **Basic** | Install, uninstall, reinstall/repair, upgrade center, clean cache, autoremove |
-| 🔎 **Search** | Smart search (installed markers), upgradable list |
+| 🔎 **Search** | Smart search (installed markers + install-from-results), upgradable list |
 | 👁️ **Preview** | Simulate install / remove / upgrade before doing anything |
-| 📊 **Insight** | Package stats, package sizes, installed files, file owner |
+| 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner |
 | 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder |
-| 📌 **Maintenance** | Pin/hold, purge, fix-broken |
-| 📚 **Bulk** | Install/remove many packages at once, favorites |
+| 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) |
+| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups |
 | 💾 **Data** | Backup, restore, export (txt/JSON), import |
-| 🔧 **Tooling** | Dependency doctor, cache manager, settings, history log |
+| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/undo/clear), settings |
 
 ## 📋 Requirements
 
@@ -150,14 +155,18 @@ pkg-manager      # installed via install.sh / manual method
 | 21 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
 | 22 | 📥 Import package list | install from any list file |
 | 23 | 🔧 Dependency doctor | check/install `gum`, `git`, `curl`, `figlet` |
-| 24 | ⚙️  Settings | backend, theme, toggles |
-| 25 | 📋 View history log | `cat ~/.pkg-manager.log` |
+| 24 | ⚙️  Settings | backend, theme, toggles, quiet mode, safety lock |
+| 25 | 📋 History & log viewer | view/filter the log, show errors, undo last removal, clear |
 | 26 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
-| 27 | 📊 Package stats | installed count, total size, top 10 largest, cache size |
+| 27 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
 | 28 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
 | 29 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
-| 30 | 📚 Bulk operations | install/remove many packages at once |
-| 31 | ⭐ Favorites | add/remove/show favorites, reinstall all in one tap |
+| 30 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
+| 31 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
+| 32 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
+| 33 | 🩺 Maintenance wizard | health pass: upgradable, orphans, broken packages, cache, held |
+| 34 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
+| 35+ | ⭐ Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
 > Labels below use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update this table too.
@@ -168,9 +177,9 @@ pkg-manager      # installed via install.sh / manual method
 
 1. Install (any option above) and run `pkg-manager`
 2. Pick **🔄 Upgrade center** first — refresh lists, upgrade, autoremove, and clean in one flow
-3. Visit **⚙️  Settings** to pick your backend (`apt`/`pkg`) and color theme
+3. Visit **⚙️  Settings** to pick your backend (`apt`/`pkg`), color theme, quiet mode, and safety lock
 4. Optional: **💾 Backup installed packages** so you can restore later
-5. Optional: ⭐ **Favorites** the packages you always want around — reinstall them all from any fresh setup
+5. Optional: ⭐ **Favorites** the packages you always want around — pin them to the main menu or reinstall them all from any fresh setup
 
 ### 💾 Backup / restore workflow
 
@@ -187,12 +196,16 @@ xargs apt install -y < ~/pkg-backup-*.txt
 Settings are persisted to `~/.pkg-manager.conf`:
 
 ```ini
-MGR=apt        # apt or pkg
-THEME=green    # green, blue, purple, red
-CONFIRM=1      # ask before destructive actions
-LOG_ENABLED=1  # write action history
-GUM_ENABLED=1  # use the fancy UI
-ICONS=nerd     # nerd (font glyphs) or emoji
+MGR=apt           # apt or pkg
+THEME=green       # green, blue, purple, red
+CONFIRM=1         # ask before destructive actions
+LOG_ENABLED=1     # write action history
+GUM_ENABLED=1     # use the fancy UI
+ICONS=nerd        # nerd (font glyphs) or emoji
+QUIET=0           # 1 = skip all confirmation prompts
+LOCK=0            # 1 = always confirm destructive ops (blocks quiet mode)
+STARTUP_CHECK=0   # 1 = run the maintenance wizard on every launch
+FAVS_PINNED=0     # 1 = show favorite packages at the end of the main menu
 ```
 
 Changes made in **Settings** apply immediately; edits to the file itself apply on the next launch.
@@ -205,8 +218,8 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~1370 lines, single file)
-├── tests/          # automated harness (fakebin stubs + 63 tests) — bash tests/run-tests.sh
+├── manager.sh      # the entire app (~1900 lines, single file)
+├── tests/          # automated harness (fakebin stubs + 85 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -214,6 +227,7 @@ Easy-Termux-Package-Manager/
 ~/.pkg-manager.conf      # settings (created the first time you change a setting)
 ~/.pkg-manager.log       # action history (created on the first logged action)
 ~/.pkg-manager-favs      # favorites list (created by the Favorites option)
+~/.pkg-manager-groups    # custom package groups (created by Package groups)
 ~/pkg-backup-*.txt       # backups (created by Backup option)
 ```
 
@@ -234,7 +248,7 @@ A few ground rules to keep the docs in sync:
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font, and add it to both branches of `init_icons()` in `manager.sh`.
 - **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v2.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 63 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 85 scenario tests).
 
 ## 📜 License
 
