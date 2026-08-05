@@ -1,0 +1,107 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake pkg
+sub="$1"
+shift
+
+sim=0
+pkgs=()
+for a in "$@"; do
+    case "$a" in
+        -s|--simulate) sim=1 ;;
+        -y|--yes|-f|--reinstall|--fix-broken) : ;;
+        *) pkgs+=("$a") ;;
+    esac
+done
+
+is_bad() {
+    printf '%s\n' "${pkgs[@]}" | grep -qx invalidpkg
+}
+
+case "$sub" in
+    update)
+        echo "Hit:1 https://packages.termux.org/apt/termux-main stable InRelease"
+        exit 0
+        ;;
+    install)
+        if is_bad; then
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        if [ "$sim" = "1" ]; then
+            echo "Simulated install: ${pkgs[*]}"
+            exit 0
+        fi
+        for p in "${pkgs[@]}"; do
+            echo "Setting up $p (1.0)"
+        done
+        exit 0
+        ;;
+    remove)
+        if is_bad; then
+            echo "E: Package invalidpkg is not installed" >&2
+            exit 100
+        fi
+        if [ "$sim" = "1" ]; then
+            echo "Simulated remove: ${pkgs[*]}"
+            exit 0
+        fi
+        for p in "${pkgs[@]}"; do
+            echo "Removed $p"
+        done
+        exit 0
+        ;;
+    upgrade)
+        if [ "$sim" = "1" ]; then
+            echo "Simulated upgrade: 0 upgraded, 0 newly installed, 0 to remove"
+            exit 0
+        fi
+        echo "All packages are up to date."
+        exit 0
+        ;;
+    clean)
+        exit 0
+        ;;
+    autoclean)
+        exit 0
+        ;;
+    list-installed)
+        echo "Listing..."
+        echo "python3/stable 3.12 arm64 [installed]"
+        exit 0
+        ;;
+    show)
+        if [ "${pkgs[0]}" = "invalidpkg" ]; then
+            echo "E: No packages found" >&2
+            exit 100
+        fi
+        echo "Package: ${pkgs[0]}"
+        echo "Version: 3.12"
+        echo "Architecture: arm64"
+        echo "Size: 102400"
+        echo "Installed-Size: 2048"
+        exit 0
+        ;;
+    depends)
+        if is_bad; then
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        echo "${pkgs[0]}"
+        echo "  Depends: libc"
+        exit 0
+        ;;
+    rdepends)
+        if is_bad; then
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        echo "${pkgs[0]}"
+        echo "Reverse Depends:"
+        echo "  python-pip"
+        exit 0
+        ;;
+    *)
+        echo "E: Unknown command pkg $sub" >&2
+        exit 1
+        ;;
+esac

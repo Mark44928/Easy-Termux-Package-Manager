@@ -68,6 +68,9 @@ init_icons() {
         ICON_FOLDER="📂";       ICON_WAND="🪄"
         ICON_WAVE="👋";         ICON_UP="⬆️"
         ICON_BACK="⬅️";        ICON_PAINT="🖌️"
+        ICON_EYE="👁️";          ICON_CHART="📊"
+        ICON_CACHE="🗃️";         ICON_TREE="🌳"
+        ICON_BULK="📚";         ICON_STAR="⭐"
     else
         ICON_INSTALL=$'\uEB29'; ICON_UNINSTALL=$'\uEA81'
         ICON_SEARCH=$'\uEA6D';  ICON_LIST=$'\uEB84'
@@ -87,6 +90,9 @@ init_icons() {
         ICON_FOLDER=$'\uF07C';  ICON_WAND=$'\uEBCF'
         ICON_WAVE=$'\uF259';    ICON_UP=$'\uF062'
         ICON_BACK=$'\uF060';    ICON_PAINT=$'\uF1FC'
+        ICON_EYE=$'\uF06E';     ICON_CHART=$'\uF201'
+        ICON_CACHE=$'\uF466';   ICON_TREE=$'\uF0E8'
+        ICON_BULK=$'\uF0B2';    ICON_STAR=$'\uF005'
     fi
 }
 init_icons
@@ -131,12 +137,12 @@ ok()   { if [ "$GUM" = "1" ]; then gum style --foreground "$GREEN" "✓ $1"; els
 err()  { if [ "$GUM" = "1" ]; then gum style --foreground "$RED"   "✗ $1"; else printf '✗ %s\n' "$1"; fi; }
 warn() { if [ "$GUM" = "1" ]; then gum style --foreground "$YELLOW" "⚠ $1"; else printf '⚠ %s\n' "$1"; fi; }
 
-BANNER_B64="H4sICGbcbmoCA2FydF92MTQudHh0AG1PMQoCMRDs84ppbW4RLOU6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT5RSzm53NzCRskOvCFIC2WR1z1GStseAqQAkqgDGYyhBIwoeJWwGz0Cm/FcWWp4k3Hnegy3UvzYseS+D73epWn6GZLChBRza8PqXVv0WvWStl6pxIFufofd1vP4lVOV+xKbtDGfZYlyPhhOcDl3m3+ONPIyyVBGtNAQAA"
+BANNER_B64="H4sICETdcmoAA2FydF92MjAudHh0AG1POwoCQQzt5xSvtdmItWxnuWBlFRgGkS0ECxcWFlJ4CO9i71E8yeYziitOMnnhvTchgxwH3wDUq9Uwe01SG3EuAKzABIiGJmsQKOHD+CuHlesqvxXGYWH12QZqMtlKtaLFdjk0vGwLVIs4RWjAbrUNJf7lPWcOStg4okzGqfd1v/0kdmWYsC/Hc+lP6MpF4YrnA+OmWf/xpxn5svtlSQEAAA=="
 
 banner() {
     local art
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
-        art="TERMUX Pkg Manager v1.4"
+        art="TERMUX Pkg Manager v2.0"
     fi
     if [ "$GUM" = "1" ]; then
         gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
@@ -151,7 +157,7 @@ build_menu() {
     OPTION_SEARCH="$ICON_SEARCH Search packages"
     OPTION_LIST="$ICON_LIST List installed packages"
     OPTION_REINSTALL="$ICON_REINSTALL Reinstall / repair a package"
-    OPTION_UPDATE="$ICON_UPDATE Update all packages"
+    OPTION_UPDATE="$ICON_UPDATE Upgrade center"
     OPTION_CLEAN="$ICON_CLEAN Clean download cache"
     OPTION_INFO="$ICON_INFO Show package info"
     OPTION_AUTOREMOVE="$ICON_AUTOREMOVE Autoremove cleanup"
@@ -171,6 +177,12 @@ build_menu() {
     OPTION_DOCTOR="$ICON_DOCTOR Dependency doctor"
     OPTION_SETTINGS="$ICON_SETTINGS Settings"
     OPTION_HISTORY="$ICON_HISTORY View history log"
+    OPTION_SIMULATE="$ICON_EYE Simulate a change"
+    OPTION_STATS="$ICON_CHART Package stats"
+    OPTION_CACHE="$ICON_CACHE Cache manager"
+    OPTION_DEPTREE="$ICON_TREE Dependency tools"
+    OPTION_BULK="$ICON_BULK Bulk operations"
+    OPTION_FAVS="$ICON_STAR Favorites"
     OPTION_EXIT="$ICON_EXIT Exit"
 }
 build_menu
@@ -183,7 +195,9 @@ main_menu() {
             "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER" \
             "$OPTION_HOLD" "$OPTION_PURGE" "$OPTION_FIXBROKEN" "$OPTION_UPGRADABLE" \
             "$OPTION_BACKUP" "$OPTION_RESTORE" "$OPTION_EXPORT" "$OPTION_IMPORT" \
-            "$OPTION_DOCTOR" "$OPTION_SETTINGS" "$OPTION_HISTORY" "$OPTION_EXIT"
+            "$OPTION_DOCTOR" "$OPTION_SETTINGS" "$OPTION_HISTORY" \
+            "$OPTION_SIMULATE" "$OPTION_STATS" "$OPTION_CACHE" \
+            "$OPTION_DEPTREE" "$OPTION_BULK" "$OPTION_FAVS" "$OPTION_EXIT"
     else
         printf '\n' >&2
         printf '[1]  %s\n' "$OPTION_INSTALL" >&2
@@ -211,6 +225,12 @@ main_menu() {
         printf '[23] %s\n' "$OPTION_DOCTOR" >&2
         printf '[24] %s\n' "$OPTION_SETTINGS" >&2
         printf '[25] %s\n' "$OPTION_HISTORY" >&2
+        printf '[26] %s\n' "$OPTION_SIMULATE" >&2
+        printf '[27] %s\n' "$OPTION_STATS" >&2
+        printf '[28] %s\n' "$OPTION_CACHE" >&2
+        printf '[29] %s\n' "$OPTION_DEPTREE" >&2
+        printf '[30] %s\n' "$OPTION_BULK" >&2
+        printf '[31] %s\n' "$OPTION_FAVS" >&2
         printf '[0]  %s\n' "$OPTION_EXIT" >&2
         printf 'Choose an option: ' >&2
         if ! read -r n; then
@@ -243,6 +263,12 @@ main_menu() {
             23) echo "$OPTION_DOCTOR" ;;
             24) echo "$OPTION_SETTINGS" ;;
             25) echo "$OPTION_HISTORY" ;;
+            26) echo "$OPTION_SIMULATE" ;;
+            27) echo "$OPTION_STATS" ;;
+            28) echo "$OPTION_CACHE" ;;
+            29) echo "$OPTION_DEPTREE" ;;
+            30) echo "$OPTION_BULK" ;;
+            31) echo "$OPTION_FAVS" ;;
             0)  echo "$OPTION_EXIT" ;;
             *)  echo "__INVALID__" ;;
         esac
@@ -455,8 +481,23 @@ do_search() {
     ask_name "Package name or keyword to search"
     [ -n "$PKG_NAME" ] || { warn "No search term given."; return; }
     log "search $PKG_NAME"
-    say "$ICON_SEARCH Search results for \"$PKG_NAME\":"
-    apt search "$PKG_NAME" 2>/dev/null || err "Search failed — run $ICON_UPDATE Update all first?"
+    local out installed
+    installed=$(list_installed_names)
+    out=$(apt search "$PKG_NAME" 2>/dev/null | grep -vE '^(Sorting|Full Text Search)')
+    if [ -z "$out" ]; then
+        err "No results — check the name or run $ICON_UPDATE Upgrade center first?"
+        return
+    fi
+    say "$ICON_SEARCH Search results for \"$PKG_NAME\" (✓ = already installed):"
+    printf '%s\n' "$out" | awk -v inst="$installed" '
+        BEGIN { n=split(inst, a, "\n"); for (i=1; i<=n; i++) has[a[i]]=1 }
+        /^[^ ]/ {
+            pkg=$0; sub(/\/.*/, "", pkg)
+            printf "%s%s\n", $0, (pkg in has ? "  ✓ [installed]" : "")
+            next
+        }
+        { print }
+    '
 }
 
 do_list() {
@@ -507,30 +548,63 @@ do_reinstall() {
     fi
 }
 
-do_update() {
-    log "update all packages"
-    say "$ICON_UPDATE Updating package lists..."
-    if ! run_spin "Checking for updates..." "$MGR" update; then
+do_upgrade_center() {
+    log "upgrade center"
+    say "$ICON_UPDATE Upgrade center"
+    if ! run_spin "Refreshing package lists..." "$MGR" update; then
         err "Update failed — not upgrading."
         return
     fi
-    say "$ICON_UP  Upgrading packages..."
-    local out hint
-    if out=$("$MGR" upgrade -y 2>&1); then
-        hint=$(apt_hint "$out")
-        if [ -n "$hint" ]; then
-            ok "$hint"
-        else
-            ok "All packages are up to date!"
-        fi
+    local list pkgs n choice sel
+    list=$(apt list --upgradable 2>/dev/null | tail -n +2)
+    if [ -z "$list" ]; then
+        ok "All packages are up to date!"
+        return
+    fi
+    pkgs=$(printf '%s\n' "$list" | cut -d/ -f1)
+    n=$(printf '%s\n' "$pkgs" | awk 'NF' | wc -l)
+    say "$ICON_UPGRADABLE $n package(s) have updates:"
+    printf '%s\n' "$list"
+    if [ "$GUM" = "1" ]; then
+        choice=$(gum choose --multi --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" $(printf '%s\n' "$pkgs"))
     else
-        hint=$(apt_hint "$out")
-        if [ -n "$hint" ]; then
-            err "$hint"
+        printf '\nUpgrade all [a], none [n], or pick some (space-separated names): ' >&2
+        read -r choice
+        case "$choice" in
+            a|A|all|All|ALL) choice="All packages" ;;
+            n|N|"")           say "Canceled."; return ;;
+            *)                choice=$(printf '%s\n' "$choice" | tr ' ' '\n') ;;
+        esac
+    fi
+    [ -n "$choice" ] || { say "Canceled."; return; }
+    if [ "$choice" = "All packages" ]; then
+        log "upgrade all"
+        say "$ICON_UP  Upgrading all packages..."
+        if run_spin "Upgrading..." "$MGR" upgrade -y; then
+            ok "Upgrade complete!"
         else
             err "Upgrade failed."
         fi
-        printf '%s\n' "$out" | tail -n 4
+    else
+        sel=$(printf '%s\n' "$choice" | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/ {print}')
+        [ -n "$sel" ] || { say "Nothing selected."; return; }
+        log "upgrade: $(printf '%s' "$sel" | tr '\n' ' ')"
+        say "$ICON_UP  Upgrading selected packages..."
+        printf '%s\n' "$sel" | xargs "$MGR" install -y 2>&1 | tail -n 5
+    fi
+    if confirm "$ICON_AUTOREMOVE Remove now-unused dependencies?"; then
+        if apt autoremove -y >/dev/null 2>&1; then
+            ok "Autoremoved unused dependencies."
+        else
+            err "Autoremove failed."
+        fi
+    fi
+    if confirm "$ICON_CLEAN Clean the download cache?"; then
+        if "$MGR" clean >/dev/null 2>&1; then
+            ok "Cache cleaned!"
+        else
+            err "Failed to clean cache."
+        fi
     fi
 }
 
@@ -557,7 +631,7 @@ do_info() {
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
-        err "Package not found — check the name or run $ICON_UPDATE Update all first?"
+        err "Package not found — check the name or run $ICON_UPDATE Upgrade center first?"
     fi
 }
 
@@ -620,7 +694,7 @@ do_size() {
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
-        err "Package not in cache — run $ICON_UPDATE Update all first?"
+        err "Package not in cache — run $ICON_UPDATE Upgrade center first?"
     fi
 }
 
@@ -748,7 +822,7 @@ do_upgradable() {
     say "$ICON_UPGRADABLE Packages with available updates:"
     local out
     if ! out=$(apt list --upgradable 2>/dev/null | tail -n +2); then
-        err "Could not read the upgradable list — run $ICON_UPDATE Update all first?"
+        err "Could not read the upgradable list — run $ICON_UPDATE Upgrade center first?"
         return
     fi
     if [ -n "$out" ]; then
@@ -756,6 +830,326 @@ do_upgradable() {
     else
         ok "All packages are up to date!"
     fi
+}
+
+do_simulate() {
+    local a
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_EYE  Simulate a change" "Simulate install" "Simulate remove" "Simulate upgrade all")
+    else
+        printf '1) Simulate install\n2) Simulate remove\n3) Simulate upgrade all\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Simulate install" ;;
+            2) a="Simulate remove" ;;
+            3) a="Simulate upgrade all" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        *install*)
+            ask_name "Package name to preview"
+            [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+            log "simulate install $PKG_NAME"
+            say "$ICON_EYE  Dry-run — what installing $PKG_NAME would change:"
+            "$MGR" install -s "$PKG_NAME" 2>&1 || err "Could not simulate install"
+            ;;
+        *remove*)
+            ask_name "Package name to preview"
+            [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+            log "simulate remove $PKG_NAME"
+            say "$ICON_EYE  Dry-run — what removing $PKG_NAME would change:"
+            "$MGR" remove -s "$PKG_NAME" 2>&1 || err "Could not simulate remove"
+            ;;
+        *upgrade*)
+            log "simulate upgrade"
+            say "$ICON_EYE  Dry-run — full system upgrade preview:"
+            "$MGR" upgrade -s 2>&1 || err "Could not simulate upgrade"
+            ;;
+    esac
+}
+
+do_stats() {
+    log "package stats"
+    say "$ICON_CHART  Package stats"
+    local count sizes total cache
+    count=$(list_installed_names | awk 'NF' | wc -l)
+    ok "Installed packages: $count"
+    sizes=$(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null)
+    if [ -n "$sizes" ]; then
+        total=$(printf '%s\n' "$sizes" | awk '{s+=$1} END {printf "%.1f MiB", s/1024}')
+        say "Total installed size: $total"
+        say "Largest packages:"
+        printf '%s\n' "$sizes" | sort -rn | head -10 | awk '{printf "  %6.1f MiB  %s\n", $1/1024, $2}'
+    else
+        warn "Size data unavailable — could not read dpkg status."
+    fi
+    cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
+    if [ -n "$cache" ]; then
+        say "Download cache: $cache"
+    else
+        warn "Could not read cache size."
+    fi
+}
+
+do_cache() {
+    local dir="$PREFIX/var/cache/apt/archives" size a
+    size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+    if [ -n "$size" ]; then
+        say "$ICON_CACHE  Download cache: $size"
+    else
+        warn "$ICON_CACHE  Could not read cache size."
+    fi
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_CACHE  Cache manager" "Clean all cached files (apt clean)" "Remove only outdated .deb (autoclean)" "Show cached files" "Back")
+    else
+        printf '1) Clean all cached files (apt clean)\n2) Remove only outdated .deb (autoclean)\n3) Show cached files\n4) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Clean all cached files (apt clean)" ;;
+            2) a="Remove only outdated .deb (autoclean)" ;;
+            3) a="Show cached files" ;;
+            4) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        *"Clean all"*)
+            if confirm "$ICON_CACHE  Delete every cached .deb?"; then
+                log "apt clean"
+                if run_spin "Cleaning cache..." "$MGR" clean; then
+                    ok "Cache cleaned!"
+                else
+                    err "Failed to clean cache."
+                fi
+            fi
+            ;;
+        *"outdated"*)
+            if confirm "$ICON_CACHE  Remove outdated .deb files only?"; then
+                log "apt autoclean"
+                if run_spin "Autocleaning..." apt autoclean; then
+                    ok "Outdated packages cleaned!"
+                else
+                    err "Autoclean failed."
+                fi
+            fi
+            ;;
+        *"Show"*)
+            log "show cache files"
+            if [ -d "$dir" ]; then
+                ls -lh "$dir" 2>/dev/null || ls -l "$dir"
+            else
+                say "No cache directory yet."
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+DEPTREE_VISITED=""
+
+dep_tree() {
+    local pkg="$1" depth="$2" d deps
+    [ "$depth" -gt 4 ] && return
+    case " $DEPTREE_VISITED " in
+        *" $pkg "*) return ;;
+    esac
+    DEPTREE_VISITED="$DEPTREE_VISITED $pkg"
+    deps=$(apt-cache depends "$pkg" 2>/dev/null | grep -E '^  (Depends|PreDepends|Recommends):' | sed 's/.*: //' | cut -d' ' -f1 | grep -v '^<')
+    for d in $deps; do
+        printf '%*s- %s\n' $((depth*2)) "" "$d"
+        dep_tree "$d" $((depth+1))
+    done
+}
+
+do_deptools() {
+    local a block orphans n
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_TREE  Dependency tools" "Dependency tree" "Orphan finder" "Back")
+    else
+        printf '1) Dependency tree\n2) Orphan finder\n3) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Dependency tree" ;;
+            2) a="Orphan finder" ;;
+            3) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        *"tree"*)
+            ask_name "Package name"
+            [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+            log "dependency tree $PKG_NAME"
+            say "$ICON_TREE  Dependency tree of $PKG_NAME:"
+            DEPTREE_VISITED=""
+            printf '%s\n' "$PKG_NAME"
+            dep_tree "$PKG_NAME" 1
+            ;;
+        *"Orphan"*)
+            log "orphan finder"
+            say "$ICON_TREE  Searching for orphaned packages (installed but no longer needed)..."
+            block=$(apt autoremove --simulate -y 2>&1)
+            orphans=$(printf '%s\n' "$block" | awk '
+                /will be REMOVED:/ {on=1; next}
+                on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+                on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+            ')
+            if [ -n "$orphans" ]; then
+                n=$(printf '%s\n' "$orphans" | wc -l)
+                say "Found $n orphaned package(s):"
+                printf '%s\n' "$orphans"
+                if confirm "$ICON_AUTOREMOVE  Autoremove them?"; then
+                    log "autoremove orphans"
+                    if apt autoremove -y >/dev/null 2>&1; then
+                        ok "Orphans removed!"
+                    else
+                        err "Autoremove failed."
+                    fi
+                fi
+            else
+                ok "No orphaned packages found!"
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+do_bulk() {
+    local a names n
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_BULK  Bulk operations" "Install multiple packages" "Remove multiple packages" "Back")
+    else
+        printf '1) Install multiple packages\n2) Remove multiple packages\n3) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Install multiple packages" ;;
+            2) a="Remove multiple packages" ;;
+            3) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Install*)
+            if [ "$GUM" = "1" ]; then
+                names=$(gum input --prompt "➜ " --placeholder "Space-separated package names")
+            else
+                printf 'Packages (space-separated): ' >&2
+                read -r names
+            fi
+            names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
+            [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
+            if confirm "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
+                log "bulk install: $(printf '%s' "$names" | tr '\n' ' ')"
+                say "$ICON_INSTALL Installing $n packages..."
+                printf '%s\n' "$names" | xargs "$MGR" install -y 2>&1 | tail -n 5
+            fi
+            ;;
+        Remove*)
+            if [ "$GUM" = "1" ]; then
+                names=$(gum input --prompt "➜ " --placeholder "Space-separated package names")
+            else
+                printf 'Packages (space-separated): ' >&2
+                read -r names
+            fi
+            names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
+            [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
+            if confirm "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
+                log "bulk remove: $(printf '%s' "$names" | tr '\n' ' ')"
+                say "$ICON_UNINSTALL Removing $n packages..."
+                printf '%s\n' "$names" | xargs "$MGR" remove -y 2>&1 | tail -n 5
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+FAVS_FILE="$HOME/.pkg-manager-favs"
+
+do_favs() {
+    local a name n
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_STAR  Favorites" "Add favorite" "Remove favorite" "Show favorites" "Install all favorites" "Back")
+    else
+        printf '1) Add favorite\n2) Remove favorite\n3) Show favorites\n4) Install all favorites\n5) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Add favorite" ;;
+            2) a="Remove favorite" ;;
+            3) a="Show favorites" ;;
+            4) a="Install all favorites" ;;
+            5) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Add*)
+            ask_name "Package name to favorite"
+            [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+            if [ ! -f "$FAVS_FILE" ]; then
+                printf '%s\n' "$PKG_NAME" > "$FAVS_FILE"
+                log "favorite add $PKG_NAME"
+                ok "$PKG_NAME added to favorites ($FAVS_FILE)"
+                return
+            fi
+            if grep -qx "$PKG_NAME" "$FAVS_FILE"; then
+                warn "$PKG_NAME is already a favorite."
+            else
+                printf '%s\n' "$PKG_NAME" >> "$FAVS_FILE"
+                log "favorite add $PKG_NAME"
+                ok "$PKG_NAME added to favorites"
+            fi
+            ;;
+        Remove*)
+            [ -f "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
+            if [ "$GUM" = "1" ]; then
+                name=$(gum choose --header "$ICON_STAR  Pick favorite to remove" $(cat "$FAVS_FILE"))
+            else
+                printf 'Favorites:\n' >&2
+                nl -w2 -s') ' "$FAVS_FILE" >&2
+                printf 'Pick number (0 = cancel): ' >&2
+                read -r a
+                case "$a" in
+                    [1-9]|[1-9][0-9]) name=$(sed -n "${a}p" "$FAVS_FILE") ;;
+                    *) return ;;
+                esac
+            fi
+            [ -n "$name" ] || return
+            if grep -Fxq "$name" "$FAVS_FILE"; then
+                grep -Fxv "$name" "$FAVS_FILE" > "$FAVS_FILE.tmp" && mv -f "$FAVS_FILE.tmp" "$FAVS_FILE"
+                log "favorite remove $name"
+                ok "$name removed from favorites."
+            fi
+            ;;
+        Show*)
+            if [ ! -s "$FAVS_FILE" ]; then
+                say "No favorites yet — add some first!"
+                return
+            fi
+            n=$(awk 'NF' "$FAVS_FILE" | wc -l)
+            say "$ICON_STAR $n favorite(s):"
+            awk 'NF' "$FAVS_FILE"
+            ;;
+        Install*)
+            [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
+            n=$(awk 'NF' "$FAVS_FILE" | wc -l)
+            if confirm "$ICON_STAR Install all $n favorite(s)?"; then
+                log "favorite install all"
+                say "$ICON_STAR Installing favorites..."
+                if install_from_list "$FAVS_FILE" "Favorites"; then
+                    ok "Favorites installed!"
+                fi
+            fi
+            ;;
+        *) return ;;
+    esac
 }
 
 do_backup() {
@@ -945,7 +1339,7 @@ while true; do
         "$OPTION_SEARCH")     do_search ;;
         "$OPTION_LIST")       do_list ;;
         "$OPTION_REINSTALL")  do_reinstall ;;
-        "$OPTION_UPDATE")     do_update ;;
+        "$OPTION_UPDATE")     do_upgrade_center ;;
         "$OPTION_CLEAN")      do_clean ;;
         "$OPTION_INFO")       do_info ;;
         "$OPTION_AUTOREMOVE") do_autoremove ;;
@@ -965,6 +1359,12 @@ while true; do
         "$OPTION_DOCTOR")     do_doctor ;;
         "$OPTION_SETTINGS")   do_settings ;;
         "$OPTION_HISTORY")    do_history ;;
+        "$OPTION_SIMULATE")   do_simulate ;;
+        "$OPTION_STATS")      do_stats ;;
+        "$OPTION_CACHE")      do_cache ;;
+        "$OPTION_DEPTREE")    do_deptools ;;
+        "$OPTION_BULK")       do_bulk ;;
+        "$OPTION_FAVS")       do_favs ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
         "__INVALID__")        err "Invalid option, try again." ;;
         "")                   break ;;

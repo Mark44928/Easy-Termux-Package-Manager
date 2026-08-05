@@ -13,7 +13,7 @@ FONT_TMP="$HOME/.termux/.font.ttf.tmp"
 
 trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
-echo "==> Easy Termux Package Manager installer"
+echo "==> Easy Termux Package Manager v2.0 installer"
 echo "    Installing globally to: $BIN"
 
 if [ -f "$DIR/manager.sh" ]; then

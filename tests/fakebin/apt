@@ -1,0 +1,165 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake apt
+if [[ "$1" == --* ]]; then
+    extra="$1"
+    shift
+fi
+sub="$1"
+shift
+
+sim=0
+pkgs=()
+for a in "$@"; do
+    case "$a" in
+        -s|--simulate) sim=1 ;;
+        -y|--yes|-f|--reinstall|--fix-broken|--multi) : ;;
+        *) pkgs+=("$a") ;;
+    esac
+done
+
+is_bad() {
+    printf '%s\n' "${pkgs[@]}" | grep -qx invalidpkg
+}
+
+case "$sub" in
+    update)
+        echo "Hit:1 https://packages.termux.org/apt/termux-main stable InRelease"
+        exit 0
+        ;;
+    install)
+        if is_bad; then
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        if [ "$sim" = "1" ]; then
+            echo "Simulated install: ${pkgs[*]}"
+            exit 0
+        fi
+        for p in "${pkgs[@]}"; do
+            echo "Setting up $p (1.0)"
+        done
+        exit 0
+        ;;
+    remove)
+        if is_bad; then
+            echo "E: Package invalidpkg is not installed" >&2
+            exit 100
+        fi
+        if [ "$sim" = "1" ]; then
+            echo "Simulated remove: ${pkgs[*]}"
+            exit 0
+        fi
+        for p in "${pkgs[@]}"; do
+            echo "Removed $p"
+        done
+        exit 0
+        ;;
+    purge)
+        if is_bad; then
+            echo "E: Package invalidpkg is not installed" >&2
+            exit 100
+        fi
+        for p in "${pkgs[@]}"; do
+            echo "Purged $p"
+        done
+        exit 0
+        ;;
+    upgrade)
+        if [ "$sim" = "1" ]; then
+            echo "Simulated upgrade: 0 upgraded, 0 newly installed, 0 to remove"
+            exit 0
+        fi
+        echo "All packages are up to date."
+        exit 0
+        ;;
+    clean)
+        exit 0
+        ;;
+    autoclean)
+        exit 0
+        ;;
+    autoremove)
+        if [ "$sim" = "1" ]; then
+            if [ -n "$FAKE_ORPHANS" ]; then
+                echo "Reading package lists... Done"
+                echo "The following packages will be REMOVED:"
+                echo "  libfoo libbar"
+                echo "0 upgraded, 0 newly installed, 2 to remove and 0 not upgraded."
+                echo "After this operation, 1,024 B disk space will be freed."
+            else
+                echo "Reading package lists... Done"
+                echo "0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded."
+            fi
+            exit 0
+        fi
+        echo "Removed orphans."
+        exit 0
+        ;;
+    search)
+        q="${pkgs[0]}"
+        echo "Sorting... Done"
+        echo "Full Text Search... Done"
+        case "$q" in
+            *python*) echo "python3/stable 3.12 arm64"; echo "  interpreter for Python 3" ;;
+        esac
+        exit 0
+        ;;
+    list)
+        case "$*" in
+            *--installed*)
+                echo "Listing..."
+                echo "python3/stable 3.12 arm64 [installed]"
+                echo "git/stable 2.40.0 arm64 [installed]"
+                exit 0
+                ;;
+            *--upgradable*)
+                echo "Listing..."
+                if [ "$FAKE_UPGRADABLE" != "empty" ]; then
+                    echo "python3/stable 3.12 arm64"
+                fi
+                exit 0
+                ;;
+        esac
+        exit 0
+        ;;
+    show)
+        if [ "${pkgs[0]}" = "invalidpkg" ]; then
+            echo "E: No packages found" >&2
+            exit 100
+        fi
+        echo "Package: ${pkgs[0]}"
+        echo "Version: 3.12"
+        echo "Architecture: arm64"
+        echo "Size: 102400"
+        echo "Installed-Size: 2048"
+        echo "Depends: libc"
+        exit 0
+        ;;
+    depends)
+        if is_bad; then
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        echo "${pkgs[0]}"
+        echo "  Depends: libc"
+        echo "  Depends: python-pip"
+        echo "  Recommends: git"
+        exit 0
+        ;;
+    rdepends)
+        if is_bad; then
+            echo "WARNING: apt does not have a stable CLI interface" >&2
+            echo "E: Unable to locate package invalidpkg" >&2
+            exit 100
+        fi
+        echo "${pkgs[0]}"
+        echo "Reverse Depends:"
+        echo "  python-pip"
+        echo "  git"
+        exit 0
+        ;;
+    *)
+        echo "E: Unknown command apt $sub" >&2
+        exit 1
+        ;;
+esac

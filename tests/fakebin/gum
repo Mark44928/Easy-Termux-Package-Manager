@@ -1,0 +1,77 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake gum — answers GUM_QUEUE, validates flags against helps/
+CMD="$1"
+
+HELP=""
+[ -n "$CMD" ] && HELP="$GUM_HELPS/$CMD"
+LOG="${GUM_CALL_LOG:-/dev/null}"
+VAL="${GUM_VALIDATE_LOG:-/dev/null}"
+
+if [ "$CMD" = "style" ]; then
+    for a in "$@"; do
+        case "$a" in
+            -*) continue ;;
+            probe) echo "probe"; exit 0 ;;
+            *) break ;;
+        esac
+    done
+fi
+
+if [ -n "$CMD" ] && [ -f "$HELP" ]; then
+    for a in "$@"; do
+        case "$a" in
+            --) break ;;
+            -*) grep -Fxq -- "${a%%=*}" "$HELP" 2>/dev/null || echo "UNKNOWN FLAG: ${a%%=*}" >> "$VAL" ;;
+        esac
+    done
+else
+    echo "UNKNOWN CMD: ${CMD:-none} ($*)" >> "$VAL"
+    exit 1
+fi
+
+pop() {
+    local line
+    line=$(head -n1 "$GUM_QUEUE" 2>/dev/null)
+    if [ -n "$line" ]; then
+        tail -n +2 "$GUM_QUEUE" > "$GUM_QUEUE.tmp" && mv -f "$GUM_QUEUE.tmp" "$GUM_QUEUE"
+        printf '%s' "$line" | base64 -d 2>/dev/null
+    fi
+    printf '\n'
+}
+
+echo "$CMD" >> "$LOG"
+case "$CMD" in
+    choose)
+        pop
+        ;;
+    input)
+        pop
+        ;;
+    confirm)
+        ans=$(pop)
+        case "$ans" in
+            y|Y|yes) exit 0 ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    file)
+        pop
+        ;;
+    style)
+        for a in "$@"; do
+            case "$a" in
+                -*) : ;;
+                *) printf '%s\n' "$a" ;;
+            esac
+        done
+        ;;
+    pager)
+        cat
+        ;;
+    spin)
+        while [ "$1" != "--" ] && [ $# -gt 0 ]; do shift; done
+        shift
+        "$@"
+        ;;
+    *) exit 1 ;;
+esac

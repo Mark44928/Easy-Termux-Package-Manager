@@ -1,0 +1,58 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake apt-cache
+sub="$1"
+shift
+pkg="$1"
+
+case "$sub" in
+    show)
+        if [ "$pkg" = "invalidpkg" ]; then
+            echo "E: No packages found" >&2
+            exit 100
+        fi
+        echo "Package: $pkg"
+        echo "Version: 3.12"
+        echo "Size: 102400"
+        echo "Installed-Size: 2048"
+        exit 0
+        ;;
+    depends)
+        case "$pkg" in
+            python3)
+                echo "python3"
+                echo "  Depends: libc"
+                echo "    Depends: termux-exec"
+                echo "  Depends: python-pip"
+                echo "  Recommends: git"
+                ;;
+            libc)
+                echo "libc"
+                echo "  Depends: termux-exec"
+                ;;
+            termux-exec)
+                echo "termux-exec"
+                echo "  Depends: libc"
+                ;;
+            python-pip)
+                echo "python-pip"
+                ;;
+            git)
+                echo "git"
+                ;;
+            *)
+                echo "$pkg"
+                echo "  Depends: none"
+                ;;
+        esac
+        exit 0
+        ;;
+    search)
+        case "$pkg" in
+            *python*) echo "python3 - interpreter for Python 3" ;;
+        esac
+        exit 0
+        ;;
+    *)
+        exit 1
+        ;;
+esac

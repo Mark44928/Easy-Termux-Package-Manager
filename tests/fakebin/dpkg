@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake dpkg
+if [ "$1" = "-L" ]; then
+    if [ "$2" = "invalidpkg" ]; then
+        exit 1
+    fi
+    echo "/."
+    echo "/data/data/com.termux/files/usr/bin/$2"
+    exit 0
+fi
+if [ "$1" = "-S" ]; then
+    case "$2" in
+        *nope*) exit 1 ;;
+    esac
+    echo "python3: $2"
+    exit 0
+fi
+if [ "$1" = "-l" ]; then
+    echo "ii  python3  3.12  arm64  interpreter for Python 3"
+    exit 0
+fi
+exit 1
