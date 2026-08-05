@@ -93,10 +93,10 @@ init_icons() {
         ICON_REINSTALL=$'\uF0AD'; ICON_UPDATE=$'\uEB37'
         ICON_CLEAN=$'\uEDE4';   ICON_INFO=$'\uEA74'
         ICON_AUTOREMOVE=$'\uF1F8'; ICON_DEPENDS=$'\uF0C1'
-        ICON_RDEPENDS=$'\uE725'; ICON_SIZE=$'\uF24E'
+        ICON_RDEPENDS=$'\uF0EC'; ICON_SIZE=$'\uF24E'
         ICON_FILES=$'\uF07B';   ICON_OWNER=$'\uF02B'
         ICON_HOLD=$'\uF08D';    ICON_PURGE=$'\uF1E2'
-        ICON_FIXBROKEN=$'\uED74'; ICON_UPGRADABLE=$'\uF080'
+        ICON_FIXBROKEN=$'\uED74'; ICON_UPGRADABLE=$'\uEBFF'
         ICON_BACKUP=$'\uF0C7';  ICON_RESTORE=$'\uF2EA'
         ICON_EXPORT=$'\uF0EE';  ICON_IMPORT=$'\uF0ED'
         ICON_DOCTOR=$'\uF0F1';  ICON_SETTINGS=$'\uF013'
@@ -104,11 +104,11 @@ init_icons() {
         ICON_THEME=$'\uEFCC';   ICON_SLIDERS=$'\uF1DE'
         ICON_SHIELD=$'\uEB53';  ICON_MEMO=$'\uED7B'
         ICON_FOLDER=$'\uF07C';  ICON_WAND=$'\uEBCF'
-        ICON_WAVE=$'\uF259';    ICON_UP=$'\uF062'
+        ICON_WAVE=$'\U000F1821'; ICON_UP=$'\uF062'
         ICON_BACK=$'\uF060';    ICON_PAINT=$'\uF1FC'
         ICON_EYE=$'\uF06E';     ICON_CHART=$'\uF201'
-        ICON_CACHE=$'\uF1C0';   ICON_TREE=$'\uF0E8'
-        ICON_BULK=$'\uF0B2';    ICON_STAR=$'\uF005'
+        ICON_CACHE=$'\uF1C0';   ICON_TREE=$'\uF1BB'
+        ICON_BULK=$'\uF0AE';    ICON_STAR=$'\uF005'
         ICON_INSPECT=$'\uF1E5'; ICON_MAINT=$'\uF0FA'
         ICON_GROUPS=$'\uF1B3';  ICON_PIN=$'\uF276'
         ICON_DISK=$'\uF0A0';    ICON_MOON=$'\uF186'
@@ -162,7 +162,7 @@ ok()   { if [ "$GUM" = "1" ]; then gum style --foreground "$GREEN" "✓ $1"; els
 err()  { if [ "$GUM" = "1" ]; then gum style --foreground "$RED"   "✗ $1"; else printf '✗ %s\n' "$1"; fi; }
 warn() { if [ "$GUM" = "1" ]; then gum style --foreground "$YELLOW" "⚠ $1"; else printf '⚠ %s\n' "$1"; fi; }
 
-BANNER_B64="H4sICETdcmoAA2FydF92MjAudHh0AG1POwoCQQzt5xSvtdmItWxnuWBlFRgGkS0ECxcWFlJ4CO9i71E8yeYziitOMnnhvTchgxwH3wDUq9Uwe01SG3EuAKzABIiGJmsQKOHD+CuHlesqvxXGYWH12QZqMtlKtaLFdjk0vGwLVIs4RWjAbrUNJf7lPWcOStg4okzGqfd1v/0kdmWYsC/Hc+lP6MpF4YrnA+OmWf/xpxn5svtlSQEAAA=="
+BANNER_B64="H4sIAAAAAAAC/21PMQoCMRDs84ppbW7FWq6zFKysFkIQuUKwUBCELXyEf7H3Kb7kZjdRTjG72dnMTMIGuS5MAWib1TFHTdYaC64ClKACGIOpDIEkfJi4FTALnfJbUWx5mnjjcQe6XPfSvOixBL7frW71GZrJghJ0ZMPrU1r9W/SatVKmzolkcS7hdb/9JFblfMWm7A5l2GNdjoQTng9cFt38nz+NtVcYPE0BAAA="
 
 banner() {
     local art
@@ -240,7 +240,7 @@ main_menu() {
     local opts=( "${MENU_ITEMS[@]}" )
     local p i
     for p in "${FAVPIN[@]}"; do
-        opts+=( "$ICON_STAR Pinned: $p" )
+        opts+=( "$ICON_PIN Pinned: $p" )
     done
     if [ "$GUM" = "1" ]; then
         opts+=( "$OPTION_EXIT" )

@@ -1,7 +1,12 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Termux%20Pkg%20Manager-v2.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v2.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
+  <img src="https://img.shields.io/badge/tests-90%20passing-brightgreen" alt="Tests">
+</p>
+<p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
+  <img src="https://img.shields.io/badge/single%20file-%7E1.9k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -19,15 +24,28 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v2.0 ──────
+ ────── Easy Package Manager · v2.0 ────── 
 ```
 
 > With `gum` installed, the banner renders inside a double-border box in your chosen theme colors. The art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
+
+## ⚡ Quick start
+
+> Up and running in **three commands**:
+
+```bash
+pkg install curl -y
+curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/install.sh | bash
+pkg-manager
+```
+
+The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install a **Nerd Font** so the menu glyphs render perfectly. That's it — no dependencies, no config, no fuss.
 
 ---
 
 ## 📑 Table of Contents
 
+- [Quick start](#-quick-start)
 - [Highlights](#-highlights)
 - [Features](#-features)
 - [Requirements](#-requirements)
@@ -44,42 +62,33 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
 
 ## ✨ Highlights
 
-- 🎛️ **37 menu entries** (36 package actions + exit, plus dynamically pinned favorites)
-- 🔄 **Upgrade center** — one flow: refresh → pick what to upgrade → autoremove → clean cache
-- 👁️ **Simulate before changing** — dry-run previews of install/remove/upgrade (`apt -s`)
-- 📊 **Package stats & disk** — installed count, total size, biggest packages, per-directory disk usage, largest files, cache breakdown
-- 🗃️ **Cache manager** — clean all or just outdated `.deb` files, browse the cache
-- 🌳 **Dependency tools** — recursive dependency tree + orphan (unused package) finder
-- 🔍 **Package inspector** — one-screen drill-down: info, dependencies, reverse deps, installed files, hold status
-- 🩺 **Maintenance wizard** — on-demand (or on-launch) health pass: upgradable, orphans, broken packages, cache, held
-- 📚 **Bulk operations** — install or remove many packages, or multi-select from the live installed/upgradable lists
-- ⭐ **Favorites** — bookmark packages, pin them to the main menu, reinstall them all with one tap
-- 🗂️ **Package groups** — curated bundles (web dev, python dev, media…) plus your own saved groups
-- 📋 **History & log viewer** — filter the log, view errors, **undo** your last removal, re-run past actions
-- 🔒 **Quiet mode + safety lock** — skip all confirms, or force confirmations on destructive ops
-- 💾 **Backup & restore** your exact package set (perfect for device swaps)
-- 📤 **Export/import** your package list as plain text or JSON
-- 🔗 **Deep-dive tools** — dependencies, reverse deps, sizes, file lists
-- 📌 **Pin/hold packages** so upgrades never break them
-- 🩹 **Self-healing** — fix broken dependencies with one tap
-- ⚙️ **Persistent settings** — backend, theme, quiet/lock, and safety toggles stored in `~/.pkg-manager.conf`
-- 🎨 **4 color themes**, **Nerd Font or emoji icons**, ASCII banner, spinner, confirm dialogs, status banners
-- 🛟 **Plain-text fallback** — works even before `gum` is installed (and auto-installs it for you)
-- 📋 **Timestamped history** of every action you run
+| | |
+|--|--|
+| 🎛️ **35 menu entries** (34 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
+| 👁️ **Simulate before changing** — dry-run previews (`apt -s`) | 📊 **Package stats & disk** — sizes, per-dir usage, biggest files, cache breakdown |
+| 🗃️ **Cache manager** — clean all or outdated `.deb`s, browse | 🌳 **Dependency tools** — recursive tree + orphan finder |
+| 🔍 **Package inspector** — info, deps, reverse deps, files, hold | 🩺 **Maintenance wizard** — on-demand or on-launch health pass |
+| 📚 **Bulk operations** — many at once, or multi-select lists | ⭐ **Favorites** — bookmark, pin to menu, reinstall all in one tap |
+| 🗂️ **Package groups** — curated bundles + your own saved ones | 📋 **History & log viewer** — filter, errors, **undo** last removal |
+| 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
+| 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
+| 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **4 themes** + Nerd Font or emoji icons |
+| 🛟 **Plain-text fallback** — works even before `gum` | 📋 **Timestamped history** of every action |
 
 ## 🚀 Features
 
-| Category | What you get |
-|----------|--------------|
-| 📦 **Basic** | Install, uninstall, reinstall/repair, upgrade center, clean cache, autoremove |
-| 🔎 **Search** | Smart search (installed markers + install-from-results), upgradable list |
-| 👁️ **Preview** | Simulate install / remove / upgrade before doing anything |
-| 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner |
-| 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder |
-| 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) |
-| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups |
-| 💾 **Data** | Backup, restore, export (txt/JSON), import |
-| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/undo/clear), settings |
+| Category | What you get | Menu |
+|----------|--------------|:----:|
+| 📦 **Basic** | Install, uninstall, reinstall/repair, upgrade center, clean cache, autoremove | 1–9 |
+| 🔎 **Search** | Smart search (installed markers + install-from-results), upgradable list | 3, 18 |
+| 👁️ **Preview** | Simulate install / remove / upgrade before doing anything | 26 |
+| 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner | 12–14, 27, 32 |
+| 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder | 10, 11, 29 |
+| 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) | 15–17, 33 |
+| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 30, 31, 34 |
+| 💾 **Data** | Backup, restore, export (txt/JSON), import | 19–22 |
+| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/undo/clear), settings | 23–25, 28 |
 
 ## 📋 Requirements
 
@@ -130,6 +139,26 @@ pkg-manager      # installed via install.sh / manual method
 ./manager.sh     # or run straight from the cloned repo
 ```
 
+### 📟 The menu at a glance
+
+> With **gum** installed you arrow-key through the menu; without it, just type a number and press Enter.
+
+```text
+ ✨ Easy Termux Package Manager · v2.0
+
+ [1]  📦 Install a package
+ [2]  🗑️ Uninstall a package
+ [3]  🔎 Search packages
+  ⋮
+ [34] 🗂️ Package groups
+ [0]  🚪 Exit
+ Choose an option:
+```
+
+### 🧭 Menu map
+
+#### 📦 Core — everyday package actions (1–9)
+
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 1 | 📦 Install a package | `apt install -y <name>` |
@@ -141,35 +170,70 @@ pkg-manager      # installed via install.sh / manual method
 | 7 | 🧹 Clean download cache | `apt clean` |
 | 8 | ℹ️  Show package info | `apt show <name>` |
 | 9 | 🧽 Autoremove cleanup | `apt autoremove -y` |
+
+#### 🔗 Relationships & files (10–14)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
 | 10 | 🔗 Dependencies | `apt depends <name>` |
 | 11 | 🔃 Reverse deps | `apt rdepends <name>` |
 | 12 | ⚖️  Package size | `apt-cache show <name>` |
 | 13 | 📁 Installed files | `dpkg -L <name>` |
 | 14 | 🏷️  File owner | `dpkg -S <path>` |
+
+#### 📌 Maintenance & safety (15–17, 33)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
 | 15 | 📌 Pin / hold packages | `apt-mark hold/unhold` |
 | 16 | 🧨 Purge a package | `apt purge -y <name>` |
 | 17 | 🩹 Fix broken packages | `apt --fix-broken install -y` |
-| 18 | 📈 Upgradable list | `apt list --upgradable` |
+| 33 | 🩺 Maintenance wizard | health pass: upgradable, orphans, broken packages, cache, held |
+
+#### 💾 Data & backup (19–22)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
 | 19 | 💾 Backup installed packages | dump names to `~/pkg-backup-*.txt` |
 | 20 | ♻️  Restore from backup | `xargs apt install -y` |
 | 21 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
 | 22 | 📥 Import package list | install from any list file |
+
+#### 🛠️ Tooling (23–26)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
 | 23 | 🔧 Dependency doctor | check/install `gum`, `git`, `curl`, `figlet` |
 | 24 | ⚙️  Settings | backend, theme, toggles, quiet mode, safety lock |
 | 25 | 📋 History & log viewer | view/filter the log, show errors, undo last removal, clear |
 | 26 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
+
+#### 📊 Insight & upgrades (18, 27–29, 32)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 18 | 📈 Upgradable list | `apt list --upgradable` |
 | 27 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
 | 28 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
 | 29 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
+| 32 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
+
+#### 📚 Bulk, favorites & groups (30–31, 34)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
 | 30 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
 | 31 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
-| 32 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
-| 33 | 🩺 Maintenance wizard | health pass: upgradable, orphans, broken packages, cache, held |
 | 34 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
-| 35+ | ⭐ Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
+
+#### 🚪 Exit & pinned favorites
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 35+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
-> Labels below use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update this table too.
+> Labels above use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update these tables too.
 >
 > Commands assume the default `apt` backend; switch to Termux's `pkg` wrapper anytime from **Settings → Package manager**. Note: the deep-dive & maintenance tools (dependencies, sizes, files, owner, hold, purge, fix-broken, doctor, stats, cache, dependency tree, orphan finder) always call `apt`/`dpkg` directly, even after switching to `pkg`.
 
@@ -219,7 +283,7 @@ Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~1900 lines, single file)
-├── tests/          # automated harness (fakebin stubs + 85 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 90 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -244,11 +308,11 @@ Found a bug? Have an idea for another option? Open an [issue](https://github.com
 
 A few ground rules to keep the docs in sync:
 
-- **Menu labels** in the README table must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
-- **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font, and add it to both branches of `init_icons()` in `manager.sh`.
+- **Menu labels** in the README menu-map tables must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
+- **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
 - **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v2.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 85 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 90 scenario tests).
 
 ## 📜 License
 
@@ -256,6 +320,22 @@ Distributed under the [MIT License](LICENSE).
 
 ---
 
-<p align="center">
-  Made with ❤️ for the Termux community
-</p>
+<div align="center">
+
+```
+   |  __  __ _    ___   __
+   |  | \ \ / /
+   |  | |\ V /
+   |  | | > <
+   |  | |/ . \
+   |  |_ /_/ \_\
+```
+
+**Easy Termux Package Manager** · v2.0 · MIT
+
+Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/Mark44928/Easy-Termux-Package-Manager/pulls)
+
+</div>
