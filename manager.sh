@@ -434,14 +434,45 @@ apt_hint() {
         *"has no installation candidate"*)      echo "Package not found in the repositories." ;;
         *"is already the newest version"*)      echo "Package is already installed and up to date." ;;
         *"already installed"*)                  echo "Package is already installed." ;;
+        *"is held back"*)                       echo "Package is held back and won't be upgraded." ;;
         *"not installed, so not removed"*)      echo "Package is not installed — nothing to remove or purge." ;;
         *"is not installed"*)                   echo "Package is not installed." ;;
-        *"Could not get lock"*|*"dpkg is locked"*) echo "Another package operation is running — wait a moment and retry." ;;
-        *"Failed to fetch"*)                   echo "Network or repository error while downloading." ;;
+        *"is not going to be installed"*)       echo "Cannot install — broken or conflicting dependencies." ;;
+        *"trying to overwrite"*)                echo "File conflict between packages." ;;
+        *"No space left"*|*"no space left"*)   echo "Not enough disk space to complete the operation." ;;
+        *"Permission denied"*)                  echo "Permission denied." ;;
+        *"Could not get lock"*|*"dpkg was locked"*|*"dpkg is locked"*) echo "Another package operation is running — wait a moment and retry." ;;
+        *"Failed to fetch"*)                    echo "Network or repository error while downloading." ;;
         *"held broken packages"*)               echo "Held or broken packages blocked the fix — try Pin/hold or fix manually." ;;
+        *"Unable to correct problems"*)         echo "Dependency problems prevent this action." ;;
         *"depends on"*|*"has unmet dependencies"*) echo "Unmet dependencies — run Fix broken packages." ;;
         *)                                      echo "" ;;
     esac
+}
+
+# run_multi_op — install/remove packages one at a time and report per-package
+# results with a clear summary. Returns 0 if all succeeded, 1 otherwise.
+# Usage: run_multi_op <install|remove> <pkg1> [pkg2...]
+run_multi_op() {
+    local op="$1" pkg out hint
+    shift
+    local total=$# ok=0 fail=0
+    local -a failed=()
+    for pkg in "$@"; do
+        if out=$("$MGR" "$op" -y "$pkg" 2>&1); then
+            ok=$((ok+1))
+            ok "$pkg"
+        else
+            fail=$((fail+1)); failed+=("$pkg")
+            hint=$(apt_hint "$out")
+            err "$pkg — ${hint:-$op failed}"
+        fi
+    done
+    if [ "$fail" -eq 0 ]; then
+        return 0
+    fi
+    warn "$ok of $total succeeded, $fail failed (${failed[*]})"
+    return 1
 }
 
 do_install() {
@@ -539,7 +570,9 @@ do_search() {
     [ -n "$sel" ] || { warn "No valid package names."; return; }
     if confirm_danger "$ICON_INSTALL Install $(printf '%s\n' "$sel" | awk 'NF' | wc -l) package(s) from the results?"; then
         log "search install: $(printf '%s' "$sel" | tr '\n' ' ')"
-        printf '%s\n' "$sel" | xargs "$MGR" install -y 2>&1 | tail -n 5
+        local -a _pkgs=()
+        mapfile -t _pkgs <<< "$sel"
+        run_multi_op install "${_pkgs[@]}"
     fi
 }
 
@@ -633,7 +666,9 @@ do_upgrade_center() {
         [ -n "$sel" ] || { say "Nothing selected."; return; }
         log "upgrade: $(printf '%s' "$sel" | tr '\n' ' ')"
         say "$ICON_UP  Upgrading selected packages..."
-        printf '%s\n' "$sel" | xargs "$MGR" install -y 2>&1 | tail -n 5
+        local -a _pkgs=()
+        mapfile -t _pkgs <<< "$sel"
+        run_multi_op install "${_pkgs[@]}"
     fi
     if confirm_danger "$ICON_AUTOREMOVE Remove now-unused dependencies?"; then
         if apt autoremove -y >/dev/null 2>&1; then
@@ -1139,7 +1174,9 @@ do_bulk() {
             if confirm_danger "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
                 log "bulk install: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_INSTALL Installing $n packages..."
-                printf '%s\n' "$names" | xargs "$MGR" install -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                mapfile -t _pkgs <<< "$names"
+                run_multi_op install "${_pkgs[@]}"
             fi
             ;;
         Remove*multiple*)
@@ -1155,7 +1192,9 @@ do_bulk() {
             if confirm_danger "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
                 log "bulk remove: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_UNINSTALL Removing $n packages..."
-                printf '%s\n' "$names" | xargs "$MGR" remove -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                mapfile -t _pkgs <<< "$names"
+                run_multi_op remove "${_pkgs[@]}"
             fi
             ;;
         *"installed list"*)
@@ -1164,7 +1203,9 @@ do_bulk() {
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             if confirm_danger "$ICON_UNINSTALL Remove $n package(s) from the installed list?"; then
                 log "bulk remove picked: $(printf '%s' "$names" | tr '\n' ' ')"
-                printf '%s\n' "$names" | xargs "$MGR" remove -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                mapfile -t _pkgs <<< "$names"
+                run_multi_op remove "${_pkgs[@]}"
             fi
             ;;
         *"upgradable list"*)
@@ -1173,7 +1214,9 @@ do_bulk() {
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             if confirm_danger "$ICON_UP  Upgrade $n package(s)?"; then
                 log "bulk upgrade picked: $(printf '%s' "$names" | tr '\n' ' ')"
-                printf '%s\n' "$names" | xargs "$MGR" install -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                mapfile -t _pkgs <<< "$names"
+                run_multi_op install "${_pkgs[@]}"
             fi
             ;;
         *) return ;;
@@ -1342,7 +1385,14 @@ do_favs() {
             [ -n "$name" ] || return
             if confirm_danger "$ICON_STAR Install favorite $name?"; then
                 log "favorite install $name"
-                "$MGR" install -y "$name" 2>&1 | tail -n 5
+                local out hint
+                if out=$("$MGR" install -y "$name" 2>&1); then
+                    hint=$(apt_hint "$out")
+                    [ -n "$hint" ] && ok "$hint" || ok "$name installed!"
+                else
+                    hint=$(apt_hint "$out")
+                    err "${hint:-"Failed to install $name."}"
+                fi
             fi
             ;;
         *) return ;;
@@ -1363,15 +1413,13 @@ do_backup() {
 }
 
 install_from_list() {
-    local file="$1" action="$2" list fail lines
+    local file="$1" action="$2" list
     list=$(awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/ {print}' "$file")
     [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
-    if ! fail=$(printf '%s\n' "$list" | xargs "$MGR" install -y 2>&1); then
-        lines=$(printf '%s\n' "$fail" | tail -n 5)
-        err "$action failed — see output below."
-        [ -n "$lines" ] && printf '%s\n' "$lines"
-        return 1
-    fi
+    local -a _pkgs=()
+    mapfile -t _pkgs <<< "$list"
+    say "$action — installing ${#_pkgs[@]} package(s)..."
+    run_multi_op install "${_pkgs[@]}"
 }
 
 do_restore() {
@@ -1534,7 +1582,9 @@ undo_last_remove() {
     if confirm_danger "$ICON_UNDO Reinstall these packages to undo?"; then
         log "undo reinstall: $(printf '%s' "$rest" | tr '\n' ' ')"
         say "$ICON_UNDO Reinstalling..."
-        if printf '%s\n' "$rest" | xargs "$MGR" install -y 2>&1 | tail -n 5; then
+        local -a _pkgs=()
+        mapfile -t _pkgs <<< "$rest"
+        if run_multi_op install "${_pkgs[@]}"; then
             ok "Undo complete!"
         fi
     fi
@@ -1757,7 +1807,9 @@ do_groups() {
             if confirm_danger "$ICON_INSTALL Install group \"$gname\" ($n packages)?"; then
                 log "group install $gname: $gpkgs"
                 say "$ICON_INSTALL Installing group \"$gname\"..."
-                printf '%s\n' $gpkgs | xargs "$MGR" install -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                read -ra _pkgs <<< "$gpkgs"
+                run_multi_op install "${_pkgs[@]}"
             fi
             ;;
         Remove*)
@@ -1768,7 +1820,9 @@ do_groups() {
             if confirm_danger "$ICON_UNINSTALL Remove group \"$gname\" ($n packages)?"; then
                 log "group remove $gname: $gpkgs"
                 say "$ICON_UNINSTALL Removing group \"$gname\"..."
-                printf '%s\n' $gpkgs | xargs "$MGR" remove -y 2>&1 | tail -n 5
+                local -a _pkgs=()
+                read -ra _pkgs <<< "$gpkgs"
+                run_multi_op remove "${_pkgs[@]}"
             fi
             ;;
         Create*)

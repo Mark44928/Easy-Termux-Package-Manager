@@ -21,6 +21,15 @@ is_bad() {
     printf '%s\n' "${pkgs[@]}" | grep -qx invalidpkg
 }
 
+# per_pkg_fail — echo error + exit 100 if "$1" is a simulated failure package
+per_pkg_fail() {
+    case "$1" in
+        nospace) echo "E: You don't have enough space" >&2; echo "No space left on device" >&2; exit 100 ;;
+        heldpkg) echo "E: heldpkg is held back and is not going to be installed" >&2; exit 100 ;;
+        confpkg) echo "E: confpkg trying to overwrite /usr/bin/x, which is also in other" >&2; exit 100 ;;
+    esac
+}
+
 case "$sub" in
     update)
         echo "Hit:1 https://packages.termux.org/apt/termux-main stable InRelease"
@@ -36,6 +45,7 @@ case "$sub" in
             exit 0
         fi
         for p in "${pkgs[@]}"; do
+            per_pkg_fail "$p"
             echo "Setting up $p (1.0)"
         done
         exit 0
@@ -50,6 +60,7 @@ case "$sub" in
             exit 0
         fi
         for p in "${pkgs[@]}"; do
+            per_pkg_fail "$p"
             echo "Removed $p"
         done
         exit 0
