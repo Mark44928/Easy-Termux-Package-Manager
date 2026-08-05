@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake dpkg-query
+case "$*" in
+    *"-W"*)
+        printf '1024\tpython3\n2048\tgit\n'
+        exit 0
+        ;;
+esac
+exit 1

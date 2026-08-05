@@ -1,0 +1,10 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake apt-mark
+sub="$1"
+shift
+case "$sub" in
+    hold)   echo "$1 set to hold."; exit 0 ;;
+    unhold) echo "$1 set to unhold."; exit 0 ;;
+    showhold) echo "python3"; exit 0 ;;
+esac
+exit 1
