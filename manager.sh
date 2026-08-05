@@ -14,6 +14,10 @@ CONFIRM=1
 LOG_ENABLED=1
 GUM_ENABLED=1
 ICONS="nerd"
+QUIET=0
+LOCK=0
+STARTUP_CHECK=0
+FAVS_PINNED=0
 
 [ -f "$HOME/.pkg-manager.conf" ] && source "$HOME/.pkg-manager.conf"
 
@@ -23,6 +27,10 @@ case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
 case "$GUM_ENABLED" in 0|1) ;; *) GUM_ENABLED=1 ;; esac
 case "$ICONS" in nerd|emoji) ;; *) ICONS="nerd" ;; esac
+case "$QUIET" in 0|1) ;; *) QUIET=0 ;; esac
+case "$LOCK" in 0|1) ;; *) LOCK=0 ;; esac
+case "$STARTUP_CHECK" in 0|1) ;; *) STARTUP_CHECK=0 ;; esac
+case "$FAVS_PINNED" in 0|1) ;; *) FAVS_PINNED=0 ;; esac
 
 [ -n "$MGR_ENV" ] && MGR=$MGR_ENV
 [ -n "$THEME_ENV" ] && THEME=$THEME_ENV
@@ -71,6 +79,12 @@ init_icons() {
         ICON_EYE="👁️";          ICON_CHART="📊"
         ICON_CACHE="🗃️";         ICON_TREE="🌳"
         ICON_BULK="📚";         ICON_STAR="⭐"
+        ICON_INSPECT="🔍";      ICON_MAINT="🩺"
+        ICON_GROUPS="🗂️";       ICON_PIN="📍"
+        ICON_DISK="💽";         ICON_MOON="🌙"
+        ICON_LOCK="🔒";         ICON_ERROR="🚫"
+        ICON_UNDO="↩️";          ICON_PLAY="▶️"
+        ICON_FILTER="🧲";       ICON_CHECKBOX="☑️"
     else
         ICON_INSTALL=$'\uEB29'; ICON_UNINSTALL=$'\uEA81'
         ICON_SEARCH=$'\uEA6D';  ICON_LIST=$'\uEB84'
@@ -93,11 +107,19 @@ init_icons() {
         ICON_EYE=$'\uF06E';     ICON_CHART=$'\uF201'
         ICON_CACHE=$'\uF1C0';   ICON_TREE=$'\uF0E8'
         ICON_BULK=$'\uF0B2';    ICON_STAR=$'\uF005'
+        ICON_INSPECT=$'\uF1E5'; ICON_MAINT=$'\uF0FA'
+        ICON_GROUPS=$'\uF1B3';  ICON_PIN=$'\uF276'
+        ICON_DISK=$'\uF0A0';    ICON_MOON=$'\uF186'
+        ICON_LOCK=$'\uF023';    ICON_ERROR=$'\uF071'
+        ICON_UNDO=$'\uF0E2';    ICON_PLAY=$'\uF04B'
+        ICON_FILTER=$'\uF0B0';  ICON_CHECKBOX=$'\uF046'
     fi
 }
 init_icons
 
 LOG_FILE="$HOME/.pkg-manager.log"
+FAVS_FILE="$HOME/.pkg-manager-favs"
+GROUPS_FILE="$HOME/.pkg-manager-groups"
 
 refresh_gum() {
     if [ "$GUM_ENABLED" = "1" ] && command -v gum >/dev/null 2>&1 \
@@ -176,102 +198,72 @@ build_menu() {
     OPTION_IMPORT="$ICON_IMPORT Import package list"
     OPTION_DOCTOR="$ICON_DOCTOR Dependency doctor"
     OPTION_SETTINGS="$ICON_SETTINGS Settings"
-    OPTION_HISTORY="$ICON_HISTORY View history log"
+    OPTION_HISTORY="$ICON_HISTORY History & log viewer"
     OPTION_SIMULATE="$ICON_EYE Simulate a change"
-    OPTION_STATS="$ICON_CHART Package stats"
+    OPTION_STATS="$ICON_CHART Package stats & disk"
     OPTION_CACHE="$ICON_CACHE Cache manager"
     OPTION_DEPTREE="$ICON_TREE Dependency tools"
     OPTION_BULK="$ICON_BULK Bulk operations"
     OPTION_FAVS="$ICON_STAR Favorites"
+    OPTION_INSPECT="$ICON_INSPECT Package inspector"
+    OPTION_MAINT="$ICON_MAINT Maintenance wizard"
+    OPTION_GROUPS="$ICON_GROUPS Package groups"
     OPTION_EXIT="$ICON_EXIT Exit"
+
+    MENU_ITEMS=(
+        "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL"
+        "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE"
+        "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER"
+        "$OPTION_HOLD" "$OPTION_PURGE" "$OPTION_FIXBROKEN" "$OPTION_UPGRADABLE"
+        "$OPTION_BACKUP" "$OPTION_RESTORE" "$OPTION_EXPORT" "$OPTION_IMPORT"
+        "$OPTION_DOCTOR" "$OPTION_SETTINGS" "$OPTION_HISTORY"
+        "$OPTION_SIMULATE" "$OPTION_STATS" "$OPTION_CACHE"
+        "$OPTION_DEPTREE" "$OPTION_BULK" "$OPTION_FAVS"
+        "$OPTION_INSPECT" "$OPTION_MAINT" "$OPTION_GROUPS"
+    )
+
+    FAVPIN=()
+    if [ "$FAVS_PINNED" = "1" ] && [ -s "$FAVS_FILE" ]; then
+        while IFS= read -r p; do
+            [ -n "$p" ] && FAVPIN+=("$p")
+        done < "$FAVS_FILE"
+    fi
 }
 build_menu
 
 main_menu() {
+    local opts=( "${MENU_ITEMS[@]}" )
+    local p i
+    for p in "${FAVPIN[@]}"; do
+        opts+=( "$ICON_STAR Pinned: $p" )
+    done
     if [ "$GUM" = "1" ]; then
         gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" \
-            "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL" \
-            "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE" \
-            "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER" \
-            "$OPTION_HOLD" "$OPTION_PURGE" "$OPTION_FIXBROKEN" "$OPTION_UPGRADABLE" \
-            "$OPTION_BACKUP" "$OPTION_RESTORE" "$OPTION_EXPORT" "$OPTION_IMPORT" \
-            "$OPTION_DOCTOR" "$OPTION_SETTINGS" "$OPTION_HISTORY" \
-            "$OPTION_SIMULATE" "$OPTION_STATS" "$OPTION_CACHE" \
-            "$OPTION_DEPTREE" "$OPTION_BULK" "$OPTION_FAVS" "$OPTION_EXIT"
+            "${opts[@]}"
     else
         printf '\n' >&2
-        printf '[1]  %s\n' "$OPTION_INSTALL" >&2
-        printf '[2]  %s\n' "$OPTION_UNINSTALL" >&2
-        printf '[3]  %s\n' "$OPTION_SEARCH" >&2
-        printf '[4]  %s\n' "$OPTION_LIST" >&2
-        printf '[5]  %s\n' "$OPTION_REINSTALL" >&2
-        printf '[6]  %s\n' "$OPTION_UPDATE" >&2
-        printf '[7]  %s\n' "$OPTION_CLEAN" >&2
-        printf '[8]  %s\n' "$OPTION_INFO" >&2
-        printf '[9]  %s\n' "$OPTION_AUTOREMOVE" >&2
-        printf '[10] %s\n' "$OPTION_DEPENDS" >&2
-        printf '[11] %s\n' "$OPTION_RDEPENDS" >&2
-        printf '[12] %s\n' "$OPTION_SIZE" >&2
-        printf '[13] %s\n' "$OPTION_FILES" >&2
-        printf '[14] %s\n' "$OPTION_OWNER" >&2
-        printf '[15] %s\n' "$OPTION_HOLD" >&2
-        printf '[16] %s\n' "$OPTION_PURGE" >&2
-        printf '[17] %s\n' "$OPTION_FIXBROKEN" >&2
-        printf '[18] %s\n' "$OPTION_UPGRADABLE" >&2
-        printf '[19] %s\n' "$OPTION_BACKUP" >&2
-        printf '[20] %s\n' "$OPTION_RESTORE" >&2
-        printf '[21] %s\n' "$OPTION_EXPORT" >&2
-        printf '[22] %s\n' "$OPTION_IMPORT" >&2
-        printf '[23] %s\n' "$OPTION_DOCTOR" >&2
-        printf '[24] %s\n' "$OPTION_SETTINGS" >&2
-        printf '[25] %s\n' "$OPTION_HISTORY" >&2
-        printf '[26] %s\n' "$OPTION_SIMULATE" >&2
-        printf '[27] %s\n' "$OPTION_STATS" >&2
-        printf '[28] %s\n' "$OPTION_CACHE" >&2
-        printf '[29] %s\n' "$OPTION_DEPTREE" >&2
-        printf '[30] %s\n' "$OPTION_BULK" >&2
-        printf '[31] %s\n' "$OPTION_FAVS" >&2
+        i=1
+        for o in "${opts[@]}"; do
+            printf '[%d]  %s\n' "$i" "$o" >&2
+            i=$((i+1))
+        done
         printf '[0]  %s\n' "$OPTION_EXIT" >&2
         printf 'Choose an option: ' >&2
         if ! read -r n; then
             echo "$OPTION_EXIT"
             return
         fi
-        case "$n" in
-            1)  echo "$OPTION_INSTALL" ;;
-            2)  echo "$OPTION_UNINSTALL" ;;
-            3)  echo "$OPTION_SEARCH" ;;
-            4)  echo "$OPTION_LIST" ;;
-            5)  echo "$OPTION_REINSTALL" ;;
-            6)  echo "$OPTION_UPDATE" ;;
-            7)  echo "$OPTION_CLEAN" ;;
-            8)  echo "$OPTION_INFO" ;;
-            9)  echo "$OPTION_AUTOREMOVE" ;;
-            10) echo "$OPTION_DEPENDS" ;;
-            11) echo "$OPTION_RDEPENDS" ;;
-            12) echo "$OPTION_SIZE" ;;
-            13) echo "$OPTION_FILES" ;;
-            14) echo "$OPTION_OWNER" ;;
-            15) echo "$OPTION_HOLD" ;;
-            16) echo "$OPTION_PURGE" ;;
-            17) echo "$OPTION_FIXBROKEN" ;;
-            18) echo "$OPTION_UPGRADABLE" ;;
-            19) echo "$OPTION_BACKUP" ;;
-            20) echo "$OPTION_RESTORE" ;;
-            21) echo "$OPTION_EXPORT" ;;
-            22) echo "$OPTION_IMPORT" ;;
-            23) echo "$OPTION_DOCTOR" ;;
-            24) echo "$OPTION_SETTINGS" ;;
-            25) echo "$OPTION_HISTORY" ;;
-            26) echo "$OPTION_SIMULATE" ;;
-            27) echo "$OPTION_STATS" ;;
-            28) echo "$OPTION_CACHE" ;;
-            29) echo "$OPTION_DEPTREE" ;;
-            30) echo "$OPTION_BULK" ;;
-            31) echo "$OPTION_FAVS" ;;
-            0)  echo "$OPTION_EXIT" ;;
-            *)  echo "__INVALID__" ;;
-        esac
+        if [[ "$n" =~ ^[0-9]+$ ]]; then
+            if [ "$n" -eq 0 ]; then
+                echo "$OPTION_EXIT"
+                return
+            fi
+            if [ "$n" -ge 1 ] && [ "$n" -le "${#opts[@]}" ]; then
+                echo "${opts[$((n-1))]}"
+                return
+            fi
+        fi
+        echo "__INVALID__"
     fi
 }
 
@@ -306,13 +298,30 @@ log() {
 onoff() { [ "$1" = "1" ] && printf 'on' || printf 'off'; }
 
 confirm() {
-    [ "$CONFIRM" = "1" ] || return 0
-    if [ "$GUM" = "1" ]; then
-        gum confirm "$1" && return 0 || return 1
+    if [ "$CONFIRM" = "1" ] && [ "$QUIET" != "1" ]; then
+        if [ "$GUM" = "1" ]; then
+            gum confirm "$1" && return 0 || return 1
+        else
+            printf '%s [y/N]: ' "$1"
+            read -r _a
+            [ "${_a,,}" = "y" ]
+        fi
     else
-        printf '%s [y/N]: ' "$1"
-        read -r _a
-        [ "${_a,,}" = "y" ]
+        return 0
+    fi
+}
+
+confirm_danger() {
+    if [ "$LOCK" = "1" ]; then
+        if [ "$GUM" = "1" ]; then
+            gum confirm "$1" && return 0 || return 1
+        else
+            printf '%s [y/N]: ' "$1"
+            read -r _a
+            [ "${_a,,}" = "y" ]
+        fi
+    else
+        confirm "$1"
     fi
 }
 
@@ -345,6 +354,10 @@ save_config() {
         printf 'LOG_ENABLED=%s\n' "$LOG_ENABLED"
         printf 'GUM_ENABLED=%s\n' "$GUM_ENABLED"
         printf 'ICONS=%s\n' "$ICONS"
+        printf 'QUIET=%s\n' "$QUIET"
+        printf 'LOCK=%s\n' "$LOCK"
+        printf 'STARTUP_CHECK=%s\n' "$STARTUP_CHECK"
+        printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
     } > "$tmp"
     mv -f "$tmp" "$HOME/.pkg-manager.conf"
     printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
@@ -452,7 +465,7 @@ do_install() {
 do_uninstall() {
     ask_name "Package name to uninstall"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
-    if ! confirm "$ICON_UNINSTALL  Really uninstall $PKG_NAME?"; then
+    if ! confirm_danger "$ICON_UNINSTALL  Really uninstall $PKG_NAME?"; then
         say "Canceled."
         return
     fi
@@ -498,6 +511,30 @@ do_search() {
         }
         { print }
     '
+    local cands sel
+    cands=$(printf '%s\n' "$out" | awk -v inst="$installed" '
+        BEGIN { n=split(inst, a, "\n"); for (i=1; i<=n; i++) has[a[i]]=1 }
+        /^[^ ]/ { pkg=$0; sub(/\/.*/, "", pkg); if (!(pkg in has)) print pkg }
+    ')
+    [ -n "$cands" ] || return
+    say "$ICON_INSTALL Found installable packages:"
+    printf '%s\n' "$cands"
+    if [ "$GUM" = "1" ]; then
+        sel=$(printf '%s\n' "$cands" | gum choose --multi --header "$ICON_CHECKBOX Select packages to install")
+    else
+        printf '\nInstall from these results? (space-separated names, or n): ' >&2
+        read -r sel
+        case "$sel" in
+            ""|n|N|no) return ;;
+        esac
+    fi
+    [ -n "$sel" ] || { say "Nothing selected."; return; }
+    sel=$(printf '%s\n' "$sel" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+    [ -n "$sel" ] || { warn "No valid package names."; return; }
+    if confirm_danger "$ICON_INSTALL Install $(printf '%s\n' "$sel" | awk 'NF' | wc -l) package(s) from the results?"; then
+        log "search install: $(printf '%s' "$sel" | tr '\n' ' ')"
+        printf '%s\n' "$sel" | xargs "$MGR" install -y 2>&1 | tail -n 5
+    fi
 }
 
 do_list() {
@@ -592,14 +629,14 @@ do_upgrade_center() {
         say "$ICON_UP  Upgrading selected packages..."
         printf '%s\n' "$sel" | xargs "$MGR" install -y 2>&1 | tail -n 5
     fi
-    if confirm "$ICON_AUTOREMOVE Remove now-unused dependencies?"; then
+    if confirm_danger "$ICON_AUTOREMOVE Remove now-unused dependencies?"; then
         if apt autoremove -y >/dev/null 2>&1; then
             ok "Autoremoved unused dependencies."
         else
             err "Autoremove failed."
         fi
     fi
-    if confirm "$ICON_CLEAN Clean the download cache?"; then
+    if confirm_danger "$ICON_CLEAN Clean the download cache?"; then
         if "$MGR" clean >/dev/null 2>&1; then
             ok "Cache cleaned!"
         else
@@ -609,7 +646,7 @@ do_upgrade_center() {
 }
 
 do_clean() {
-    if ! confirm "$ICON_CLEAN Clear the download cache?"; then
+    if ! confirm_danger "$ICON_CLEAN Clear the download cache?"; then
         say "Canceled."
         return
     fi
@@ -636,7 +673,7 @@ do_info() {
 }
 
 do_autoremove() {
-    if ! confirm "$ICON_AUTOREMOVE Remove orphaned dependencies?"; then
+    if ! confirm_danger "$ICON_AUTOREMOVE Remove orphaned dependencies?"; then
         say "Canceled."
         return
     fi
@@ -766,7 +803,7 @@ do_hold() {
 do_purge() {
     ask_name "Package to purge"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
-    if ! confirm "$ICON_PURGE Purge $PKG_NAME (remove + config)?"; then
+    if ! confirm_danger "$ICON_PURGE Purge $PKG_NAME (remove + config)?"; then
         say "Canceled."
         return
     fi
@@ -792,7 +829,7 @@ do_purge() {
 }
 
 do_fixbroken() {
-    if ! confirm "$ICON_FIXBROKEN Run apt --fix-broken install?"; then
+    if ! confirm_danger "$ICON_FIXBROKEN Run apt --fix-broken install?"; then
         say "Canceled."
         return
     fi
@@ -871,26 +908,73 @@ do_simulate() {
 }
 
 do_stats() {
-    log "package stats"
-    say "$ICON_CHART  Package stats"
-    local count sizes total cache
-    count=$(list_installed_names | awk 'NF' | wc -l)
-    ok "Installed packages: $count"
-    sizes=$(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null)
-    if [ -n "$sizes" ]; then
-        total=$(printf '%s\n' "$sizes" | awk '{s+=$1} END {printf "%.1f MiB", s/1024}')
-        say "Total installed size: $total"
-        say "Largest packages:"
-        printf '%s\n' "$sizes" | sort -rn | head -10 | awk '{printf "  %6.1f MiB  %s\n", $1/1024, $2}'
+    local a
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_CHART  Package stats & disk" "Overview" "Disk usage by directory" "Largest files" "Cache breakdown" "Back")
     else
-        warn "Size data unavailable — could not read dpkg status."
+        printf '1) Overview\n2) Disk usage by directory\n3) Largest files\n4) Cache breakdown\n5) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Overview" ;;
+            2) a="Disk usage by directory" ;;
+            3) a="Largest files" ;;
+            4) a="Cache breakdown" ;;
+            5) a="Back" ;;
+            *) return ;;
+        esac
     fi
-    cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
-    if [ -n "$cache" ]; then
-        say "Download cache: $cache"
-    else
-        warn "Could not read cache size."
-    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Overview)
+            log "package stats"
+            say "$ICON_CHART  Package stats"
+            local count sizes total cache
+            count=$(list_installed_names | awk 'NF' | wc -l)
+            ok "Installed packages: $count"
+            sizes=$(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null)
+            if [ -n "$sizes" ]; then
+                total=$(printf '%s\n' "$sizes" | awk '{s+=$1} END {printf "%.1f MiB", s/1024}')
+                say "Total installed size: $total"
+                say "Largest packages:"
+                printf '%s\n' "$sizes" | sort -rn | head -10 | awk '{printf "  %6.1f MiB  %s\n", $1/1024, $2}'
+            else
+                warn "Size data unavailable — could not read dpkg status."
+            fi
+            cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
+            if [ -n "$cache" ]; then
+                say "Download cache: $cache"
+            else
+                warn "Could not read cache size."
+            fi
+            ;;
+        Disk*)
+            log "disk usage by directory"
+            say "$ICON_DISK  Disk usage by directory ($PREFIX):"
+            if du -h -d1 "$PREFIX" 2>/dev/null | sort -rh | head -20; then
+                :
+            else
+                warn "Could not scan $PREFIX."
+            fi
+            ;;
+        *Largest*)
+            log "largest files"
+            say "$ICON_DISK  Largest files under $PREFIX:"
+            find "$PREFIX" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -20 \
+                | awk '{ printf "  %6.1f MiB  %s\n", $1/1048576, substr($0, index($0,"\t")+1) }'
+            ;;
+        Cache*)
+            log "cache breakdown"
+            local dir="$PREFIX/var/cache/apt/archives"
+            say "$ICON_DISK  Cache breakdown:"
+            if [ -d "$dir" ]; then
+                du -ah "$dir" 2>/dev/null | sort -rh | head -20 || ls -lh "$dir"
+                say "Total: $(du -sh "$dir" 2>/dev/null | cut -f1)"
+            else
+                say "No cache directory yet."
+            fi
+            ;;
+        *) return ;;
+    esac
 }
 
 do_cache() {
@@ -917,7 +1001,7 @@ do_cache() {
     [ -n "$a" ] || return
     case "$a" in
         *"Clean all"*)
-            if confirm "$ICON_CACHE  Delete every cached .deb?"; then
+            if confirm_danger "$ICON_CACHE  Delete every cached .deb?"; then
                 log "apt clean"
                 if run_spin "Cleaning cache..." "$MGR" clean; then
                     ok "Cache cleaned!"
@@ -927,7 +1011,7 @@ do_cache() {
             fi
             ;;
         *"outdated"*)
-            if confirm "$ICON_CACHE  Remove outdated .deb files only?"; then
+            if confirm_danger "$ICON_CACHE  Remove outdated .deb files only?"; then
                 log "apt autoclean"
                 if run_spin "Autocleaning..." apt autoclean; then
                     ok "Outdated packages cleaned!"
@@ -1002,7 +1086,7 @@ do_deptools() {
                 n=$(printf '%s\n' "$orphans" | wc -l)
                 say "Found $n orphaned package(s):"
                 printf '%s\n' "$orphans"
-                if confirm "$ICON_AUTOREMOVE  Autoremove them?"; then
+                if confirm_danger "$ICON_AUTOREMOVE  Autoremove them?"; then
                     log "autoremove orphans"
                     if apt autoremove -y >/dev/null 2>&1; then
                         ok "Orphans removed!"
@@ -1019,16 +1103,18 @@ do_deptools() {
 }
 
 do_bulk() {
-    local a names n
+    local a names n sel
     if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_BULK  Bulk operations" "Install multiple packages" "Remove multiple packages" "Back")
+        a=$(gum choose --header "$ICON_BULK  Bulk operations" "Install multiple packages" "Remove multiple packages" "Remove (pick from installed list)" "Upgrade (pick from upgradable list)" "Back")
     else
-        printf '1) Install multiple packages\n2) Remove multiple packages\n3) Back\n> ' >&2
+        printf '1) Install multiple packages\n2) Remove multiple packages\n3) Remove (pick from installed list)\n4) Upgrade (pick from upgradable list)\n5) Back\n> ' >&2
         read -r a
         case "$a" in
             1) a="Install multiple packages" ;;
             2) a="Remove multiple packages" ;;
-            3) a="Back" ;;
+            3) a="Remove (pick from installed list)" ;;
+            4) a="Upgrade (pick from upgradable list)" ;;
+            5) a="Back" ;;
             *) return ;;
         esac
     fi
@@ -1044,13 +1130,13 @@ do_bulk() {
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
-            if confirm "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
+            if confirm_danger "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
                 log "bulk install: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_INSTALL Installing $n packages..."
                 printf '%s\n' "$names" | xargs "$MGR" install -y 2>&1 | tail -n 5
             fi
             ;;
-        Remove*)
+        Remove*multiple*)
             if [ "$GUM" = "1" ]; then
                 names=$(gum input --prompt "➜ " --placeholder "Space-separated package names")
             else
@@ -1060,31 +1146,95 @@ do_bulk() {
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
-            if confirm "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
+            if confirm_danger "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
                 log "bulk remove: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_UNINSTALL Removing $n packages..."
                 printf '%s\n' "$names" | xargs "$MGR" remove -y 2>&1 | tail -n 5
+            fi
+            ;;
+        *"installed list"*)
+            names=$(pick_names "$ICON_UNINSTALL Pick packages to remove (SPACE toggles)")
+            [ -n "$names" ] || { say "Nothing selected."; return; }
+            n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
+            if confirm_danger "$ICON_UNINSTALL Remove $n package(s) from the installed list?"; then
+                log "bulk remove picked: $(printf '%s' "$names" | tr '\n' ' ')"
+                printf '%s\n' "$names" | xargs "$MGR" remove -y 2>&1 | tail -n 5
+            fi
+            ;;
+        *"upgradable list"*)
+            names=$(pick_upgradable)
+            [ -n "$names" ] || { say "Nothing selected."; return; }
+            n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
+            if confirm_danger "$ICON_UP  Upgrade $n package(s)?"; then
+                log "bulk upgrade picked: $(printf '%s' "$names" | tr '\n' ' ')"
+                printf '%s\n' "$names" | xargs "$MGR" install -y 2>&1 | tail -n 5
             fi
             ;;
         *) return ;;
     esac
 }
 
-FAVS_FILE="$HOME/.pkg-manager-favs"
+pick_names() {
+    local header="$1" tmp n i sel
+    if [ "$GUM" = "1" ]; then
+        list_installed_names | gum choose --multi --header "$header" || return 1
+    else
+        tmp="$HOME/.pkg-manager-pick.tmp"
+        list_installed_names > "$tmp"
+        n=$(wc -l < "$tmp")
+        [ "$n" -gt 0 ] || { rm -f "$tmp"; warn "No packages to pick from."; return 1; }
+        nl -w2 -s') ' "$tmp" >&2
+        printf 'Numbers (space-separated): ' >&2
+        read -r sel
+        for i in $sel; do
+            case "$i" in ''|*[!0-9]*) continue ;; esac
+            if [ "$i" -ge 1 ] && [ "$i" -le "$n" ]; then
+                printf '%s\n' "$(sed -n "${i}p" "$tmp")"
+            fi
+        done
+        rm -f "$tmp"
+    fi
+}
+
+pick_upgradable() {
+    local header="$1" list tmp n i sel
+    header="${header:-$ICON_CHECKBOX Pick packages to upgrade}"
+    if [ "$GUM" = "1" ]; then
+        apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1 | gum choose --multi --header "$header" || return 1
+    else
+        list=$(apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1)
+        [ -n "$list" ] || return 1
+        tmp="$HOME/.pkg-manager-pick.tmp"
+        printf '%s\n' "$list" > "$tmp"
+        n=$(wc -l < "$tmp")
+        nl -w2 -s') ' "$tmp" >&2
+        printf 'Numbers (space-separated): ' >&2
+        read -r sel
+        for i in $sel; do
+            case "$i" in ''|*[!0-9]*) continue ;; esac
+            if [ "$i" -ge 1 ] && [ "$i" -le "$n" ]; then
+                printf '%s\n' "$(sed -n "${i}p" "$tmp")"
+            fi
+        done
+        rm -f "$tmp"
+    fi
+}
 
 do_favs() {
     local a name n
     if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_STAR  Favorites" "Add favorite" "Remove favorite" "Show favorites" "Install all favorites" "Back")
+        a=$(gum choose --header "$ICON_STAR  Favorites" "Add favorite" "Remove favorite" "Show favorites" "Install all favorites" "Pin favorites to main menu: $(onoff "$FAVS_PINNED")" "Install one favorite" "Back")
     else
-        printf '1) Add favorite\n2) Remove favorite\n3) Show favorites\n4) Install all favorites\n5) Back\n> ' >&2
+        printf '1) Add favorite\n2) Remove favorite\n3) Show favorites\n4) Install all favorites\n5) Pin favorites to main menu: %s\n6) Install one favorite\n7) Back\n> ' "$(onoff "$FAVS_PINNED")" >&2
         read -r a
         case "$a" in
             1) a="Add favorite" ;;
             2) a="Remove favorite" ;;
             3) a="Show favorites" ;;
             4) a="Install all favorites" ;;
-            5) a="Back" ;;
+            5) a="Pin favorites to main menu: $(onoff "$FAVS_PINNED")" ;;
+            6) a="Install one favorite" ;;
+            7) a="Back" ;;
             *) return ;;
         esac
     fi
@@ -1137,15 +1287,54 @@ do_favs() {
             say "$ICON_STAR $n favorite(s):"
             awk 'NF' "$FAVS_FILE"
             ;;
-        Install*)
+        *"Install all"*)
             [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
             n=$(awk 'NF' "$FAVS_FILE" | wc -l)
-            if confirm "$ICON_STAR Install all $n favorite(s)?"; then
+            if confirm_danger "$ICON_STAR Install all $n favorite(s)?"; then
                 log "favorite install all"
                 say "$ICON_STAR Installing favorites..."
                 if install_from_list "$FAVS_FILE" "Favorites"; then
                     ok "Favorites installed!"
                 fi
+            fi
+            ;;
+        Pin*)
+            if [ "$FAVS_PINNED" = "1" ]; then
+                FAVS_PINNED=0
+            else
+                if [ -s "$FAVS_FILE" ]; then
+                    FAVS_PINNED=1
+                else
+                    warn "Add favorites first, then pin them."
+                    return
+                fi
+            fi
+            save_config
+            build_menu
+            if [ "$FAVS_PINNED" = "1" ]; then
+                ok "Favorites pinned to the main menu."
+            else
+                say "Favorites removed from the main menu."
+            fi
+            ;;
+        *"one favorite"*)
+            [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
+            if [ "$GUM" = "1" ]; then
+                name=$(gum choose --header "$ICON_STAR  Pick favorite to install" $(awk 'NF' "$FAVS_FILE"))
+            else
+                printf 'Favorites:\n' >&2
+                nl -w2 -s') ' "$FAVS_FILE" >&2
+                printf 'Pick number (0 = cancel): ' >&2
+                read -r a
+                case "$a" in
+                    [1-9]|[1-9][0-9]) name=$(sed -n "${a}p" "$FAVS_FILE") ;;
+                    *) return ;;
+                esac
+            fi
+            [ -n "$name" ] || return
+            if confirm_danger "$ICON_STAR Install favorite $name?"; then
+                log "favorite install $name"
+                "$MGR" install -y "$name" 2>&1 | tail -n 5
             fi
             ;;
         *) return ;;
@@ -1287,10 +1476,13 @@ do_settings() {
             "$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" \
             "$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" \
             "$ICON_FOLDER  Show config file" \
+            "$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" \
+            "$ICON_LOCK  Safety lock: $(onoff "$LOCK")" \
+            "$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" \
             "$ICON_BACK  Back")
     else
-        printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Back\n> ' \
-            "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" >&2
+        printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Quiet mode (skip confirms): %s\n9) Safety lock: %s\n10) Maintenance on launch: %s\n11) Back\n> ' \
+            "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" >&2
         read -r choice
         case "$choice" in
             1) choice="$ICON_SLIDERS  Package manager: $MGR" ;;
@@ -1300,7 +1492,10 @@ do_settings() {
             5) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
             6) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
             7) choice="$ICON_FOLDER  Show config file" ;;
-            8) choice="$ICON_BACK  Back" ;;
+            8) choice="$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" ;;
+            9) choice="$ICON_LOCK  Safety lock: $(onoff "$LOCK")" ;;
+            10) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
+            11) choice="$ICON_BACK  Back" ;;
             *) return ;;
         esac
     fi
@@ -1313,24 +1508,338 @@ do_settings() {
         *"Safety confirms"*) CONFIRM=$((1-CONFIRM)); save_config ;;
         *"History log"*)     LOG_ENABLED=$((1-LOG_ENABLED)); save_config ;;
         *"Show config"*)     cat "$HOME/.pkg-manager.conf" 2>/dev/null || say "No config yet." ;;
+        *"Quiet mode"*)      QUIET=$((1-QUIET)); save_config ;;
+        *"Safety lock"*)     LOCK=$((1-LOCK)); save_config ;;
+        *"Maintenance on launch"*) STARTUP_CHECK=$((1-STARTUP_CHECK)); save_config ;;
         *) return ;;
     esac
 }
 
+undo_last_remove() {
+    local line rest
+    line=$(grep -E '\] (remove|purge|bulk remove|remove multiple)' "$LOG_FILE" | tail -n1)
+    [ -n "$line" ] || { say "No previous removal found in history."; return; }
+    rest=$(printf '%s\n' "$line" | sed -E 's/^.*\] (remove|purge|bulk remove:?|remove multiple)[ :]*//')
+    rest=$(printf '%s\n' "$rest" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+    [ -n "$rest" ] || { say "Nothing to undo."; return; }
+    say "$ICON_UNDO Last removal was: $(printf '%s' "$rest" | tr '\n' ' ')"
+    if confirm_danger "$ICON_UNDO Reinstall these packages to undo?"; then
+        log "undo reinstall: $(printf '%s' "$rest" | tr '\n' ' ')"
+        say "$ICON_UNDO Reinstalling..."
+        if printf '%s\n' "$rest" | xargs "$MGR" install -y 2>&1 | tail -n 5; then
+            ok "Undo complete!"
+        fi
+    fi
+}
+
 do_history() {
+    local a tmp
     if [ ! -f "$LOG_FILE" ]; then
         say "No history yet — run some actions first!"
         return
     fi
-    say "$ICON_HISTORY Action history ($LOG_FILE)"
     if [ "$GUM" = "1" ]; then
-        gum pager < "$LOG_FILE" || cat "$LOG_FILE"
+        a=$(gum choose --header "$ICON_HISTORY  History & log viewer" "Show all history" "Show errors & failures" "Show installs / removals" "Undo last removal" "Clear history" "Back")
     else
-        cat "$LOG_FILE"
+        printf '1) Show all history\n2) Show errors & failures\n3) Show installs / removals\n4) Undo last removal\n5) Clear history\n6) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Show all history" ;;
+            2) a="Show errors & failures" ;;
+            3) a="Show installs / removals" ;;
+            4) a="Undo last removal" ;;
+            5) a="Clear history" ;;
+            6) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        *"all"*)
+            say "$ICON_HISTORY Action history ($LOG_FILE)"
+            if [ "$GUM" = "1" ]; then
+                gum pager < "$LOG_FILE" || cat "$LOG_FILE"
+            else
+                cat "$LOG_FILE"
+            fi
+            ;;
+        *errors*)
+            say "$ICON_ERROR Errors & failures in the log:"
+            local errs
+            errs=$(grep -iE 'err|fail|✗' "$LOG_FILE" || true)
+            if [ -n "$errs" ]; then
+                printf '%s\n' "$errs"
+            else
+                ok "No errors in the log."
+            fi
+            ;;
+        *installs*)
+            say "$ICON_PLAY  Install / remove actions:"
+            grep -E '\] (install|remove|purge|reinstall|upgrade|bulk|favorite|autoremove)' "$LOG_FILE" || say "None yet."
+            ;;
+        *Undo*)
+            undo_last_remove
+            ;;
+        *Clear*)
+            if confirm_danger "$ICON_ERROR  Clear the entire history log?"; then
+                : > "$LOG_FILE"
+                ok "History cleared."
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+do_inspect() {
+    ask_name "Package name to inspect"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    log "inspect $PKG_NAME"
+    local tmp="$HOME/.pkg-manager-inspect.tmp"
+    {
+        printf '%s\n' "$ICON_INSPECT  Inspecting $PKG_NAME:"
+        printf '═══ Info ═══\n'
+        "$MGR" show "$PKG_NAME" 2>/dev/null | grep -E '^(Package|Version|Architecture|Size|Installed-Size|Depends|Homepage|Maintainer|Description):' | grep -v '^WARNING:'
+        printf '\n═══ Dependencies ═══\n'
+        apt-cache depends "$PKG_NAME" 2>/dev/null | grep -E '^  (Depends|PreDepends|Recommends|Suggests):' | sed 's/^  //' || echo "(none)"
+        printf '\n═══ Reverse dependencies ═══\n'
+        apt rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:' || echo "(none)"
+        printf '\n═══ Installed files ═══\n'
+        if dpkg -L "$PKG_NAME" 2>/dev/null | tail -n +2; then
+            :
+        else
+            echo "(not installed — no file list)"
+        fi
+        printf '\n═══ Hold status ═══\n'
+        if apt-mark showhold 2>/dev/null | grep -qx "$PKG_NAME"; then
+            echo "$PKG_NAME is held."
+        else
+            echo "$PKG_NAME is not held."
+        fi
+    } > "$tmp"
+    if [ "$GUM" = "1" ]; then
+        gum pager < "$tmp" || cat "$tmp"
+    else
+        cat "$tmp"
+    fi
+    rm -f "$tmp"
+}
+
+do_maintenance() {
+    log "maintenance wizard"
+    say "$ICON_MAINT  Maintenance wizard — checking your system..."
+    local up orphans n broken cache held issues=0
+    up=$(apt list --upgradable 2>/dev/null | tail -n +2 | grep -v '^$')
+    if [ -n "$up" ]; then
+        n=$(printf '%s\n' "$up" | wc -l)
+        warn "$ICON_UP  $n package(s) can be upgraded."
+        issues=$((issues+1))
+    else
+        ok "All packages are up to date."
+    fi
+    orphans=$(apt autoremove --simulate -y 2>&1 | awk '
+        /will be REMOVED:/ {on=1; next}
+        on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+        on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+    ')
+    if [ -n "$orphans" ]; then
+        n=$(printf '%s\n' "$orphans" | wc -l)
+        warn "$ICON_AUTOREMOVE  $n orphaned package(s) found."
+        issues=$((issues+1))
+    else
+        ok "No orphaned packages."
+    fi
+    broken=$(dpkg --audit 2>/dev/null)
+    if [ -n "$broken" ]; then
+        warn "$ICON_BUG  Broken packages found."
+        issues=$((issues+1))
+    else
+        ok "No broken packages."
+    fi
+    cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
+    if [ -n "$cache" ]; then
+        say "Download cache: $cache"
+    else
+        say "Download cache: empty"
+    fi
+    held=$(apt-mark showhold 2>/dev/null | grep -v '^$' | wc -l)
+    say "Held packages: $held"
+    if [ "$issues" -eq 0 ]; then
+        ok "System looks healthy!"
+        return
+    fi
+    warn "$issues issue(s) found."
+    say "$ICON_WAND  Offer to fix them..."
+    if confirm_danger "$ICON_FIXBROKEN  Run apt fix-broken now?"; then
+        apt --fix-broken install -y 2>&1 | tail -n 5
+    fi
+    if confirm_danger "$ICON_AUTOREMOVE  Remove orphaned packages now?"; then
+        apt autoremove -y 2>&1 | tail -n 5
+    fi
+    if confirm_danger "$ICON_UP  Upgrade all packages now?"; then
+        "$MGR" upgrade -y 2>&1 | tail -n 5
+    fi
+    if confirm "$ICON_CLEAN  Clean the download cache?"; then
+        "$MGR" clean 2>/dev/null && ok "Cache cleaned."
     fi
 }
 
+declare -A PKG_GROUPS
+load_groups() {
+    PKG_GROUPS=(
+        ["web dev"]="nodejs npm nginx"
+        ["python dev"]="python python-pip python-pipx"
+        ["media tools"]="ffmpeg imagemagick"
+        ["git tools"]="git git-lfs"
+        ["network tools"]="curl wget openssh nmap"
+    )
+    if [ -f "$GROUPS_FILE" ]; then
+        local line name pkgs
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%::*}"
+            pkgs="${line#*::}"
+            [ -n "$name" ] && [ -n "$pkgs" ] && PKG_GROUPS["$name"]="$pkgs"
+        done < "$GROUPS_FILE"
+    fi
+}
+load_groups
+
+group_names() {
+    local n
+    for n in "${!PKG_GROUPS[@]}"; do
+        printf '%s\n' "$n"
+    done | sort
+}
+
+do_groups() {
+    local a gname gpkgs line n
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_GROUPS  Package groups" "Show all groups" "Install a group" "Remove a group's packages" "Create custom group" "Delete custom group" "Back")
+    else
+        printf '1) Show all groups\n2) Install a group\n3) Remove a group\x27s packages\n4) Create custom group\n5) Delete custom group\n6) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Show all groups" ;;
+            2) a="Install a group" ;;
+            3) a="Remove a group's packages" ;;
+            4) a="Create custom group" ;;
+            5) a="Delete custom group" ;;
+            6) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Show*)
+            say "$ICON_GROUPS  Package groups:"
+            if [ "${#PKG_GROUPS[@]}" -eq 0 ]; then
+                say "No groups defined."
+                return
+            fi
+            while IFS= read -r n; do
+                [ -n "$n" ] || continue
+                printf '  %s  %s (%s packages)\n' "$ICON_GROUPS" "$n" "$(wc -w <<< "${PKG_GROUPS[$n]}")"
+            done < <(group_names)
+            ;;
+        Install*)
+            gname=$(pick_group "Pick a group to install")
+            [ -n "$gname" ] || { say "Canceled."; return; }
+            gpkgs=${PKG_GROUPS[$gname]}
+            n=$(wc -w <<< "$gpkgs")
+            if confirm_danger "$ICON_INSTALL Install group \"$gname\" ($n packages)?"; then
+                log "group install $gname: $gpkgs"
+                say "$ICON_INSTALL Installing group \"$gname\"..."
+                printf '%s\n' $gpkgs | xargs "$MGR" install -y 2>&1 | tail -n 5
+            fi
+            ;;
+        Remove*)
+            gname=$(pick_group "Pick a group to remove")
+            [ -n "$gname" ] || { say "Canceled."; return; }
+            gpkgs=${PKG_GROUPS[$gname]}
+            n=$(wc -w <<< "$gpkgs")
+            if confirm_danger "$ICON_UNINSTALL Remove group \"$gname\" ($n packages)?"; then
+                log "group remove $gname: $gpkgs"
+                say "$ICON_UNINSTALL Removing group \"$gname\"..."
+                printf '%s\n' $gpkgs | xargs "$MGR" remove -y 2>&1 | tail -n 5
+            fi
+            ;;
+        Create*)
+            ask_name "Group name"
+            [ -n "$PKG_NAME" ] || { warn "No name given."; return; }
+            gname=$(printf '%s' "$PKG_NAME" | tr -c 'A-Za-z0-9 _-' '_')
+            ask_name "Packages (space-separated)"
+            gpkgs=$(printf '%s\n' "$PKG_NAME" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            [ -n "$gpkgs" ] || { warn "No valid package names."; return; }
+            printf '%s::%s\n' "$gname" "$(printf '%s' "$gpkgs" | tr '\n' ' ')" >> "$GROUPS_FILE"
+            load_groups
+            log "group create $gname"
+            ok "Group \"$gname\" created."
+            ;;
+        Delete*)
+            if [ ! -f "$GROUPS_FILE" ]; then
+                warn "No custom groups to delete."
+                return
+            fi
+            if [ "$GUM" = "1" ]; then
+                gname=$(gum choose --header "$ICON_TRASH  Pick custom group to delete" $(sed 's/::.*//' "$GROUPS_FILE"))
+            else
+                printf 'Custom groups:\n' >&2
+                nl -w2 -s') ' "$GROUPS_FILE" | sed 's/::/ /' >&2
+                printf 'Pick number (0 = cancel): ' >&2
+                read -r a
+                case "$a" in
+                    [1-9]|[1-9][0-9]) gname=$(sed -n "${a}p" "$GROUPS_FILE" | cut -d:: -f1) ;;
+                    *) return ;;
+                esac
+            fi
+            [ -n "$gname" ] || return
+            if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
+                grep -Fxv "${gname}::*" "$GROUPS_FILE" > "$GROUPS_FILE.tmp" && mv -f "$GROUPS_FILE.tmp" "$GROUPS_FILE"
+                load_groups
+                log "group delete $gname"
+                ok "Group \"$gname\" deleted."
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+pick_group() {
+    local header="$1" a
+    if [ "$GUM" = "1" ]; then
+        gum choose --header "$header" $(group_names)
+    else
+        printf 'Groups:\n' >&2
+        local i=1 n
+        while IFS= read -r n; do
+            printf '%d) %s\n' "$i" "$n" >&2
+            i=$((i+1))
+        done < <(group_names)
+        printf 'Pick number (0 = cancel): ' >&2
+        read -r a
+        case "$a" in
+            [1-9]|[1-9][0-9]) group_names | sed -n "${a}p" ;;
+            *) return ;;
+        esac
+    fi
+}
+
+pin_install() {
+    local pkg="$1"
+    [ -n "$pkg" ] || return
+    if confirm_danger "$ICON_STAR Install pinned package $pkg?"; then
+        log "pinned install $pkg"
+        say "$ICON_STAR Installing $pkg..."
+        "$MGR" install -y "$pkg" 2>&1 | tail -n 5
+    fi
+}
+
+FIRST_LOOP=1
 while true; do
+    if [ "$FIRST_LOOP" = "1" ] && [ "$STARTUP_CHECK" = "1" ]; then
+        do_maintenance
+    fi
+    FIRST_LOOP=0
     banner
     choice=$(main_menu)
     case "$choice" in
@@ -1365,6 +1874,10 @@ while true; do
         "$OPTION_DEPTREE")    do_deptools ;;
         "$OPTION_BULK")       do_bulk ;;
         "$OPTION_FAVS")       do_favs ;;
+        "$OPTION_INSPECT")    do_inspect ;;
+        "$OPTION_MAINT")      do_maintenance ;;
+        "$OPTION_GROUPS")     do_groups ;;
+        *"Pinned:"*)          pin_install "${choice##*Pinned: }" ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
         "__INVALID__")        err "Invalid option, try again." ;;
         "")                   break ;;

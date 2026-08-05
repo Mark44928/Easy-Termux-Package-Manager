@@ -100,7 +100,7 @@ case "$sub" in
         echo "Sorting... Done"
         echo "Full Text Search... Done"
         case "$q" in
-            *python*) echo "python3/stable 3.12 arm64"; echo "  interpreter for Python 3" ;;
+            *python*) echo "python3/stable 3.12 arm64"; echo "  interpreter for Python 3"; echo "python-tool/stable 1.0 arm64"; echo "  helper utility" ;;
         esac
         exit 0
         ;;

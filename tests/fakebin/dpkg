@@ -1,5 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # fake dpkg
+if [ "$1" = "--audit" ]; then
+    exit 0
+fi
 if [ "$1" = "-L" ]; then
     if [ "$2" = "invalidpkg" ]; then
         exit 1
