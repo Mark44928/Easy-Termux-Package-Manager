@@ -69,7 +69,7 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.com) 
 
 ## 📋 Requirements
 
-- [Termux](https://termux.com) — F-Droid or the [GitHub builds](https://github.com/termux/termux-app/releases) (Google Play builds are deprecated)
+- [Termux](https://termux.dev) — F-Droid or the [GitHub builds](https://github.com/termux/termux-app/releases) (Google Play builds are deprecated)
 - `bash` — preinstalled
 - `apt` / `dpkg` — preinstalled
 - `curl` — needed for the one-liner / manual install (install with `pkg install curl -y`)
