@@ -14,7 +14,7 @@
 # Easy Termux Package Manager
 
 > Install, remove, search, inspect, back up, and repair packages on Termux — without ever touching a `pkg` or `apt` command again.
-> Wait a minute that's boring! 🤔
+> Wait a minute that's boring!
 > `apt/pkg` For Newbies™
 
 A **gum-powered, interactive package manager** for [Termux](https://termux.com) wrapped in one Bash script. Arrow-key through a gorgeous menu, and let the script handle all the scary apt/pkg syntax for you.
