@@ -124,6 +124,10 @@ case "$sub" in
                 exit 0
                 ;;
             *--upgradable*)
+                if [ -n "$FAKE_UPGRAD_FAIL" ]; then
+                    echo "E: failed to communicate with user session" >&2
+                    exit 100
+                fi
                 echo "Listing..."
                 if [ "$FAKE_UPGRADABLE" != "empty" ]; then
                     echo "python3/stable 3.12 arm64"

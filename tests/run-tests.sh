@@ -32,11 +32,18 @@ run() {
         export GUM_QUEUE="$home/queue" GUM_CALL_LOG="$home/calls" GUM_VALIDATE_LOG="$home/validate"
         : > "$GUM_CALL_LOG"
         : > "$GUM_VALIDATE_LOG"
-        timeout 30 bash "$MANAGER" < <(printf '\n') > "$log" 2>&1
+        timeout 30 bash "$MANAGER" < <(printf '\n') > "$log" 2>&1; rc=$?
     else
-        timeout 30 bash "$MANAGER" < "$feed" > "$log" 2>&1
+        timeout 30 bash "$MANAGER" < "$feed" > "$log" 2>&1; rc=$?
     fi
     local ok=1
+    # A timeout kill (124) or a crash (non-zero) is always a failure.
+    if [ "$rc" -eq 124 ]; then
+        FAIL=$((FAIL+1)); FAILED+=("$name:timeout"); return
+    fi
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        FAIL=$((FAIL+1)); FAILED+=("$name:exit=$rc"); return
+    fi
     [ -n "$marker" ] && ! grep -Fq "$marker" "$log" && ok=0
     grep -q "command not found" "$log" && ok=0
     grep -qE "^manager\.sh: line [0-9]+:|bash: " "$log" && ok=0
@@ -170,6 +177,18 @@ T bulk_allfail     <(printf '30\n1\ninvalidpkg\ny\n')     "invalidpkg — Packag
 T search_partial   <(printf '3\npython\npython-tool invalidpkg\ny\n') "1 of 2 succeeded, 1 failed"
 T upgrade_partial  <(printf '6\npython3 invalidpkg\ny\ny\n') "1 of 2 succeeded, 1 failed"
 T fav_one_fail     <(printf '31\n6\n1\ny\n')              "Package not found"
+
+# --- audit fixes: option injection (M4), upgradable failure (M2), error log (M3) ---
+T inject_flag      <(printf '1\n-f\n')                     "Invalid package name"
+T inject_double    <(printf '1\n--force\n')                 "Invalid package name"
+FAKE_UPGRAD_FAIL=1
+export FAKE_UPGRAD_FAIL
+T upgr_failure     <(printf '33\n')                         "Could not read the upgradable list"
+unset FAKE_UPGRAD_FAIL
+T bulk_err_logged  <(printf '30\n1\ninvalidpkg\ny\n\n25\n2\n') "FAIL: install invalidpkg" ".pkg-manager.log|FAIL: install invalidpkg|"
+T undo_last_remove_dead <(printf '2\npython3\ny\n')          "python3 removed!" "||remove multiple"
+T search_dash      <(printf '3\n-foo\n')                     "Invalid search term"
+T owner_dash       <(printf '14\n-etc/passwd\n')             "Invalid file path"
 
 # --- pkg mode ---
 P pkg_list         <(printf '4\n')                     "python3"

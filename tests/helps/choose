@@ -2,7 +2,7 @@
 --cursor
 --cursor.foreground
 --selected.foreground
---multi
+--no-limit
 --limit
 --height
 --timeout

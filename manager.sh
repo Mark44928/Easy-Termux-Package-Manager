@@ -19,8 +19,39 @@ LOCK=0
 STARTUP_CHECK=0
 FAVS_PINNED=0
 
+# Scratch files: use mktemp (unique, unguessable names) so a predictable
+# fixed path can't be pre-planted as a symlink to truncate a victim via the
+# ">" redirect (TOCTOU / symlink attack). Track them so the EXIT trap cleans
+# up even on Ctrl-C, and so writers can confirm success before mv.
+_SCRATCH=()
+scratch_new() {
+    local f
+    f=$(mktemp "$HOME/.pkg-manager.XXXXXX" 2>/dev/null) || return 1
+    _SCRATCH+=("$f")
+    printf '%s\n' "$f"
+}
+cleanup_tmp() {
+    local f
+    for f in "${_SCRATCH[@]:-}"; do
+        [ -n "$f" ] && rm -f -- "$f" 2>/dev/null
+    done
+    _SCRATCH=()
+}
+trap cleanup_tmp EXIT
+
 [ -f "$HOME/.pkg-manager.conf" ] && source "$HOME/.pkg-manager.conf"
 
+PREFIX="${PREFIX:-/usr/local}"
+
+# env overrides win over the config file
+[ -n "$MGR_ENV" ] && MGR=$MGR_ENV
+[ -n "$THEME_ENV" ] && THEME=$THEME_ENV
+[ -n "$CONFIRM_ENV" ] && CONFIRM=$CONFIRM_ENV
+[ -n "$LOG_ENABLED_ENV" ] && LOG_ENABLED=$LOG_ENABLED_ENV
+[ -n "$GUM_ENABLED_ENV" ] && GUM_ENABLED=$GUM_ENABLED_ENV
+[ -n "$ICONS_ENV" ] && ICONS=$ICONS_ENV
+
+# validate both the config file and any env override with the same guards
 case "$MGR" in apt|pkg) ;; *) MGR="apt" ;; esac
 case "$THEME" in green|blue|purple|red) ;; *) THEME="green" ;; esac
 case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
@@ -31,14 +62,6 @@ case "$QUIET" in 0|1) ;; *) QUIET=0 ;; esac
 case "$LOCK" in 0|1) ;; *) LOCK=0 ;; esac
 case "$STARTUP_CHECK" in 0|1) ;; *) STARTUP_CHECK=0 ;; esac
 case "$FAVS_PINNED" in 0|1) ;; *) FAVS_PINNED=0 ;; esac
-PREFIX="${PREFIX:-/usr/local}"
-
-[ -n "$MGR_ENV" ] && MGR=$MGR_ENV
-[ -n "$THEME_ENV" ] && THEME=$THEME_ENV
-[ -n "$CONFIRM_ENV" ] && CONFIRM=$CONFIRM_ENV
-[ -n "$LOG_ENABLED_ENV" ] && LOG_ENABLED=$LOG_ENABLED_ENV
-[ -n "$GUM_ENABLED_ENV" ] && GUM_ENABLED=$GUM_ENABLED_ENV
-[ -n "$ICONS_ENV" ] && ICONS=$ICONS_ENV
 unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV GUM_ENABLED_ENV ICONS_ENV
 
 GREEN=46
@@ -176,6 +199,24 @@ banner() {
     fi
 }
 
+# valid_pkg_name — 1 if "$1" is a safe package token for apt/dpkg: starts with
+# an alphanumeric (blocks leading "-" option injection) and contains only
+# package-safe characters. Rejects empty / whitespace / globs / shell metas.
+valid_pkg_name() {
+    case "$1" in
+        ""|-*|*" "*|*'|'*|*';'*|*'&'*) return 1 ;;
+    esac
+    printf '%s\n' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9+:._~+-]*$'
+}
+
+# filter_pkgs — read newline-separated names on stdin, print only valid ones
+filter_pkgs() {
+    local p
+    while IFS= read -r p; do
+        valid_pkg_name "$p" && printf '%s\n' "$p"
+    done
+}
+
 build_menu() {
     OPTION_INSTALL="$ICON_INSTALL Install a package"
     OPTION_UNINSTALL="$ICON_UNINSTALL Uninstall a package"
@@ -230,7 +271,7 @@ build_menu() {
         while IFS= read -r p; do
             p=${p#"${p%%[![:space:]]*}"}
             p=${p%"${p##*[![:space:]]}"}
-            [ -n "$p" ] && FAVPIN+=("$p")
+            [ -n "$p" ] && valid_pkg_name "$p" && FAVPIN+=("$p")
         done < "$FAVS_FILE"
     fi
 }
@@ -273,14 +314,23 @@ main_menu() {
     fi
 }
 
+# ask_name <prompt> <pkghint> — read a value into PKG_NAME. With pkghint="pkg"
+# (default for package prompts) the value is validated with valid_pkg_name;
+# pass "path" to skip validation for e.g. file paths, or "any" for free text.
 ask_name() {
-    local prompt="$1"
+    local prompt="$1" mode="${2:-pkg}"
     PKG_NAME=""
     if [ "$GUM" = "1" ]; then
         PKG_NAME=$(gum input --prompt "➜ " --placeholder "$prompt" --width 40)
     else
         printf '%s' "$prompt: "
         read -r PKG_NAME
+    fi
+    # normalize: trim surrounding whitespace and CR
+    PKG_NAME=$(printf '%s\n' "$PKG_NAME" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    if [ "$mode" = "pkg" ] && [ -n "$PKG_NAME" ] && ! valid_pkg_name "$PKG_NAME"; then
+        warn "Invalid package name: '$PKG_NAME'"
+        PKG_NAME=""
     fi
 }
 
@@ -299,6 +349,13 @@ run_spin() {
 log() {
     [ "$LOG_ENABLED" = "1" ] || return 0
     printf '%s\n' "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+# log_err — record a real failure so the history "Errors & failures" filter is
+# meaningful (log() only records successful actions and never reaches these paths).
+log_err() {
+    [ "$LOG_ENABLED" = "1" ] || return 0
+    printf '%s\n' "[$(date '+%Y-%m-%d %H:%M:%S')] FAIL: $1" >> "$LOG_FILE"
 }
 
 onoff() { [ "$1" = "1" ] && printf 'on' || printf 'off'; }
@@ -352,7 +409,11 @@ pick_file() {
 }
 
 save_config() {
-    local tmp="$HOME/.pkg-manager.conf.tmp"
+    local tmp
+    if ! tmp=$(scratch_new); then
+        err "Could not create a temp file to save config."
+        return
+    fi
     {
         printf 'MGR=%s\n' "$MGR"
         printf 'THEME=%s\n' "$THEME"
@@ -364,8 +425,7 @@ save_config() {
         printf 'LOCK=%s\n' "$LOCK"
         printf 'STARTUP_CHECK=%s\n' "$STARTUP_CHECK"
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
-    } > "$tmp"
-    mv -f "$tmp" "$HOME/.pkg-manager.conf"
+    } > "$tmp" && mv -f "$tmp" "$HOME/.pkg-manager.conf"
     printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
 }
 
@@ -466,6 +526,7 @@ run_multi_op() {
             fail=$((fail+1)); failed+=("$pkg")
             hint=$(apt_hint "$out")
             err "$pkg — ${hint:-$op failed}"
+            log_err "$op $pkg: ${hint:-$op failed}"
         fi
     done
     if [ "$fail" -eq 0 ]; then
@@ -473,6 +534,23 @@ run_multi_op() {
     fi
     warn "$ok of $total succeeded, $fail failed (${failed[*]})"
     return 1
+}
+
+# valid_pkg_name — 1 if "$1" is a safe package token for apt/dpkg:
+# starts with an alphanumeric (blocks leading "-" option injection) and contains
+# only package-safe characters. Rejects empty / whitespace / globs / flags.
+# list_upgradable — print apt-get "pkg/ver arch" lines (header dropped) and
+# dropped), and return apt's real exit code so callers can tell "none" apart
+# from an apt failure (avoid a false "all up to date!" when apt errored).
+list_upgradable() {
+    local rc out
+    out=$(apt list --upgradable 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        return "$rc"
+    fi
+    printf '%s\n' "$out" | tail -n +2
+    return 0
 }
 
 do_install() {
@@ -528,8 +606,12 @@ do_uninstall() {
 }
 
 do_search() {
-    ask_name "Package name or keyword to search"
+    ask_name "Package name or keyword to search" any
     [ -n "$PKG_NAME" ] || { warn "No search term given."; return; }
+    case "$PKG_NAME" in -*)
+        err "Invalid search term — must not start with '-'."
+        return ;;
+    esac
     log "search $PKG_NAME"
     local out installed
     installed=$(list_installed_names)
@@ -557,7 +639,7 @@ do_search() {
     say "$ICON_INSTALL Found installable packages:"
     printf '%s\n' "$cands"
     if [ "$GUM" = "1" ]; then
-        sel=$(printf '%s\n' "$cands" | gum choose --multi --header "$ICON_CHECKBOX Select packages to install")
+        sel=$(printf '%s\n' "$cands" | gum choose --no-limit --header "$ICON_CHECKBOX Select packages to install")
     else
         printf '\nInstall from these results? (space-separated names, or n): ' >&2
         read -r sel
@@ -566,7 +648,7 @@ do_search() {
         esac
     fi
     [ -n "$sel" ] || { say "Nothing selected."; return; }
-    sel=$(printf '%s\n' "$sel" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+    sel=$(printf '%s\n' "$sel" | tr ' ' '\n' | filter_pkgs)
     [ -n "$sel" ] || { warn "No valid package names."; return; }
     if confirm_danger "$ICON_INSTALL Install $(printf '%s\n' "$sel" | awk 'NF' | wc -l) package(s) from the results?"; then
         log "search install: $(printf '%s' "$sel" | tr '\n' ' ')"
@@ -632,7 +714,10 @@ do_upgrade_center() {
         return
     fi
     local list pkgs n choice sel
-    list=$(apt list --upgradable 2>/dev/null | tail -n +2)
+    if ! list=$(list_upgradable); then
+        err "Could not check for upgrades — another package operation may be running, or the sources failed."
+        return
+    fi
     if [ -z "$list" ]; then
         ok "All packages are up to date!"
         return
@@ -644,7 +729,7 @@ do_upgrade_center() {
     if [ "$GUM" = "1" ]; then
         local -a _upg=()
         mapfile -t _upg <<< "$pkgs"
-        choice=$(gum choose --multi --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" "${_upg[@]}")
+        choice=$(gum choose --no-limit --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" "${_upg[@]}")
     else
         printf '\nUpgrade all [a], none [n], or pick some (space-separated names): ' >&2
         read -r choice
@@ -662,9 +747,10 @@ do_upgrade_center() {
             ok "Upgrade complete!"
         else
             err "Upgrade failed."
+            log_err "upgrade all: upgrade failed"
         fi
     else
-        sel=$(printf '%s\n' "$choice" | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/ {print}')
+        sel=$(printf '%s\n' "$choice" | filter_pkgs)
         [ -n "$sel" ] || { say "Nothing selected."; return; }
         log "upgrade: $(printf '%s' "$sel" | tr '\n' ' ')"
         say "$ICON_UP  Upgrading selected packages..."
@@ -677,6 +763,7 @@ do_upgrade_center() {
             ok "Autoremoved unused dependencies."
         else
             err "Autoremove failed."
+            log_err "autoremove: failed"
         fi
     fi
     if confirm_danger "$ICON_CLEAN Clean the download cache?"; then
@@ -684,6 +771,7 @@ do_upgrade_center() {
             ok "Cache cleaned!"
         else
             err "Failed to clean cache."
+            log_err "clean cache: failed"
         fi
     fi
 }
@@ -794,9 +882,13 @@ do_files() {
 
 do_owner() {
     local file
-    ask_name "File path (e.g. $PREFIX/bin/python)"
+    ask_name "File path (e.g. $PREFIX/bin/python)" path
     file="$PKG_NAME"
     [ -n "$file" ] || { warn "No file given."; return; }
+    case "$file" in -*)
+        err "Invalid file path — must not start with '-'."
+        return ;;
+    esac
     log "owner $file"
     say "$ICON_OWNER  Which package owns $file:"
     dpkg -S "$file" 2>/dev/null || err "No installed package owns that file"
@@ -901,7 +993,7 @@ do_upgradable() {
     log "upgradable list"
     say "$ICON_UPGRADABLE Packages with available updates:"
     local out
-    if ! out=$(apt list --upgradable 2>/dev/null | tail -n +2); then
+    if ! out=$(list_upgradable); then
         err "Could not read the upgradable list — run $ICON_UPDATE Upgrade center first?"
         return
     fi
@@ -1119,26 +1211,29 @@ do_deptools() {
         *"Orphan"*)
             log "orphan finder"
             say "$ICON_TREE  Searching for orphaned packages (installed but no longer needed)..."
-            block=$(apt autoremove --simulate -y 2>&1)
-            orphans=$(printf '%s\n' "$block" | awk '
-                /will be REMOVED:/ {on=1; next}
-                on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
-                on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
-            ')
-            if [ -n "$orphans" ]; then
-                n=$(printf '%s\n' "$orphans" | wc -l)
-                say "Found $n orphaned package(s):"
-                printf '%s\n' "$orphans"
-                if confirm_danger "$ICON_AUTOREMOVE  Autoremove them?"; then
-                    log "autoremove orphans"
-                    if apt autoremove -y >/dev/null 2>&1; then
-                        ok "Orphans removed!"
-                    else
-                        err "Autoremove failed."
+            if block=$(apt autoremove --simulate -y 2>&1); then
+                orphans=$(printf '%s\n' "$block" | awk '
+                    /will be REMOVED:/ {on=1; next}
+                    on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+                    on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+                ')
+                if [ -n "$orphans" ]; then
+                    n=$(printf '%s\n' "$orphans" | wc -l)
+                    say "Found $n orphaned package(s):"
+                    printf '%s\n' "$orphans"
+                    if confirm_danger "$ICON_AUTOREMOVE  Autoremove them?"; then
+                        log "autoremove orphans"
+                        if apt autoremove -y >/dev/null 2>&1; then
+                            ok "Orphans removed!"
+                        else
+                            err "Autoremove failed."
+                        fi
                     fi
+                else
+                    ok "No orphaned packages found!"
                 fi
             else
-                ok "No orphaned packages found!"
+                err "Could not check for orphaned packages."
             fi
             ;;
         *) return ;;
@@ -1170,7 +1265,7 @@ do_bulk() {
                 printf 'Packages (space-separated): ' >&2
                 read -r names
             fi
-            names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
             if confirm_danger "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
@@ -1188,7 +1283,7 @@ do_bulk() {
                 printf 'Packages (space-separated): ' >&2
                 read -r names
             fi
-            names=$(printf '%s\n' "$names" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
             if confirm_danger "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
@@ -1228,9 +1323,12 @@ do_bulk() {
 pick_names() {
     local header="$1" tmp n i sel
     if [ "$GUM" = "1" ]; then
-        list_installed_names | gum choose --multi --header "$header" || return 1
+        list_installed_names | gum choose --no-limit --header "$header" || return 1
     else
-        tmp="$HOME/.pkg-manager-pick.tmp"
+        if ! tmp=$(scratch_new); then
+            warn "Could not create a temp file to list packages."
+            return 1
+        fi
         list_installed_names > "$tmp"
         n=$(wc -l < "$tmp")
         [ "$n" -gt 0 ] || { rm -f "$tmp"; warn "No packages to pick from."; return 1; }
@@ -1250,12 +1348,19 @@ pick_names() {
 pick_upgradable() {
     local header list tmp n i sel
     header="${1:-$ICON_CHECKBOX Pick packages to upgrade}"
+    if ! list=$(list_upgradable); then
+        err "Could not read the upgradable list — another package operation may be running."
+        return 1
+    fi
+    list=$(printf '%s\n' "$list" | cut -d/ -f1)
+    [ -n "$list" ] || return 1
     if [ "$GUM" = "1" ]; then
-        apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1 | gum choose --multi --header "$header" || return 1
+        printf '%s\n' "$list" | gum choose --no-limit --header "$header" || return 1
     else
-        list=$(apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1)
-        [ -n "$list" ] || return 1
-        tmp="$HOME/.pkg-manager-pick.tmp"
+        if ! tmp=$(scratch_new); then
+            err "Could not create a temp file to list upgradable packages."
+            return 1
+        fi
         printf '%s\n' "$list" > "$tmp"
         n=$(wc -l < "$tmp")
         nl -w2 -s') ' "$tmp" >&2
@@ -1267,7 +1372,6 @@ pick_upgradable() {
                 printf '%s\n' "$(sed -n "${i}p" "$tmp")"
             fi
         done
-        rm -f "$tmp"
     fi
 }
 
@@ -1300,7 +1404,7 @@ do_favs() {
                 ok "$PKG_NAME added to favorites ($FAVS_FILE)"
                 return
             fi
-            if grep -qx "$PKG_NAME" "$FAVS_FILE"; then
+            if grep -Fxq "$PKG_NAME" "$FAVS_FILE"; then
                 warn "$PKG_NAME is already a favorite."
             else
                 printf '%s\n' "$PKG_NAME" >> "$FAVS_FILE"
@@ -1327,9 +1431,15 @@ do_favs() {
             fi
             [ -n "$name" ] || return
             if grep -Fxq "$name" "$FAVS_FILE"; then
-                grep -Fxv "$name" "$FAVS_FILE" > "$FAVS_FILE.tmp"; mv -f "$FAVS_FILE.tmp" "$FAVS_FILE"
-                log "favorite remove $name"
-                ok "$name removed from favorites."
+                if tmp=$(scratch_new); then
+                    grep -Fxv "$name" "$FAVS_FILE" > "$tmp" || true
+                    if mv -f "$tmp" "$FAVS_FILE"; then
+                        log "favorite remove $name"
+                        ok "$name removed from favorites."
+                    else
+                        err "Failed to update favorites."
+                    fi
+                fi
             fi
             [ "$FAVS_PINNED" = "1" ] && build_menu
             ;;
@@ -1389,6 +1499,10 @@ do_favs() {
                 esac
             fi
             [ -n "$name" ] || return
+            if ! valid_pkg_name "$name"; then
+                err "Skipping invalid favorite name '$name'."
+                return
+            fi
             if confirm_danger "$ICON_STAR Install favorite $name?"; then
                 log "favorite install $name"
                 local out hint
@@ -1420,7 +1534,7 @@ do_backup() {
 
 install_from_list() {
     local file="$1" action="$2" list
-    list=$(awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/ {print}' "$file")
+    list=$(awk 'NF' "$file" | filter_pkgs)
     [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
     local -a _pkgs=()
     mapfile -t _pkgs <<< "$list"
@@ -1432,7 +1546,7 @@ do_restore() {
     local file
     file=$(pick_file "Select a backup file")
     [ -n "$file" ] && [ -f "$file" ] || { warn "No file selected."; return; }
-    if ! confirm "$ICON_RESTORE  Restore $(wc -l < "$file") packages from $(basename "$file")?"; then
+    if ! confirm "$ICON_RESTORE  Restore $(awk 'NF' "$file" | filter_pkgs | wc -l) packages from $(basename "$file")?"; then
         say "Canceled."
         return
     fi
@@ -1468,29 +1582,44 @@ do_export() {
         read -r file
     fi
     [ -n "$file" ] || file="$HOME/pkg-export.$ext"
+    if [ -e "$file" ] && ! confirm_danger "$ICON_EXPORT  File $file exists — overwrite it?"; then
+        say "Canceled."
+        return
+    fi
     list=$(list_installed_names)
     count=$(printf '%s\n' "$list" | awk 'NF' | wc -l)
+    if ! tmp=$(scratch_new); then
+        err "Could not create a temp file for the export."
+        return
+    fi
+    local ok_write=1
     if [ "$ext" = "json" ]; then
         if command -v python3 >/dev/null 2>&1; then
-            printf '%s\n' "$list" | python3 -c 'import sys,json; p=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps({"packages":p}, indent=2))' > "$file"
+            if ! printf '%s\n' "$list" | python3 -c 'import sys,json; p=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps({"packages":p}, indent=2))' > "$tmp"; then
+                ok_write=0
+            fi
         else
             warn "python3 not found — exporting as plain text instead"
             ext="txt"
             file="${file%.json}.txt"
-            printf '%s\n' "$list" > "$file"
+            if ! printf '%s\n' "$list" > "$tmp"; then ok_write=0; fi
         fi
     else
-        printf '%s\n' "$list" > "$file"
+        if ! printf '%s\n' "$list" > "$tmp"; then ok_write=0; fi
     fi
-    log "export → $file"
-    ok "Exported $count packages → $file"
+    if [ "$ok_write" = "1" ] && mv -f "$tmp" "$file"; then
+        log "export → $file"
+        ok "Exported $count packages → $file"
+    else
+        err "Failed to write export to $file"
+    fi
 }
 
 do_import() {
     local file
     file=$(pick_file "Select a package list file")
     [ -n "$file" ] && [ -f "$file" ] || { warn "No file selected."; return; }
-    if ! confirm "$ICON_IMPORT Install $(wc -l < "$file") packages from $(basename "$file")?"; then
+    if ! confirm "$ICON_IMPORT Install $(awk 'NF' "$file" | filter_pkgs | wc -l) packages from $(basename "$file")?"; then
         say "Canceled."
         return
     fi
@@ -1579,10 +1708,10 @@ do_settings() {
 
 undo_last_remove() {
     local line rest
-    line=$(grep -E '\] (remove|purge|bulk remove|remove multiple)' "$LOG_FILE" | tail -n1)
+    line=$(grep -E '\] (remove |purge |bulk remove)' "$LOG_FILE" | tail -n1)
     [ -n "$line" ] || { say "No previous removal found in history."; return; }
-    rest=$(printf '%s\n' "$line" | sed -E 's/^.*\] (remove|purge|bulk remove picked:?|bulk remove:?|remove multiple)[ :]*//')
-    rest=$(printf '%s\n' "$rest" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+    rest=$(printf '%s\n' "$line" | sed -E 's/^.*\] (remove |purge |bulk remove picked: |bulk remove: )//')
+    rest=$(printf '%s\n' "$rest" | tr ' ' '\n' | filter_pkgs)
     [ -n "$rest" ] || { say "Nothing to undo."; return; }
     say "$ICON_UNDO Last removal was: $(printf '%s' "$rest" | tr '\n' ' ')"
     if confirm_danger "$ICON_UNDO Reinstall these packages to undo?"; then
@@ -1658,7 +1787,11 @@ do_inspect() {
     ask_name "Package name to inspect"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "inspect $PKG_NAME"
-    local tmp="$HOME/.pkg-manager-inspect.tmp"
+    local tmp
+    if ! tmp=$(scratch_new); then
+        err "Could not create a temp file for the inspection."
+        return
+    fi
     {
         printf '%s\n' "$ICON_INSPECT  Inspecting $PKG_NAME:"
         printf '═══ Info ═══\n'
@@ -1674,7 +1807,7 @@ do_inspect() {
             echo "(not installed — no file list)"
         fi
         printf '\n═══ Hold status ═══\n'
-        if apt-mark showhold 2>/dev/null | grep -qx "$PKG_NAME"; then
+        if apt-mark showhold 2>/dev/null | grep -Fxq "$PKG_NAME"; then
             echo "$PKG_NAME is held."
         else
             echo "$PKG_NAME is not held."
@@ -1692,32 +1825,44 @@ do_maintenance() {
     log "maintenance wizard"
     say "$ICON_MAINT  Maintenance wizard — checking your system..."
     local up orphans n broken cache held issues=0
-    up=$(apt list --upgradable 2>/dev/null | tail -n +2 | grep -v '^$')
-    if [ -n "$up" ]; then
-        n=$(printf '%s\n' "$up" | wc -l)
+    if ! up=$(list_upgradable); then
+        err "Could not read the upgradable list."
+        issues=$((issues+1))
+    elif [ -n "$up" ]; then
+        n=$(printf '%s\n' "$up" | grep -v '^$' | wc -l)
         warn "$ICON_UP  $n package(s) can be upgraded."
         issues=$((issues+1))
     else
         ok "All packages are up to date."
     fi
-    orphans=$(apt autoremove --simulate -y 2>&1 | awk '
-        /will be REMOVED:/ {on=1; next}
-        on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
-        on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
-    ')
-    if [ -n "$orphans" ]; then
-        n=$(printf '%s\n' "$orphans" | wc -l)
-        warn "$ICON_AUTOREMOVE  $n orphaned package(s) found."
-        issues=$((issues+1))
+local simout
+    if simout=$(apt autoremove --simulate -y 2>&1); then
+        orphans=$(printf '%s\n' "$simout" | awk '
+            /will be REMOVED:/ {on=1; next}
+            on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+            on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+        ')
+        if [ -n "$orphans" ]; then
+            n=$(printf '%s\n' "$orphans" | wc -l)
+            warn "$ICON_AUTOREMOVE  $n orphaned package(s) found."
+            issues=$((issues+1))
+        else
+            ok "No orphaned packages."
+        fi
     else
-        ok "No orphaned packages."
+        err "Could not check for orphaned packages."
+        issues=$((issues+1))
     fi
-    broken=$(dpkg --audit 2>/dev/null)
-    if [ -n "$broken" ]; then
-        warn "$ICON_BUG  Broken packages found."
-        issues=$((issues+1))
+    if broken=$(dpkg --audit 2>&1); then
+        if [ -n "$broken" ]; then
+            warn "$ICON_BUG  Broken packages found."
+            issues=$((issues+1))
+        else
+            ok "No broken packages."
+        fi
     else
-        ok "No broken packages."
+        err "Could not audit packages for breakage."
+        issues=$((issues+1))
     fi
     cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
     if [ -n "$cache" ]; then
@@ -1734,13 +1879,34 @@ do_maintenance() {
     warn "$issues issue(s) found."
     say "$ICON_WAND  Offer to fix them..."
     if confirm_danger "$ICON_FIXBROKEN  Run apt fix-broken now?"; then
-        apt --fix-broken install -y 2>&1 | tail -n 5
+        if output=$(apt --fix-broken install -y 2>&1); then
+            printf '%s\n' "$output" | tail -n 5
+        else
+            printf '%s\n' "$output" | tail -n 5
+            err "apt fix-broken failed."
+            log_err "fix-broken: failed"
+            issues=$((issues+1))
+        fi
     fi
     if confirm_danger "$ICON_AUTOREMOVE  Remove orphaned packages now?"; then
-        apt autoremove -y 2>&1 | tail -n 5
+        if output=$(apt autoremove -y 2>&1); then
+            printf '%s\n' "$output" | tail -n 5
+        else
+            printf '%s\n' "$output" | tail -n 5
+            err "apt autoremove failed."
+            log_err "autoremove: failed"
+            issues=$((issues+1))
+        fi
     fi
     if confirm_danger "$ICON_UP  Upgrade all packages now?"; then
-        "$MGR" upgrade -y 2>&1 | tail -n 5
+        if output=$("$MGR" upgrade -y 2>&1); then
+            printf '%s\n' "$output" | tail -n 5
+        else
+            printf '%s\n' "$output" | tail -n 5
+            err "upgrade failed."
+            log_err "upgrade all: failed"
+            issues=$((issues+1))
+        fi
     fi
     if confirm "$ICON_CLEAN  Clean the download cache?"; then
         "$MGR" clean 2>/dev/null && ok "Cache cleaned."
@@ -1832,12 +1998,16 @@ do_groups() {
             fi
             ;;
         Create*)
-            ask_name "Group name"
+            ask_name "Group name" any
             [ -n "$PKG_NAME" ] || { warn "No name given."; return; }
             gname=$(printf '%s' "$PKG_NAME" | tr -c 'A-Za-z0-9 _-' '_')
-            ask_name "Packages (space-separated)"
-            gpkgs=$(printf '%s\n' "$PKG_NAME" | tr ' ' '\n' | awk '$0 ~ /^[A-Za-z0-9+.:~-]+$/')
+            ask_name "Packages (space-separated)" any
+            gpkgs=$(printf '%s\n' "$PKG_NAME" | tr ' ' '\n' | filter_pkgs)
             [ -n "$gpkgs" ] || { warn "No valid package names."; return; }
+            if [ -f "$GROUPS_FILE" ] && grep -q "^${gname}::" "$GROUPS_FILE"; then
+                warn "A group named \"$gname\" already exists."
+                return
+            fi
             printf '%s::%s\n' "$gname" "$(printf '%s' "$gpkgs" | tr '\n' ' ')" >> "$GROUPS_FILE"
             load_groups
             log "group create $gname"
@@ -1863,10 +2033,16 @@ do_groups() {
             fi
             [ -n "$gname" ] || return
             if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
-                grep -v "^${gname}::" "$GROUPS_FILE" > "$GROUPS_FILE.tmp"; mv -f "$GROUPS_FILE.tmp" "$GROUPS_FILE"
-                load_groups
-                log "group delete $gname"
-                ok "Group \"$gname\" deleted."
+                if tmp=$(scratch_new); then
+                    grep -v "^${gname}::" "$GROUPS_FILE" > "$tmp" || true
+                    if mv -f "$tmp" "$GROUPS_FILE"; then
+                        load_groups
+                        log "group delete $gname"
+                        ok "Group \"$gname\" deleted."
+                    else
+                        err "Failed to update groups file."
+                    fi
+                fi
             fi
             ;;
         *) return ;;
@@ -1896,7 +2072,8 @@ pick_group() {
 
 pin_install() {
     local pkg="$1"
-    [ -n "$pkg" ] || return
+    [ -n "$pkg" ] || { err "Invalid pinned package name."; return; }
+    valid_pkg_name "$pkg" || { err "Invalid pinned package name '$pkg'."; return; }
     if confirm_danger "$ICON_STAR Install pinned package $pkg?"; then
         log "pinned install $pkg"
         say "$ICON_STAR Installing $pkg..."

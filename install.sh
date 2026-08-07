@@ -57,6 +57,7 @@ else
     curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP"
 fi
 
+mkdir -p "$(dirname "$BIN")"
 mv -f "$BIN_TMP" "$BIN"
 chmod +x "$BIN"
 sed -i "1s|^#!.*|#!$(command -v bash)|" "$BIN"
