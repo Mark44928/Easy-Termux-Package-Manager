@@ -5,9 +5,9 @@ set -e
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     R=$'\e[0m';  BD=$'\e[1m';  DM=$'\e[2m'
     RED=$'\e[31m'; GRN=$'\e[32m'; YEL=$'\e[33m'
-    CYN=$'\e[36m'; MAG=$'\e[35m'
+    CYN=$'\e[36m'
 else
-    R=; BD=; DM=; RED=; GRN=; YEL=; CYN=; MAG=
+    R=; BD=; DM=; RED=; GRN=; YEL=; CYN=
 fi
 
 hdr()     { printf '%b\n' "${BD}${CYN}══ ${*} ══${R}"; }
@@ -89,7 +89,7 @@ install_font() {
 
 if [ -n "${FONT:-}" ]; then
     case "${FONT,,}" in
-        1|cask*|caskaydia*) install_font "CaskaydiaCoveNerdFont-Regular.ttf" ;;
+        1|cask*) install_font "CaskaydiaCoveNerdFont-Regular.ttf" ;;
         2|fira*)            install_font "FiraCodeNerdFont-Regular.ttf" ;;
         s|skip|none)        warn "Skipping the font install." ;;
         *)                  warn "Invalid FONT value '$FONT' — skipping the font install." ;;

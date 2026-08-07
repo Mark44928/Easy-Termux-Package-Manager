@@ -85,7 +85,7 @@ init_icons() {
         ICON_DISK="💽";         ICON_MOON="🌙"
         ICON_LOCK="🔒";         ICON_ERROR="🚫"
         ICON_UNDO="↩️";          ICON_PLAY="▶️"
-        ICON_FILTER="🧲";       ICON_CHECKBOX="☑️"
+        ICON_CHECKBOX="☑️"
         ICON_BUG="🐞";          ICON_TRASH="🗑️"
     else
         ICON_INSTALL=$'\uEB29'; ICON_UNINSTALL=$'\uEA81'
@@ -114,7 +114,7 @@ init_icons() {
         ICON_DISK=$'\uF0A0';    ICON_MOON=$'\uF186'
         ICON_LOCK=$'\uF023';    ICON_ERROR=$'\uF071'
         ICON_UNDO=$'\uF0E2';    ICON_PLAY=$'\uF04B'
-        ICON_FILTER=$'\uF0B0';  ICON_CHECKBOX=$'\uF046'
+        ICON_CHECKBOX=$'\uF046'
         ICON_BUG=$'\uF188';     ICON_TRASH=$'\uF014'
     fi
 }
@@ -642,7 +642,9 @@ do_upgrade_center() {
     say "$ICON_UPGRADABLE $n package(s) have updates:"
     printf '%s\n' "$list"
     if [ "$GUM" = "1" ]; then
-        choice=$(gum choose --multi --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" $(printf '%s\n' "$pkgs"))
+        local -a _upg=()
+        mapfile -t _upg <<< "$pkgs"
+        choice=$(gum choose --multi --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" "${_upg[@]}")
     else
         printf '\nUpgrade all [a], none [n], or pick some (space-separated names): ' >&2
         read -r choice
@@ -1246,8 +1248,8 @@ pick_names() {
 }
 
 pick_upgradable() {
-    local header="$1" list tmp n i sel
-    header="${header:-$ICON_CHECKBOX Pick packages to upgrade}"
+    local header list tmp n i sel
+    header="${1:-$ICON_CHECKBOX Pick packages to upgrade}"
     if [ "$GUM" = "1" ]; then
         apt list --upgradable 2>/dev/null | tail -n +2 | cut -d/ -f1 | gum choose --multi --header "$header" || return 1
     else
@@ -1310,7 +1312,9 @@ do_favs() {
         Remove*)
             [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
             if [ "$GUM" = "1" ]; then
-                name=$(gum choose --header "$ICON_STAR  Pick favorite to remove" $(cat "$FAVS_FILE"))
+                local -a _favs=()
+                mapfile -t _favs < "$FAVS_FILE"
+                name=$(gum choose --header "$ICON_STAR  Pick favorite to remove" "${_favs[@]}")
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
@@ -1371,7 +1375,9 @@ do_favs() {
         *"one favorite"*)
             [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
             if [ "$GUM" = "1" ]; then
-                name=$(gum choose --header "$ICON_STAR  Pick favorite to install" $(awk 'NF' "$FAVS_FILE"))
+                local -a _favs=()
+                mapfile -t _favs < <(awk 'NF' "$FAVS_FILE")
+                name=$(gum choose --header "$ICON_STAR  Pick favorite to install" "${_favs[@]}")
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
