@@ -64,6 +64,13 @@ sed -i "1s|^#!.*|#!$(command -v bash)|" "$BIN"
 
 divider
 ok "Installed → ${BD}${BIN}${R}"
+case ":$PATH:" in
+    *:"${BIN%/pkg-manager}":*) ;;
+    *)
+        warn "${BIN%/pkg-manager} is not on your PATH — add it with:"
+        info "${BD}export PATH=\"${BIN%/pkg-manager}:\$PATH\"${R} (then re-open the terminal)"
+        ;;
+esac
 info "Run it anytime with: ${BD}pkg-manager${R}"
 divider
 
@@ -115,7 +122,7 @@ elif [ -d "$HOME/.termux" ]; then
         *)    warn "Invalid choice — skipping the font install.";;
     esac
 else
-    warn "~/.termux not found — skipping the font install."
+    warn "$HOME/.termux not found — skipping the font install."
     warn "To see the Nerd Font icon glyphs, install a Nerd Font manually"
     warn "(or re-run this installer after creating ~/.termux)."
 fi

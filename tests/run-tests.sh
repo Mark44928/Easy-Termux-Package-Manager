@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 MANAGER="$PWD/../manager.sh"
 export PATH="$PWD/fakebin:$PATH"
 export GUM_HELPS="$PWD/helps"
@@ -9,7 +9,7 @@ TOTAL=0 PASS=0 FAIL=0
 FAILED=()
 
 run() {
-    local name="$1" mode="$2" feed="$3" marker="$4" gumen="$5" mgr="${6:-apt}" filechk="${7:-}"
+    local name="$1" mode="$2" feed="$3" marker="$4" gumen="$5" filechk="${6:-}"
     TOTAL=$((TOTAL+1))
     local home="$PWD/tmp/$name"
     rm -rf "$home"
@@ -60,7 +60,7 @@ run() {
     if [ -n "$filechk" ]; then
         local glob="${filechk%%|*}" rest="${filechk#*|}"
         local pos="${rest%%|*}" neg="${rest#*|}"
-        if [ -n "$glob" ] && ! ls "$home"/$glob >/dev/null 2>&1; then
+        if [ -n "$glob" ] && ! compgen -G "$home/$glob" >/dev/null 2>&1; then
             FAIL=$((FAIL+1))
             FAILED+=("$name:file")
             return
@@ -79,10 +79,10 @@ run() {
     PASS=$((PASS+1))
 }
 
-T()  { run "$1" text "$2" "$3" 0 apt "$4"; }
-P()  { run "$1" text "$2" "$3" 0 pkg "$4"; }
-G()  { run "$1" gum  "$2" "$3" 1 apt "$4"; }
-GP() { run "$1" gum  "$2" "$3" 1 pkg "$4"; }
+T()  { run "$1" text "$2" "$3" 0 "$4"; }
+P()  { run "$1" text "$2" "$3" 0 "$4"; }
+G()  { run "$1" gum  "$2" "$3" 1 "$4"; }
+GP() { run "$1" gum  "$2" "$3" 1 "$4"; }
 
 # --- regression (text/apt) ---
 T install_ok       <(printf '1\npython3\n')            "python3 installed!"
@@ -189,6 +189,15 @@ T bulk_err_logged  <(printf '30\n1\ninvalidpkg\ny\n\n25\n2\n') "FAIL: install in
 T undo_last_remove_dead <(printf '2\npython3\ny\n')          "python3 removed!" "||remove multiple"
 T search_dash      <(printf '3\n-foo\n')                     "Invalid search term"
 T owner_dash       <(printf '14\n-etc/passwd\n')             "Invalid file path"
+
+# --- coverage gaps: purge / restore / export-json / owner / doctor / favs unpin / history clear ---
+T purge_ok         <(printf '16\npython3\ny\n')              "python3 purged!"
+T restore_ok       <(printf '20\n%s/tmp/restore_ok/restore.txt\ny\n' "$PWD") "Restore complete!"
+T owner_ok         <(printf '14\n/usr/bin/python\n')         "python3"
+T doctor_ok        <(printf '23\ny\n')                       "All helper tools present!"
+T export_json      <(printf '21\n2\n\n')                     "Exported 2 packages" "pkg-export.json|"
+T fav_unpin        <(printf '31\n5\n\n31\n5\n')              "Favorites removed from the main menu"
+T history_clear    <(printf '1\npython3\n\n25\n5\ny\n')      "History cleared" ".pkg-manager.log|"
 
 # --- pkg mode ---
 P pkg_list         <(printf '4\n')                     "python3"

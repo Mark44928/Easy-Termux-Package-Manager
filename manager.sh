@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Every pipeline must report the failure of its first command, or "apt foo |
+# tail" would let real errors look like success.
+set -o pipefail
+
 # Optional env overrides (e.g. GUM_ENABLED=0 pkg-manager) — conf file still wins otherwise.
 [ -v MGR ] && MGR_ENV=$MGR || MGR_ENV=""
 [ -v THEME ] && THEME_ENV=$THEME || THEME_ENV=""
@@ -39,6 +43,7 @@ cleanup_tmp() {
 }
 trap cleanup_tmp EXIT
 
+# shellcheck disable=SC1091  # config is a runtime-generated file, not static input
 [ -f "$HOME/.pkg-manager.conf" ] && source "$HOME/.pkg-manager.conf"
 
 PREFIX="${PREFIX:-/usr/local}"
@@ -268,10 +273,15 @@ build_menu() {
 
     FAVPIN=()
     if [ "$FAVS_PINNED" = "1" ] && [ -s "$FAVS_FILE" ]; then
-        while IFS= read -r p; do
-            p=${p#"${p%%[![:space:]]*}"}
-            p=${p%"${p##*[![:space:]]}"}
-            [ -n "$p" ] && valid_pkg_name "$p" && FAVPIN+=("$p")
+        local p_pin seen=" "
+        while IFS= read -r p_pin; do
+            p_pin=${p_pin#"${p_pin%%[![:space:]]*}"}
+            p_pin=${p_pin%"${p_pin##*[![:space:]]}"}
+            if [ -n "$p_pin" ] && valid_pkg_name "$p_pin" \
+                && [[ "$seen" != *" $p_pin "* ]]; then
+                seen="$seen $p_pin "
+                FAVPIN+=("$p_pin")
+            fi
         done < "$FAVS_FILE"
     fi
 }
@@ -412,7 +422,7 @@ save_config() {
     local tmp
     if ! tmp=$(scratch_new); then
         err "Could not create a temp file to save config."
-        return
+        return 1
     fi
     {
         printf 'MGR=%s\n' "$MGR"
@@ -425,8 +435,13 @@ save_config() {
         printf 'LOCK=%s\n' "$LOCK"
         printf 'STARTUP_CHECK=%s\n' "$STARTUP_CHECK"
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
-    } > "$tmp" && mv -f "$tmp" "$HOME/.pkg-manager.conf"
-    printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
+    } > "$tmp"
+    if mv -f "$tmp" "$HOME/.pkg-manager.conf"; then
+        printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
+        return 0
+    fi
+    err "Failed to save settings to $HOME/.pkg-manager.conf"
+    return 1
 }
 
 set_mgr() {
@@ -536,12 +551,9 @@ run_multi_op() {
     return 1
 }
 
-# valid_pkg_name — 1 if "$1" is a safe package token for apt/dpkg:
-# starts with an alphanumeric (blocks leading "-" option injection) and contains
-# only package-safe characters. Rejects empty / whitespace / globs / flags.
-# list_upgradable — print apt-get "pkg/ver arch" lines (header dropped) and
-# dropped), and return apt's real exit code so callers can tell "none" apart
-# from an apt failure (avoid a false "all up to date!" when apt errored).
+# list_upgradable — print apt-get "pkg/ver arch" lines (header dropped),
+# and return apt's real exit code so callers can tell "none" apart from an
+# apt failure (avoid a false "all up to date!" when apt errored).
 list_upgradable() {
     local rc out
     out=$(apt list --upgradable 2>&1)
@@ -1215,7 +1227,8 @@ do_deptools() {
                 orphans=$(printf '%s\n' "$block" | awk '
                     /will be REMOVED:/ {on=1; next}
                     on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
-                    on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+                    on { for (i=1;i<=NF;i++)
+                            if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }
                 ')
                 if [ -n "$orphans" ]; then
                     n=$(printf '%s\n' "$orphans" | wc -l)
@@ -1508,7 +1521,11 @@ do_favs() {
                 local out hint
                 if out=$("$MGR" install -y "$name" 2>&1); then
                     hint=$(apt_hint "$out")
-                    [ -n "$hint" ] && ok "$hint" || ok "$name installed!"
+                    if [ -n "$hint" ]; then
+                        ok "$hint"
+                    else
+                        ok "$name installed!"
+                    fi
                 else
                     hint=$(apt_hint "$out")
                     err "${hint:-"Failed to install $name."}"
@@ -1631,28 +1648,21 @@ do_import() {
 }
 
 do_doctor() {
-    local missing=() dep
     say "$ICON_DOCTOR Checking helper tools..."
-    for dep in gum git curl figlet; do
-        if command -v "$dep" >/dev/null 2>&1; then
-            ok "$dep"
-        else
-            warn "$dep missing"
-            missing+=("$dep")
-        fi
-    done
-    if [ "${#missing[@]}" -gt 0 ]; then
-        if confirm "Install:${missing[*]} ?"; then
-            log "install helpers:${missing[*]}"
-            if apt install -y "${missing[@]}" 2>/dev/null; then
-                ok "Installed:${missing[*]}"
-                refresh_gum
-            else
-                err "Install failed"
-            fi
-        fi
-    else
+    if command -v gum >/dev/null 2>&1; then
+        ok "gum"
         say "All helper tools present!"
+        return
+    fi
+    warn "gum missing"
+    if confirm "Install gum?"; then
+        log "install helper gum"
+        if "$MGR" install -y gum 2>/dev/null; then
+            ok "Installed: gum"
+            refresh_gum
+        else
+            err "Install failed"
+        fi
     fi
 }
 
@@ -1829,7 +1839,7 @@ do_maintenance() {
         err "Could not read the upgradable list."
         issues=$((issues+1))
     elif [ -n "$up" ]; then
-        n=$(printf '%s\n' "$up" | grep -v '^$' | wc -l)
+        n=$(grep -cv '^$' <<< "$up")
         warn "$ICON_UP  $n package(s) can be upgraded."
         issues=$((issues+1))
     else
@@ -1840,7 +1850,8 @@ local simout
         orphans=$(printf '%s\n' "$simout" | awk '
             /will be REMOVED:/ {on=1; next}
             on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
-            on { for (i=1;i<=NF;i++) if ($i ~ /^[A-Za-z0-9+.:~-]+$/) print $i }
+            on { for (i=1;i<=NF;i++)
+                    if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }
         ')
         if [ -n "$orphans" ]; then
             n=$(printf '%s\n' "$orphans" | wc -l)
@@ -1870,7 +1881,7 @@ local simout
     else
         say "Download cache: empty"
     fi
-    held=$(apt-mark showhold 2>/dev/null | grep -v '^$' | wc -l)
+    held=$(apt-mark showhold 2>/dev/null | grep -cv '^$')
     say "Held packages: $held"
     if [ "$issues" -eq 0 ]; then
         ok "System looks healthy!"
@@ -2071,13 +2082,24 @@ pick_group() {
 }
 
 pin_install() {
-    local pkg="$1"
+    local pkg="$1" out hint
     [ -n "$pkg" ] || { err "Invalid pinned package name."; return; }
     valid_pkg_name "$pkg" || { err "Invalid pinned package name '$pkg'."; return; }
     if confirm_danger "$ICON_STAR Install pinned package $pkg?"; then
         log "pinned install $pkg"
         say "$ICON_STAR Installing $pkg..."
-        "$MGR" install -y "$pkg" 2>&1 | tail -n 5
+        if out=$("$MGR" install -y "$pkg" 2>&1); then
+            hint=$(apt_hint "$out")
+            if [ -n "$hint" ]; then
+                ok "$hint"
+            else
+                ok "$pkg installed!"
+            fi
+        else
+            hint=$(apt_hint "$out")
+            err "${hint:-Failed to install $pkg.}"
+            printf '%s\n' "$out" | tail -n 4
+        fi
     fi
 }
 
