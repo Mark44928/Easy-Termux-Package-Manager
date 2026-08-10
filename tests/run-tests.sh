@@ -9,7 +9,7 @@ TOTAL=0 PASS=0 FAIL=0
 FAILED=()
 
 run() {
-    local name="$1" mode="$2" feed="$3" marker="$4" gumen="$5" filechk="${6:-}"
+    local name="$1" mode="$2" feed="$3" marker="$4" gumen="$5" mgr="${6:-apt}" filechk="${7:-}"
     TOTAL=$((TOTAL+1))
     local home="$PWD/tmp/$name"
     rm -rf "$home"
@@ -18,7 +18,7 @@ run() {
     if [ -d "$PWD/seeds/$name" ]; then
         cp -r "$PWD/seeds/$name/." "$home/"
     fi
-    export HOME="$home" PREFIX="$home" GUM_ENABLED="$gumen"
+    export HOME="$home" PREFIX="$home" GUM_ENABLED="$gumen" MGR="$mgr"
     local log="$home/run.log"
     if [ "$mode" = "gum" ]; then
         : > "$home/queue"
@@ -79,10 +79,10 @@ run() {
     PASS=$((PASS+1))
 }
 
-T()  { run "$1" text "$2" "$3" 0 "$4"; }
-P()  { run "$1" text "$2" "$3" 0 "$4"; }
-G()  { run "$1" gum  "$2" "$3" 1 "$4"; }
-GP() { run "$1" gum  "$2" "$3" 1 "$4"; }
+T()  { run "$1" text "$2" "$3" 0 apt "$4"; }
+P()  { run "$1" text "$2" "$3" 0 pkg "$4"; }
+G()  { run "$1" gum  "$2" "$3" 1 apt "$4"; }
+GP() { run "$1" gum  "$2" "$3" 1 pkg "$4"; }
 
 # --- regression (text/apt) ---
 T install_ok       <(printf '1\npython3\n')            "python3 installed!"
@@ -198,6 +198,14 @@ T doctor_ok        <(printf '23\ny\n')                       "All helper tools p
 T export_json      <(printf '21\n2\n\n')                     "Exported 2 packages" "pkg-export.json|"
 T fav_unpin        <(printf '31\n5\n\n31\n5\n')              "Favorites removed from the main menu"
 T history_clear    <(printf '1\npython3\n\n25\n5\ny\n')      "History cleared" ".pkg-manager.log|"
+T import_ok        <(printf '22\n%s/tmp/import_ok/pkg-list.txt\ny\n' "$PWD") "Import complete!"
+T group_remove     <(printf '34\n3\n1\ny\n')                 "Removing group"
+T fixbroken_ok     <(printf '17\ny\n')                       "Dependency problems fixed!"
+T unhold_ok        <(printf '15\n2\npython3\n')              "no longer held"
+T hold_show        <(printf '15\n3\n')                       "Held packages:"
+T stats_cache      <(printf '27\n4\n')                       "Cache breakdown"
+T settings_theme   <(printf '24\n2\n2\n')                    "Settings saved"
+T settings_gum     <(printf '24\n3\n')                       "Settings saved"
 
 # --- pkg mode ---
 P pkg_list         <(printf '4\n')                     "python3"

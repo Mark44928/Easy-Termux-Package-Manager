@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake python3 — deterministic JSON export for the test suite
+printf '{\n  "packages": [\n'
+grep . | awk '{ printf "    \"%s\",\n", $0 }'
+printf '  ]\n}\n'

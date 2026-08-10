@@ -2,11 +2,11 @@
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v2.0-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-112%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen" alt="Tests">
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E2.1k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E2.3k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -197,7 +197,7 @@ pkg-manager      # installed via install.sh / manual method
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 19 | 💾 Backup installed packages | dump names to `~/pkg-backup-*.txt` |
-| 20 | ♻️  Restore from backup | `xargs apt install -y` |
+| 20 | ♻️  Restore from backup | installs the listed packages (batched into one `apt install`, falls back to per-package reporting on failure) |
 | 21 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
 | 22 | 📥 Import package list | install from any list file |
 
@@ -207,7 +207,7 @@ pkg-manager      # installed via install.sh / manual method
 |:-:|--------|--------------|
 | 23 | 🔧 Dependency doctor | check/install `gum`, `git`, `curl`, `figlet` |
 | 24 | ⚙️  Settings | backend, theme, toggles, quiet mode, safety lock |
-| 25 | 📋 History & log viewer | view/filter the log, show errors, undo last removal, clear |
+| 25 | 📋 History & log viewer | view/filter the log, show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
 | 26 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
 
 #### 📊 Insight & upgrades (18, 27–29, 32)
@@ -237,7 +237,7 @@ pkg-manager      # installed via install.sh / manual method
 
 > Labels above use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update these tables too.
 >
-> Commands assume the default `apt` backend; switch to Termux's `pkg` wrapper anytime from **Settings → Package manager**. Note: the deep-dive & maintenance tools (dependencies, sizes, files, owner, hold, purge, fix-broken, doctor, stats, cache, dependency tree, orphan finder) always call `apt`/`dpkg` directly, even after switching to `pkg`.
+> Commands assume the default `apt` backend; switch to Termux's `pkg` wrapper anytime from **Settings → Package manager**. Note: the inspect & dependency tools (dependencies, sizes, files, owner, hold, purge, fix-broken, stats, cache, dependency tree, orphan finder, maintenance) call `apt`/`dpkg` directly where `pkg` has no equivalent subcommand; plain install/remove/upgrade/clean always respect your chosen backend.
 
 ### 🏁 First run
 
@@ -250,11 +250,11 @@ pkg-manager      # installed via install.sh / manual method
 ### 💾 Backup / restore workflow
 
 ```bash
-# Create a backup (option 19) → ~/pkg-backup-20260802-123456.txt
+# Create a backup (option 19) → ~/pkg-backup-20260802-123456-<pid>.txt
 # On a fresh device:
 #   Option 20 → pick the file → confirm → everything reinstalls
-# Or restore with a one-liner:
-xargs apt install -y < ~/pkg-backup-*.txt
+# Or restore with a one-liner (the app batches the same way):
+tr ' ' '\n' < ~/pkg-backup-*.txt | xargs apt install -y
 ```
 
 ### ⚙️ Settings & config
@@ -276,6 +276,8 @@ FAVS_PINNED=0     # 1 = show favorite packages at the end of the main menu
 
 Changes made in **Settings** apply immediately; edits to the file itself apply on the next launch.
 
+> The config is parsed as plain `KEY=VALUE` data (never executed), so a stray line, comment or even a CRLF/Windows-created file is harmless — unknown keys are ignored and invalid values fall back to the defaults above.
+
 > **Icons:** the default `nerd` set uses Nerd Fonts glyphs and needs a Nerd Font installed in the terminal. If you see empty boxes, switch to `emoji` from **Settings → Icons** (or set `ICONS=emoji` above).
 
 ## 📁 Project Structure
@@ -284,8 +286,8 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~2.1k lines, single file)
-├── tests/          # automated harness (fakebin stubs + 112 tests) — bash tests/run-tests.sh
+├── manager.sh      # the entire app (~2.3k lines, single file)
+├── tests/          # automated harness (fakebin stubs + 120 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -314,7 +316,7 @@ A few ground rules to keep the docs in sync:
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
 - **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v2.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 112 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 120 scenario tests).
 
 ## 📜 License
 

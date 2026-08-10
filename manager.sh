@@ -43,8 +43,46 @@ cleanup_tmp() {
 }
 trap cleanup_tmp EXIT
 
-# shellcheck disable=SC1091  # config is a runtime-generated file, not static input
-[ -f "$HOME/.pkg-manager.conf" ] && source "$HOME/.pkg-manager.conf"
+# Load .pkg-manager.conf as plain KEY=VALUE data, never `source`d: the file
+# may be planted / hand-edited, and sourcing it would run arbitrary code.
+load_config() {
+    local line k v
+    local c_mgr c_theme c_confirm c_log c_gum c_icons c_quiet c_lock c_startup c_favs
+    [ -f "$HOME/.pkg-manager.conf" ] || return 0
+    while IFS= read -r line; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        case "$line" in
+            *=*) k="${line%%=*}" v="${line#*=}" ;;
+            *) continue ;;
+        esac
+        case "$k" in
+            MGR)            c_mgr=$v ;;
+            THEME)          c_theme=$v ;;
+            CONFIRM)        c_confirm=$v ;;
+            LOG_ENABLED)    c_log=$v ;;
+            GUM_ENABLED)    c_gum=$v ;;
+            ICONS)          c_icons=$v ;;
+            QUIET)          c_quiet=$v ;;
+            LOCK)           c_lock=$v ;;
+            STARTUP_CHECK)  c_startup=$v ;;
+            FAVS_PINNED)    c_favs=$v ;;
+        esac
+    done < "$HOME/.pkg-manager.conf"
+    [ -n "$c_mgr" ] && MGR=$c_mgr
+    [ -n "$c_theme" ] && THEME=$c_theme
+    [ -n "$c_confirm" ] && CONFIRM=$c_confirm
+    [ -n "$c_log" ] && LOG_ENABLED=$c_log
+    [ -n "$c_gum" ] && GUM_ENABLED=$c_gum
+    [ -n "$c_icons" ] && ICONS=$c_icons
+    [ -n "$c_quiet" ] && QUIET=$c_quiet
+    [ -n "$c_lock" ] && LOCK=$c_lock
+    [ -n "$c_startup" ] && STARTUP_CHECK=$c_startup
+    [ -n "$c_favs" ] && FAVS_PINNED=$c_favs
+    return 0
+}
+load_config
 
 PREFIX="${PREFIX:-/usr/local}"
 
@@ -167,11 +205,11 @@ if [ "$GUM_ENABLED" = "1" ]; then
         GUM=1
     elif ! command -v gum >/dev/null 2>&1; then
         echo "gum is not installed — needed for the full fancy UI."
-        echo "    pkg install gum"
+        echo "    $MGR install gum"
         printf "Install gum now? [y/N] "
         read -r _yn
         if [[ "${_yn,,}" == "y" ]]; then
-            if pkg install -y gum >/dev/null 2>&1; then
+            if "$MGR" install -y gum >/dev/null 2>&1; then
                 GUM=1
                 echo "gum installed!"
             else
@@ -525,15 +563,47 @@ apt_hint() {
     esac
 }
 
-# run_multi_op — install/remove packages one at a time and report per-package
-# results with a clear summary. Returns 0 if all succeeded, 1 otherwise.
+# run_multi_op — install/remove a list of packages with clear per-package
+# results. Tries ONE batched apt invocation first (a single resolver pass and
+# dpkg lock — the fast path for big favorites/restores); only if the batch
+# fails does it retry package-by-package to attribute the failure.
+# Returns 0 if everything succeeded, 1 otherwise.
 # Usage: run_multi_op <install|remove> <pkg1> [pkg2...]
 run_multi_op() {
-    local op="$1" pkg out hint
+    local op="$1" out hint
     shift
     local total=$# ok=0 fail=0
-    local -a failed=()
-    for pkg in "$@"; do
+    local -a failed=() uniq=()
+    local p seen_str=" "
+    for p in "$@"; do
+        case " $seen_str " in
+            *" $p "*) continue ;;
+        esac
+        seen_str="$seen_str $p "
+        uniq+=("$p")
+    done
+    total=${#uniq[@]}
+    [ "$total" -eq 0 ] && return 0
+    if [ "$total" -eq 1 ]; then
+        if out=$("$MGR" "$op" -y "${uniq[0]}" 2>&1); then
+            hint=$(apt_hint "$out")
+            if [ -n "$hint" ]; then
+                ok "$hint"
+            else
+                ok "${uniq[0]}"
+            fi
+            return 0
+        fi
+        hint=$(apt_hint "$out")
+        err "${uniq[0]} — ${hint:-$op failed}"
+        log_err "$op ${uniq[0]}: ${hint:-$op failed}"
+        return 1
+    fi
+    if out=$("$MGR" "$op" -y "${uniq[@]}" 2>&1); then
+        for p in "${uniq[@]}"; do ok "$p"; done
+        return 0
+    fi
+    for pkg in "${uniq[@]}"; do
         if out=$("$MGR" "$op" -y "$pkg" 2>&1); then
             ok=$((ok+1))
             ok "$pkg"
@@ -1075,8 +1145,12 @@ do_stats() {
         Overview)
             log "package stats"
             say "$ICON_CHART  Package stats"
-            local count sizes total cache
-            count=$(list_installed_names | awk 'NF' | wc -l)
+            local count sizes total cache installed
+            if ! installed=$(list_installed_names 2>/dev/null); then
+                err "Could not read the installed package list."
+                return
+            fi
+            count=$(printf '%s\n' "$installed" | awk 'NF' | wc -l)
             ok "Installed packages: $count"
             sizes=$(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null)
             if [ -n "$sizes" ]; then
@@ -1538,7 +1612,7 @@ do_favs() {
 
 do_backup() {
     local file
-    file="$HOME/pkg-backup-$(date +%Y%m%d-%H%M%S).txt"
+    file="$HOME/pkg-backup-$(date +%Y%m%d-%H%M%S)-$$.txt"
     say "$ICON_BACKUP Backing up installed packages..."
     if list_installed_names > "$file" 2>/dev/null && [ -s "$file" ]; then
         log "backup → $file"
@@ -1562,6 +1636,9 @@ install_from_list() {
 do_restore() {
     local file
     file=$(pick_file "Select a backup file")
+    case "$file" in
+        -* ) err "Invalid path — must not start with '-'."; return ;;
+    esac
     [ -n "$file" ] && [ -f "$file" ] || { warn "No file selected."; return; }
     if ! confirm "$ICON_RESTORE  Restore $(awk 'NF' "$file" | filter_pkgs | wc -l) packages from $(basename "$file")?"; then
         say "Canceled."
@@ -1599,6 +1676,9 @@ do_export() {
         read -r file
     fi
     [ -n "$file" ] || file="$HOME/pkg-export.$ext"
+    case "$file" in
+        -* ) err "Invalid path — must not start with '-'."; return ;;
+    esac
     if [ -e "$file" ] && ! confirm_danger "$ICON_EXPORT  File $file exists — overwrite it?"; then
         say "Canceled."
         return
@@ -1635,6 +1715,9 @@ do_export() {
 do_import() {
     local file
     file=$(pick_file "Select a package list file")
+    case "$file" in
+        -* ) err "Invalid path — must not start with '-'."; return ;;
+    esac
     [ -n "$file" ] && [ -f "$file" ] || { warn "No file selected."; return; }
     if ! confirm "$ICON_IMPORT Install $(awk 'NF' "$file" | filter_pkgs | wc -l) packages from $(basename "$file")?"; then
         say "Canceled."
@@ -1648,21 +1731,28 @@ do_import() {
 }
 
 do_doctor() {
+    local missing=() dep
     say "$ICON_DOCTOR Checking helper tools..."
-    if command -v gum >/dev/null 2>&1; then
-        ok "gum"
-        say "All helper tools present!"
-        return
-    fi
-    warn "gum missing"
-    if confirm "Install gum?"; then
-        log "install helper gum"
-        if "$MGR" install -y gum 2>/dev/null; then
-            ok "Installed: gum"
-            refresh_gum
+    for dep in gum git curl figlet; do
+        if command -v "$dep" >/dev/null 2>&1; then
+            ok "$dep"
         else
-            err "Install failed"
+            warn "$dep missing"
+            missing+=("$dep")
         fi
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        if confirm "Install: ${missing[*]} ?"; then
+            log "install helpers: ${missing[*]}"
+            if "$MGR" install -y "${missing[@]}" 2>/dev/null; then
+                ok "Installed: ${missing[*]}"
+                refresh_gum
+            else
+                err "Install failed"
+            fi
+        fi
+    else
+        say "All helper tools present!"
     fi
 }
 
@@ -1769,7 +1859,7 @@ do_history() {
         *errors*)
             say "$ICON_ERROR Errors & failures in the log:"
             local errs
-            errs=$(grep -iE 'err|fail|✗' "$LOG_FILE" || true)
+            errs=$(grep -E 'FAIL:|failed|✗' "$LOG_FILE" || true)
             if [ -n "$errs" ]; then
                 printf '%s\n' "$errs"
             else
@@ -1845,7 +1935,7 @@ do_maintenance() {
     else
         ok "All packages are up to date."
     fi
-local simout
+    local simout
     if simout=$(apt autoremove --simulate -y 2>&1); then
         orphans=$(printf '%s\n' "$simout" | awk '
             /will be REMOVED:/ {on=1; next}
@@ -1866,14 +1956,21 @@ local simout
     fi
     if broken=$(dpkg --audit 2>&1); then
         if [ -n "$broken" ]; then
-            warn "$ICON_BUG  Broken packages found."
+            warn "$ICON_BUG Broken packages found:"
+            printf '%s\n' "$broken"
             issues=$((issues+1))
         else
             ok "No broken packages."
         fi
     else
-        err "Could not audit packages for breakage."
-        issues=$((issues+1))
+        if [ -n "$broken" ]; then
+            warn "$ICON_BUG Broken packages found:"
+            printf '%s\n' "$broken"
+            issues=$((issues+1))
+        else
+            err "Could not audit packages for breakage."
+            issues=$((issues+1))
+        fi
     fi
     cache=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
     if [ -n "$cache" ]; then
@@ -1881,8 +1978,13 @@ local simout
     else
         say "Download cache: empty"
     fi
-    held=$(apt-mark showhold 2>/dev/null | grep -cv '^$')
-    say "Held packages: $held"
+    if heldlist=$(apt-mark showhold 2>/dev/null); then
+        held=$(grep -cv '^$' <<< "$heldlist")
+        say "Held packages: $held"
+    else
+        err "Could not read held packages."
+        issues=$((issues+1))
+    fi
     if [ "$issues" -eq 0 ]; then
         ok "System looks healthy!"
         return
@@ -1934,12 +2036,20 @@ load_groups() {
         ["network tools"]="curl wget openssh nmap"
     )
     if [ -f "$GROUPS_FILE" ]; then
-        local line name pkgs
+        local line name pkgs pkgs_clean
         while IFS= read -r line; do
             [ -n "$line" ] || continue
-            name="${line%%::*}"
-            pkgs="${line#*::}"
-            [ -n "$name" ] && [ -n "$pkgs" ] && PKG_GROUPS["$name"]="$pkgs"
+            case "$line" in
+                *::*) name="${line%%::*}" pkgs="${line#*::}" ;;
+                *) continue ;;   # malformed line: no "::" delimiter
+            esac
+            [ -n "$name" ] || continue
+            case "$name" in
+                *[!-[:space:]A-Za-z0-9_]*) continue ;;   # name must match create-time sanitization
+            esac
+            pkgs_clean=$(printf '%s\n' "$pkgs" | tr ' ' '\n' | filter_pkgs | tr '\n' ' ')
+            [ -n "$pkgs_clean" ] || continue
+            PKG_GROUPS["$name"]="$pkgs_clean"
         done < "$GROUPS_FILE"
     fi
 }
@@ -2030,7 +2140,7 @@ do_groups() {
                 return
             fi
             if [ "$GUM" = "1" ]; then
-                mapfile -t custom_names < <(sed 's/::.*//' "$GROUPS_FILE")
+                mapfile -t custom_names < <(sed 's/::.*//' "$GROUPS_FILE" | grep -E '^[A-Za-z0-9 _-]+$')
                 gname=$(gum choose --header "$ICON_TRASH  Pick custom group to delete" "${custom_names[@]}")
             else
                 printf 'Custom groups:\n' >&2
@@ -2043,6 +2153,9 @@ do_groups() {
                 esac
             fi
             [ -n "$gname" ] || return
+            case "$gname" in
+                *[!-[:space:]A-Za-z0-9_]*) err "Invalid group name."; return ;;
+            esac
             if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
                 if tmp=$(scratch_new); then
                     grep -v "^${gname}::" "$GROUPS_FILE" > "$tmp" || true

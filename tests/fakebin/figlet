@@ -1,0 +1,3 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake figlet — satisfies the do_doctor presence check
+exit 0
