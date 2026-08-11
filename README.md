@@ -13,7 +13,7 @@
 
 # Easy Termux Package Manager
 
-Install, remove, search, inspect, back up, and repair packages on Termux — without ever touching a `pkg` or `apt` command again.
+Install, remove, search, inspect, back up, and repair packages on Termux — without ~ever~ touching a `pkg` or `apt` command ~again.~
 
 Wait that's boring, let's try again.
 
