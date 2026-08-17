@@ -108,7 +108,7 @@ elif [ -d "$HOME/.termux" ]; then
     printf '%b\n' "  ${CYN}[1]${R} ${BD}CaskaydiaCove${R} (recommended) — clean, balanced, gorgeous"
     printf '%b\n' "  ${CYN}[2]${R} ${BD}FiraCode${R} (alternative)      — the classic coding font"
     printf '%b\n' "  ${DM}[s]${R} Skip (icons fall back to emoji inside the app)"
-    printf '%b\n' "  ${DM}Tip: an invalid choice simply skips the install — no harm done.${R}"
+    printf '%b\n' "  ${DM}Tip: an invalid choice simply skips the install — no harm done. 💡${R}"
     printf '%b'   "Choice ${CYN}[1]${R} or ${DM}[s]${R}: "
     if [ -t 0 ]; then
         read -r _ans
