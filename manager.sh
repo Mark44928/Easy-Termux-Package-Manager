@@ -84,7 +84,7 @@ load_config() {
 }
 load_config
 
-PREFIX="${PREFIX:-/usr/local}"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 
 # env overrides win over the config file
 [ -n "$MGR_ENV" ] && MGR=$MGR_ENV

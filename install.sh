@@ -17,7 +17,7 @@ warn()    { printf '%b\n' "  ${YEL}⚠${R} ${*}"; }
 divider() { printf '%b\n' "${DM}$(printf '─%.0s' {1..50})${R}"; }
 
 REPO="https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master"
-PREFIX="${PREFIX:-/usr/local}"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 BIN="$PREFIX/bin/pkg-manager"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 FONT_DIR="$DIR/fonts"
