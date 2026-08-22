@@ -207,3 +207,39 @@ Three places: badge in README, ASCII art line (`v2.0`), fallback string in `mana
 - **Dependency tree depth cap at 4** -- `dep_tree()` (line 1260) stops recursion at depth 4 to prevent runaway on circular deps or massive trees. This is intentional, not a bug.
 - **`list_upgradable()` propagates apt's exit code** -- callers can distinguish "no packages upgradable" (exit 0, empty output) from "apt failed" (non-zero exit). Check `$?` after calling it.
 - **Menu rebuild on favorites change** -- `FAVS_PINNED=1` triggers `build_menu()` after add/remove/pin/unpin. This is O(n) on the number of menu items but n is always ~35, so it's instant.
+
+### gum CLI specifics (the UI layer)
+
+- **`gum confirm` exits 1 on "No"** -- it is not an error; `if gum confirm ...; then` handles it. Never wrap in `set -e` context without expecting the non-zero path.
+- **Interactive gum commands require a TTY** -- piped stdin/stdout or CI contexts make them fail or hang. This app's `refresh_gum()` probes gum with `gum style "probe"` before trusting it; keep that probe when touching UI init.
+- **`gum spin` swallows child output by default** -- use `--show-output` if output must survive. This app uses `run_spin()` which returns the wrapped command's exit code -- preserve that contract.
+- **`gum choose` prints selection(s) to stdout, one per line** with `--no-limit`. The fake `gum` in tests pops one base64-encoded line from `GUM_QUEUE` per call -- adding new gum flag usage requires updating `tests/helps/<subcommand>` allowlists or tests fail with `UNKNOWN FLAG`.
+- **Flags are validated against known-good lists in tests** -- every `-flag` passed to gum is grepped against `tests/helps/{choose,input,confirm,file,style,pager,spin}`; unknown flags fail the suite.
+
+### Terminal rendering quirks in Termux
+
+- **ANSI SGR quirks** -- Termux supports truecolor (`\e[38;2;R;G;Bm`, semicolon form) and colon-separated CSI params since v0.118-era fixes. Blink (SGR 5) is NOT supported. Empty SGR params (`\e[31;m`) are parsed as reset-to-default, matching ECMA-48.
+- **User color themes override your colors** -- `~/../usr/etc/colors.properties` remaps the 16-color palette; a "blue" foreground may render red on customized installs. This app uses 256-color codes (46, 45, 212...) which are also themeable but more predictable than named ANSI colors.
+- **Escape sequences across `\n` in prompts** -- styling applied before a newline may not persist after it during pinch-zoom redraws. Not relevant inside this app (it styles whole strings via gum), but relevant if hand-rolling prompt-like output.
+- **The app never emits raw ANSI itself** -- all styling goes through `gum style --foreground <256-color>` or plain text. Keep it that way so both UI modes render identically.
+
+### Termux app variants and signing
+
+- **Three mutually incompatible install sources** -- F-Droid, GitHub, and Google Play builds each have different APK signing keys. Plugins (Termux:API, Termux:Boot) must match the main app's signature or they cannot communicate. Users cannot mix sources; switching requires full uninstall of app + all plugins.
+- **Play Store builds are deprecated/divergent** -- functionally equivalent to v0.108, missing years of fixes, and lack RUN_COMMAND intent. Official sources are F-Droid and GitHub only. Do not test assumptions against Play Store builds.
+- **`TERMUX_APK_RELEASE` env var** -- set to `F_DROID`, `GITHUB` (or `GITHUB_DEBUG_BUILD`), `GOOGLE_PLAY_STORE`, or `UNKNOWN`; useful for diagnosing which variant a bug report comes from. Also available: `TERMUX_VERSION`, `TERMUX_APP_PACKAGE_MANAGER`, `TERMUX_IS_DEBUGGABLE_BUILD`.
+- **This repo only depends on bash/apt/dpkg/gum** -- none of the plugin apps are required. But font install via installer touches `~/.termux/font.ttf` which the main app reads; Termux:Styling is NOT needed for that path.
+
+### Debugging and diagnostics
+
+- **`termux-info`** -- dumps Termux variables, architecture, subscribed repos, updatable packages, Android/kernel versions. First thing to request in a user bug report.
+- **`logcat`** -- Android log stream viewable from inside Termux. Set app log level via Termux Settings > Debugging > Log Level (Normal/Debug/Verbose) first; verbose logs can contain private data.
+- **Built-in Report Issue** -- long-press in terminal > More... > Report Issue generates a full report with system info + logcat dump. Ask users for its complete output; partial screenshots get issues closed.
+- **Test failures show the manager's own output** -- `tests/tmp/<test-name>/run.log` holds stdout+stderr of the failed run; `calls` and `validate` files hold the fake-gum call log and flag validation errors. Check these before guessing.
+
+### Effective debugging workflow for this repo
+
+1. Reproduce with the harness: add a `T`/`G` case mirroring the user flow, run `bash tests/run-tests.sh`.
+2. Inspect `tests/tmp/<name>/run.log` for raw output; the harness already flags `command not found`, bash line errors, and timeouts.
+3. Only then run `bash manager.sh` manually (text mode: `GUM_ENABLED=0 bash manager.sh`) -- real apt calls hit the network and modify the device.
+4. Never test destructive paths (purge, autoremove) against a real device; extend the fakebin stub instead.
