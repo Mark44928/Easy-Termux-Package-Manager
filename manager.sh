@@ -638,10 +638,10 @@ list_upgradable() {
 do_install() {
     ask_name "Package name to install"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
-    log "install $PKG_NAME"
     say "$ICON_INSTALL Installing $PKG_NAME..."
     local out hint
     if out=$("$MGR" install -y "$PKG_NAME" 2>&1); then
+        log "install $PKG_NAME"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -655,6 +655,7 @@ do_install() {
         else
             err "Failed to install $PKG_NAME."
         fi
+        log_err "install $PKG_NAME: ${hint:-install failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -666,10 +667,10 @@ do_uninstall() {
         say "Canceled."
         return
     fi
-    log "remove $PKG_NAME"
     say "$ICON_UNINSTALL  Removing $PKG_NAME..."
     local out hint
     if out=$("$MGR" remove -y "$PKG_NAME" 2>&1); then
+        log "remove $PKG_NAME"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -683,6 +684,7 @@ do_uninstall() {
         else
             err "Failed to remove $PKG_NAME."
         fi
+        log_err "remove $PKG_NAME: ${hint:-remove failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -767,10 +769,10 @@ do_reinstall() {
         say "Canceled."
         return
     fi
-    log "reinstall $PKG_NAME"
     say "$ICON_REINSTALL Reinstalling $PKG_NAME..."
     local out hint
     if out=$("$MGR" install --reinstall -y "$PKG_NAME" 2>&1); then
+        log "reinstall $PKG_NAME"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -784,6 +786,7 @@ do_reinstall() {
         else
             err "Failed to reinstall $PKG_NAME."
         fi
+        log_err "reinstall $PKG_NAME: ${hint:-reinstall failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -1024,10 +1027,10 @@ do_purge() {
         say "Canceled."
         return
     fi
-    log "purge $PKG_NAME"
     say "$ICON_PURGE Purging $PKG_NAME..."
     local out hint
     if out=$(apt purge -y "$PKG_NAME" 2>&1); then
+        log "purge $PKG_NAME"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -1041,6 +1044,7 @@ do_purge() {
         else
             err "Failed to purge $PKG_NAME."
         fi
+        log_err "purge $PKG_NAME: ${hint:-purge failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -1591,9 +1595,9 @@ do_favs() {
                 return
             fi
             if confirm_danger "$ICON_STAR Install favorite $name?"; then
-                log "favorite install $name"
                 local out hint
                 if out=$("$MGR" install -y "$name" 2>&1); then
+                    log "favorite install $name"
                     hint=$(apt_hint "$out")
                     if [ -n "$hint" ]; then
                         ok "$hint"
@@ -1603,6 +1607,7 @@ do_favs() {
                 else
                     hint=$(apt_hint "$out")
                     err "${hint:-"Failed to install $name."}"
+                    log_err "favorite install $name: ${hint:-install failed}"
                 fi
             fi
             ;;
@@ -2199,9 +2204,9 @@ pin_install() {
     [ -n "$pkg" ] || { err "Invalid pinned package name."; return; }
     valid_pkg_name "$pkg" || { err "Invalid pinned package name '$pkg'."; return; }
     if confirm_danger "$ICON_STAR Install pinned package $pkg?"; then
-        log "pinned install $pkg"
         say "$ICON_STAR Installing $pkg..."
         if out=$("$MGR" install -y "$pkg" 2>&1); then
+            log "pinned install $pkg"
             hint=$(apt_hint "$out")
             if [ -n "$hint" ]; then
                 ok "$hint"
@@ -2211,6 +2216,7 @@ pin_install() {
         else
             hint=$(apt_hint "$out")
             err "${hint:-Failed to install $pkg.}"
+            log_err "pinned install $pkg: ${hint:-install failed}"
             printf '%s\n' "$out" | tail -n 4
         fi
     fi
