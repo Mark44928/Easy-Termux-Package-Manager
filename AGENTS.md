@@ -243,3 +243,42 @@ Three places: badge in README, ASCII art line (`v2.0`), fallback string in `mana
 2. Inspect `tests/tmp/<name>/run.log` for raw output; the harness already flags `command not found`, bash line errors, and timeouts.
 3. Only then run `bash manager.sh` manually (text mode: `GUM_ENABLED=0 bash manager.sh`) -- real apt calls hit the network and modify the device.
 4. Never test destructive paths (purge, autoremove) against a real device; extend the fakebin stub instead.
+
+### Locale, timezone, and DNS (not standard Linux)
+
+- **Only two locales exist** -- Bionic provides just `C`/`POSIX` and `C.UTF-8` (aliased `en_US.UTF-8`). No other locale will ever resolve; `LC_*` variables are mostly ignored by Bionic's `setlocale`. Do not add locale-dependent logic expecting glibc behavior.
+- **`TZ` is not exported by default** -- `date` reads the Android system timezone via Bionic, so timestamps are usually right, but programs that read `$TZ` directly (emacs, Go binaries, some Python libs) can show UTC. Workaround if ever needed: `export TZ=$(getprop persist.sys.timezone)` in a wrapper, never globally.
+- **No `/etc/resolv.conf`** -- Android has none. Programs that hardcode that path fail with DNS errors (`read udp [::1]:53: connection refused`). The optional `resolv-conf` package installs `$PREFIX/etc/resolv.conf`; `termux-chroot`/`proot-distro` bind-mount it into place. This app never resolves DNS itself, so it is unaffected.
+- **No `/etc/localtime` or `/usr/share/zoneinfo`** -- Android keeps tzdata at `/system/usr/share/tzdata`. There is no `tzdata` Termux package and `dpkg-reconfigure tzdata` does not exist.
+
+### Filesystem layout mapping ($PREFIX)
+
+| Standard Linux | Termux equivalent |
+|----------------|-------------------|
+| `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin` | `$PREFIX/bin` |
+| `/etc` | `$PREFIX/etc` |
+| `/tmp`, `/var/tmp` | `$PREFIX/tmp` (erased on every app restart) |
+| `/run` | `$PREFIX/var/run` |
+| `/var/lib/dpkg/status` | `$PREFIX/var/lib/dpkg/status` |
+| `/var/cache/apt/archives` | `$PREFIX/var/cache/apt/archives` |
+| `/etc/apt/sources.list` | `$PREFIX/etc/apt/sources.list` |
+
+- Repos beyond `main`: `root-repo` and `x11-repo` packages drop `.sources`/`.list` files into `$PREFIX/etc/apt/sources.list.d/`.
+- Because `$PREFIX/tmp` is wiped when the Termux app restarts, nothing long-lived may live there -- another reason this app keeps scratch files in `$HOME`.
+
+### User-facing failure playbook (support scenarios)
+
+- **"command not found" right after install** -- `$PREFIX/bin` was not on PATH in the current shell; user must open a new session. Not a bug.
+- **Icons render as empty boxes** -- no Nerd Font installed. Tell users to switch Settings > Icons > emoji, or install a font from `fonts/`.
+- **Font installed but not applied** -- `termux-reload-settings` reloads most things, but a full app kill is sometimes required: `am force-stop com.termux` (or type `exit`), then reopen. Swiping from Recents does NOT kill it.
+- **Stuck dpkg locks / interrupted operations** -- recovery order: `dpkg --configure -a`, then `apt --fix-broken install`, then retry. Never delete lock files while another apt process might be running.
+- **"Unable to locate package" on fresh installs** -- stale lists; run Upgrade center (apt update) first. `pkg` auto-updates, raw `apt` does not.
+- **Upgrade breaks mid-way (busybox/coreutils transition)** -- do NOT abort; let it finish. If broken: `pkg upgrade` again, then `dpkg --configure -a`. Removing busybox before coreutils/findutils/tar are installed bricks the environment.
+
+### Codebase-specific path audit (verified safe)
+
+- Scratch files: `$HOME/.pkg-manager.XXXXXX` via mktemp -- survives `$PREFIX/tmp` wipes, cleaned by EXIT trap.
+- Data files: all in `$HOME` -- unaffected by app restarts and `$PREFIX/tmp` cleanup.
+- Cache stats: reads `$PREFIX/var/cache/apt/archives` with `du` -- correct Termux location, guarded with `2>/dev/null` fallbacks.
+- Log timestamps: `date '+%Y-%m-%d %H:%M:%S'` -- correct on Android without TZ set; do not switch to `date -u`.
+- Installer shebang fix: `sed -i "1s|^#!.*|#!$(command -v bash)|"` in install.sh -- handles the non-FHS interpreter path; keep it when editing install.sh.
