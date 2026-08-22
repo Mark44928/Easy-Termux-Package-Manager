@@ -141,3 +141,36 @@ Three places: badge in README, ASCII art line (`v2.0`), fallback string in `mana
 - **`apt_hint()` must be called after every apt operation** -- it translates cryptic errors into user-friendly messages. Without it, users see raw dpkg/apt output.
 - **Temp files via `scratch_new()` only** -- never use fixed paths like `/tmp/foo`. The EXIT trap cleans up all scratch files. This prevents symlink attacks on multi-user systems (relevant if Termux ever gains multi-user support).
 - **`filter_pkgs()` before any user input hits apt/dpkg** -- it calls `valid_pkg_name()` and strips invalid names. Critical for preventing option injection via `-f`, `--force`, etc.
+
+### Environment variable traps
+
+- **Never set `LD_LIBRARY_PATH` globally** -- it overrides Android's built-in library search path and breaks packages like `mpd`, `mpv`, `pulseaudio`. Set it per-binary with `LD_LIBRARY_PATH=/your/path ./binary` if needed at all. Modern Termux uses `DT_RUNPATH` ELF sections instead.
+- **`TMPDIR` may not be set in SSH sessions** -- Termux sets it in the app, but SSH/logins may miss it. Export `TMPDIR=$HOME/tmp` in `~/.profile` as a safety net. Many programs silently fall back to `/tmp` which does not exist.
+- **`$PREFIX` is deprecated in favor of `$TERMUX__PREFIX`** -- double underscore is the new namespace. The old `$PREFIX` still works but may be removed in a future Termux 1.0. For scripts targeting the package build system, use `@TERMUX_PREFIX@` placeholders (replaced at build time), not runtime variables.
+- **Cron jobs run with a stripped environment** -- `cronie` only inherits `USER`, `HOME`, `LOGNAME`, `PATH`, `LANG`, `SHELL`, `PWD`. It lacks `TMPDIR`, `TZ`, `LD_PRELOAD`, `PREFIX`, `ANDROID_ROOT`. Source `~/.profile` in cron entries: `* * * * * . $HOME/.profile; your-command`.
+- **`/system/bin` not in PATH, and that is intentional** -- Termux deliberately excludes it to avoid ABI conflicts. Adding it globally can cause `CANNOT LINK EXECUTABLE` errors when Termux binaries pick up incompatible system libraries.
+
+### Background processes and battery
+
+- **Android kills background apps aggressively** -- without wake lock, `crond` and background processes freeze when the screen is off. Enable wake lock via the Termux notification (expand and tap WAKE) or `termux-wake-lock`.
+- **Cronie needs the app open** -- `crond` must be started manually (`crond &`), and the Termux app must stay in memory. Closing Termux from Recents kills all child processes.
+- **`nohup` is not enough** -- use `nohup cmd &` but also ensure wake lock is on, or Android will freeze the process regardless.
+- **`termux-job-scheduler`** uses Android's JobScheduler API -- works even without an active session, but only runs when Android decides (battery optimization, charging state, etc.). Check Settings > Apps > Termux > Battery to disable optimization.
+
+### Storage and file access
+
+- **External storage is mounted `noexec`** -- binaries cannot execute from `/sdcard` or `~/storage/shared`. Copy them to `$PREFIX/bin` or use a wrapper like `noexec` (ByteJoseph/noexec) to automate the copy-run-delete cycle.
+- **Android 11+ scoped storage** -- `Android/data` and `Android/obb` are restricted. Even with "All Files" permission, direct shell access to other apps' `Android/data` is blocked. Only `Android/data/com.termux` is accessible (created via `termux-setup-storage` which uses Android APIs).
+- **`~/storage` is symlinks, not bind mounts** -- `~/storage/shared` points to `/storage/emulated/0`, `~/storage/downloads` to `~/storage/shared/Download`, etc. Access is gated by Android's FUSE layer on Android 11+.
+- **`termux-setup-storage` may fail silently** -- on some devices/configs, the permission prompt does not appear. Revoke and re-grant storage permission in Android Settings, then re-run the command.
+- **Never `rm -rf ~/storage/shared/*`** -- this deletes the user's actual phone files. Always quote paths carefully and double-check before destructive operations on paths outside `$PREFIX`.
+
+### What to never do in this codebase
+
+- Do not `source` or `eval` anything from `~/.pkg-manager.conf`.
+- Do not use `/tmp` -- use `scratch_new()` with the EXIT trap.
+- Do not assume `gum` is installed -- always have the text-mode fallback.
+- Do not hardcode `/usr/bin`, `/bin`, `/etc` -- use `$PREFIX`.
+- Do not use `sudo` or assume root access exists.
+- Do not pipe untrusted input to `bash -c` or `eval` -- the search function's install-from-results uses `run_multi_op` with validated names only.
+- Do not use `set -e` in `manager.sh` -- it intentionally uses `set -o pipefail` only; `set -e` would break the menu loop.
