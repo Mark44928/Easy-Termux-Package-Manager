@@ -174,3 +174,36 @@ Three places: badge in README, ASCII art line (`v2.0`), fallback string in `mana
 - Do not use `sudo` or assume root access exists.
 - Do not pipe untrusted input to `bash -c` or `eval` -- the search function's install-from-results uses `run_multi_op` with validated names only.
 - Do not use `set -e` in `manager.sh` -- it intentionally uses `set -o pipefail` only; `set -e` would break the menu loop.
+
+### Termux ecosystem tools and companions
+
+- **Termux:Boot** -- run scripts at device boot from `~/.termux/boot/`. Scripts execute in sorted order. Always start with `termux-wake-lock` to keep the device awake. The app must be launched once manually after install for its receiver to register.
+- **Termux:API** -- provides `termux-notification`, `termux-toast`, `termux-vibrate`, `termux-clipboard-set`, `termux-battery-status`, `termux-wifi-connectioninfo`, etc. Requires both the main Termux app and the API app to be installed, signed with the same key. Notification actions run in `dash -c` (not bash), and inherit a different environment -- set `PATH` explicitly in action scripts.
+- **termux-reload-settings** -- applies changes to `~/.termux/termux.properties` (extra keys, bell behavior, colors, etc.) without restarting the app. Required after editing the properties file. On fresh installs, run `pkg upgrade` first as older `termux-tools` had a bug where this command aborts.
+- **termux-change-repo** -- interactive mirror selector for `apt` repositories. `pkg` handles mirror rotation automatically, but this script lets you pin a specific mirror or mirror group. Useful when `apt update` fails due to a dead mirror.
+- **termux-setup-storage** -- creates `~/storage/` symlinks to Android shared storage. Uses Android APIs, not shell, to create `Android/data/com.termux`. May fail silently if storage permission is not granted -- revoke and re-grant in Android Settings, then re-run.
+
+### Bash behavior quirks in Termux
+
+- **`~/.bashrc` may be sourced twice** -- Termux's `$PREFIX/etc/profile` sources `~/.bashrc` even for login shells. On standard Linux, login shells do not source `.bashrc`. If you use `readonly` or `export PATH` in `.bashrc`, it will error on re-source. Guard with `if ! shopt -q login_shell; then ... fi` or check `BASH_SOURCE`.
+- **Bash regex uses Bionic's POSIX regex, not GNU** -- `[[ "$var" =~ (a|b) ]]` works on glibc but fails on Bionic if the alternation starts or ends with `|`. Use `[[ "$var" =~ a|b ]]` or `[[ "$var" =~ (a|b|) ]]` with care. Bionic's regex is BSD-derived.
+- **`echo` does not interpret escape sequences by default** -- use `printf '%b\n'` instead of `echo -e`. Bionic's `echo` built-in ignores `-e` unless POSIXLY_CORRECT is not set.
+- **`read -p` is a bashism** -- POSIX `read` has no `-p` prompt flag. This app uses `printf` + `read -r` everywhere for portability across shells (sh, dash, bash).
+- **`local` is not POSIX** -- it is a bash/zsh extension. Works in Termux because `manager.sh` explicitly uses `#!/bin/bash`, but don't assume it works in all shell scripts on the device.
+
+### Security considerations for this codebase
+
+- **No eval on user input** -- `run_multi_op` builds the apt argument list via validated array expansion, never through string interpolation. Never change this to `eval "$MGR install $pkgs"`.
+- **Symlink attack prevention** -- `scratch_new()` uses `mktemp` to create temp files with random names. The EXIT trap (`cleanup_tmp`) removes them all. Never create temp files with predictable names like `/tmp/pkg-manager-$$.log`.
+- **Package name validation before every apt call** -- `valid_pkg_name()` is called in `ask_name()`, `filter_pkgs()`, `pin_install()`, `do_favs()`, and `run_multi_op()` dedup. This prevents injection of `-f`, `--force`, `--purge`, or shell metacharacters.
+- **Config file is not executable** -- `load_config()` reads it as text, never `source`s it. A malicious `~/.pkg-manager.conf` containing `$(malicious command)` is harmless.
+- **The installer uses atomic writes** -- `install.sh` writes to a `.tmp` file, then `mv`s it into place. This prevents a partial write from corrupting the installed binary. The font install uses the same pattern for `~/.termux/font.ttf`.
+- **Test harness isolates every test** -- each test gets its own `$HOME`/`$PREFIX` under `tests/tmp/`. Tests cannot affect each other or the real system. The EXIT trap cleans up scratch files even on Ctrl-C.
+
+### Performance and reliability
+
+- **`run_multi_op` batch optimization** -- the fast path runs one `apt install/remove -y` for all packages (single resolver pass, single dpkg lock, single progress display). Only on batch failure does it fall back to per-package retry. This makes favorites restore and bulk installs fast.
+- **`apt_hint()` is O(n) on output length** -- it's a case statement that matches substrings. For normal apt output (< 100 lines) this is instant. Don't worry about it.
+- **Dependency tree depth cap at 4** -- `dep_tree()` (line 1260) stops recursion at depth 4 to prevent runaway on circular deps or massive trees. This is intentional, not a bug.
+- **`list_upgradable()` propagates apt's exit code** -- callers can distinguish "no packages upgradable" (exit 0, empty output) from "apt failed" (non-zero exit). Check `$?` after calling it.
+- **Menu rebuild on favorites change** -- `FAVS_PINNED=1` triggers `build_menu()` after add/remove/pin/unpin. This is O(n) on the number of menu items but n is always ~35, so it's instant.
