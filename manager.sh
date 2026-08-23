@@ -251,7 +251,7 @@ valid_pkg_name() {
     case "$1" in
         ""|-*|*" "*|*'|'*|*';'*|*'&'*) return 1 ;;
     esac
-    printf '%s\n' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9+:._~+-]*$'
+    printf '%s\n' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9+:._~-]*$'
 }
 
 # filter_pkgs — read newline-separated names on stdin, print only valid ones
@@ -2099,6 +2099,7 @@ do_maintenance() {
     if confirm_danger "$ICON_FIXBROKEN  Run apt fix-broken now?"; then
         local hint
         if output=$(apt --fix-broken install -y 2>&1); then
+            log "maintenance fix-broken"
             hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
             [ -n "$hint" ] && ok "$hint"
@@ -2113,6 +2114,7 @@ do_maintenance() {
     if confirm_danger "$ICON_AUTOREMOVE  Remove orphaned packages now?"; then
         local hint
         if output=$(apt autoremove -y 2>&1); then
+            log "maintenance autoremove"
             hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
             [ -n "$hint" ] && ok "$hint"
@@ -2127,6 +2129,7 @@ do_maintenance() {
     if confirm_danger "$ICON_UP  Upgrade all packages now?"; then
         local hint
         if output=$("$MGR" upgrade -y 2>&1); then
+            log "maintenance upgrade"
             hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
             [ -n "$hint" ] && ok "$hint"
@@ -2141,6 +2144,7 @@ do_maintenance() {
     if confirm "$ICON_CLEAN  Clean the download cache?"; then
         local out hint
         if out=$("$MGR" clean 2>&1); then
+            log "maintenance clean cache"
             hint=$(apt_hint "$out")
             ok "${hint:-Cache cleaned.}"
         else
@@ -2640,6 +2644,7 @@ do_snapshot() {
                 rm -f "$file"
             fi
             rm -rf "$stage" 2>/dev/null
+            _SCRATCH=("${_SCRATCH[@]/$stage/}")
             ;;
         List*)
             say "$ICON_BACKUP Snapshots in $HOME:"
@@ -2653,20 +2658,20 @@ do_snapshot() {
             fi
             ;;
         Diff*)
-            local snaps picked
-            # shellcheck disable=SC2012
-            snaps=$(ls "$HOME"/pkg-snapshot-* 2>/dev/null || compgen -G "$HOME/pkg-snapshot-*" 2>/dev/null || true)
-            [ -n "$snaps" ] || { warn "No snapshots."; return; }
+            local -a snap_files=()
+            local f
+            for f in "$HOME"/pkg-snapshot-*.tar.gz; do
+                [ -f "$f" ] && snap_files+=("$f")
+            done
+            [ "${#snap_files[@]}" -ge 1 ] || { warn "No snapshots."; return; }
             if [ "$GUM" = "1" ]; then
-                # shellcheck disable=SC2086
-                picked=$(printf '%s\n' $snaps | gum choose --no-limit --header "Pick 2 snapshots to diff" | tr '\n' ' ')
+                picked=$(printf '%s\n' "${snap_files[@]}" | gum choose --no-limit --header "Pick 2 snapshots to diff" | tr '\n' ' ')
                 # shellcheck disable=SC2086
                 set -- $picked
                 [ $# -ge 2 ] || { say "Need 2 snapshots."; return; }
                 diff -u <(tar -tzf "$1" 2>/dev/null | sort) <(tar -tzf "$2" 2>/dev/null | sort) | head -60 || true
             else
-                # shellcheck disable=SC2086
-                printf '%s\n' $snaps >&2
+                printf '%s\n' "${snap_files[@]}" >&2
                 printf 'Diff not implemented in text mode — use tar -tzf to inspect.\n' >&2
             fi
             ;;
