@@ -46,6 +46,22 @@ case "$sub" in
         esac
         exit 0
         ;;
+    madison)
+        if [ "$pkg" = "invalidpkg" ]; then echo "E: No packages found" >&2; exit 100; fi
+        echo " $pkg | 3.12 | https://packages.termux.dev stable/main arm64 Packages"
+        echo " $pkg | 3.11 | https://packages.termux.dev stable/main arm64 Packages"
+        echo " $pkg | 3.10 | https://packages.termux.dev stable/main arm64 Packages"
+        exit 0
+        ;;
+    policy)
+        if [ "$pkg" = "invalidpkg" ]; then echo "E: Unable to locate package invalidpkg" >&2; exit 100; fi
+        echo "$pkg:"
+        echo "  Installed: 3.12"
+        echo "  Candidate: 3.12"
+        echo "     3.12 500"
+        echo "     3.11 500"
+        exit 0
+        ;;
     search)
         case "$pkg" in
             *python*) echo "python3 - interpreter for Python 3" ;;

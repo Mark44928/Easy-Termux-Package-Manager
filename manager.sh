@@ -228,12 +228,12 @@ ok()   { if [ "$GUM" = "1" ]; then gum style --foreground "$GREEN" "✓ $1"; els
 err()  { if [ "$GUM" = "1" ]; then gum style --foreground "$RED"   "✗ $1"; else printf '✗ %s\n' "$1"; fi; }
 warn() { if [ "$GUM" = "1" ]; then gum style --foreground "$YELLOW" "⚠ $1"; else printf '⚠ %s\n' "$1"; fi; }
 
-BANNER_B64="H4sIAAAAAAAC/21PMQoCMRDs84ppbW7FWq6zFKysFkIQuUKwUBCELXyEf7H3Kb7kZjdRTjG72dnMTMIGuS5MAWib1TFHTdYaC64ClKACGIOpDIEkfJi4FTALnfJbUWx5mnjjcQe6XPfSvOixBL7frW71GZrJghJ0ZMPrU1r9W/SatVKmzolkcS7hdb/9JFblfMWm7A5l2GNdjoQTng9cFt38nz+NtVcYPE0BAAA="
+BANNER_B64="H4sIAAAAAAAAA21PMQoCMRDs84ppbW4FW7nOUrCyWghB5ArBQkEQtvAR/sXep/iSm91EOcXsZmczMwkb5LowBaBtVsccNVlrLLgKUIIKYAymMgSS8GHiVsAsdMpvRbHlaeKNxx3oct1L86LHEvh+t7rVZ2gmC0rQkQ2vT2n1b9Fr1kqZOieSxbmE1/32k1iV8xWbsjuUYY91ORJOeD5wWXTzf/40ApIyPb1NAQAA"
 
 banner() {
     local art
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
-        art="TERMUX Pkg Manager v2.0"
+        art="TERMUX Pkg Manager v3.0"
     fi
     if [ "$GUM" = "1" ]; then
         gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
@@ -295,6 +295,16 @@ build_menu() {
     OPTION_INSPECT="$ICON_INSPECT Package inspector"
     OPTION_MAINT="$ICON_MAINT Maintenance wizard"
     OPTION_GROUPS="$ICON_GROUPS Package groups"
+    OPTION_LOCALDEB="$ICON_FILES Local .deb install"
+    OPTION_DOWNGRADE="$ICON_REINSTALL Downgrade package"
+    OPTION_DLONLY="$ICON_CACHE Download only"
+    OPTION_HOLDVER="$ICON_HOLD Hold specific version"
+    OPTION_FILESEARCH="$ICON_SEARCH File search (pre-install)"
+    OPTION_CHANGELOG="$ICON_HISTORY Changelog"
+    OPTION_WHY="$ICON_DEPENDS Why installed"
+    OPTION_NOTES="$ICON_MEMO User notes"
+    OPTION_SNAPSHOT="$ICON_BACKUP Full snapshot"
+    OPTION_PALETTE="$ICON_WAND Command palette"
     OPTION_EXIT="$ICON_EXIT Exit"
 
     MENU_ITEMS=(
@@ -307,6 +317,8 @@ build_menu() {
         "$OPTION_SIMULATE" "$OPTION_STATS" "$OPTION_CACHE"
         "$OPTION_DEPTREE" "$OPTION_BULK" "$OPTION_FAVS"
         "$OPTION_INSPECT" "$OPTION_MAINT" "$OPTION_GROUPS"
+        "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
+        "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
     )
 
     FAVPIN=()
@@ -2130,7 +2142,7 @@ do_groups() {
             ask_name "Packages (space-separated)" any
             gpkgs=$(printf '%s\n' "$PKG_NAME" | tr ' ' '\n' | filter_pkgs)
             [ -n "$gpkgs" ] || { warn "No valid package names."; return; }
-            if [ -f "$GROUPS_FILE" ] && grep -q "^${gname}::" "$GROUPS_FILE"; then
+            if [ -f "$GROUPS_FILE" ] && grep -F -q -- "${gname}::" "$GROUPS_FILE"; then
                 warn "A group named \"$gname\" already exists."
                 return
             fi
@@ -2163,7 +2175,7 @@ do_groups() {
             esac
             if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
                 if tmp=$(scratch_new); then
-                    grep -v "^${gname}::" "$GROUPS_FILE" > "$tmp" || true
+                    grep -F -v -- "${gname}::" "$GROUPS_FILE" > "$tmp" || true
                     if mv -f "$tmp" "$GROUPS_FILE"; then
                         load_groups
                         log "group delete $gname"
@@ -2199,6 +2211,424 @@ pick_group() {
     fi
 }
 
+do_localdeb() {
+    local file
+    file=$(pick_file "Select .deb file")
+    case "$file" in -* ) err "Invalid path — must not start with '-'."; return ;; esac
+    [ -n "$file" ] && [ -f "$file" ] || { warn "No file selected."; return; }
+    case "$file" in *.deb) ;; *) warn "Not a .deb file: $file"; return ;; esac
+    if ! confirm_danger "$ICON_FILES Install local package $file?"; then say "Canceled."; return; fi
+    log "localdeb $file"
+    say "$ICON_FILES Installing $file..."
+    local out hint
+    if out=$(dpkg -i "$file" 2>&1); then
+        ok "Installed $file"
+    else
+        hint=$(apt_hint "$out")
+        warn "${hint:-dpkg failed, trying to fix deps...}"
+        printf '%s\n' "$out" | tail -n 4
+        if out=$(apt --fix-broken install -y 2>&1); then
+            ok "Dependencies fixed and $file installed!"
+        else
+            hint=$(apt_hint "$out")
+            err "${hint:-Fix-broken failed for $file}"
+            log_err "localdeb $file: ${hint:-fix-broken failed}"
+            printf '%s\n' "$out" | tail -n 4
+            return 1
+        fi
+    fi
+}
+
+do_downgrade() {
+    ask_name "Package to downgrade"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    log "downgrade $PKG_NAME"
+    say "$ICON_REINSTALL Available versions for $PKG_NAME:"
+    local vers out
+    vers=$(apt-cache madison "$PKG_NAME" 2>/dev/null | awk '{print $3}' | head -20)
+    if [ -z "$vers" ]; then vers=$(apt-cache policy "$PKG_NAME" 2>/dev/null | grep -E '^\s+[0-9]' | awk '{print $1}' | head -20); fi
+    if [ -z "$vers" ]; then err "No versions found — check name or run Upgrade center."; return; fi
+    printf '%s\n' "$vers"
+    local picked
+    if [ "$GUM" = "1" ]; then
+        picked=$(printf '%s\n' "$vers" | gum choose --header "Pick version to downgrade to")
+    else
+        if ! tmp=$(scratch_new); then warn "Could not create temp file."; return; fi
+        printf '%s\n' "$vers" > "$tmp"
+        nl -w2 -s') ' "$tmp" >&2
+        printf 'Pick number (0 = cancel): ' >&2
+        read -r picked
+        case "$picked" in [1-9]|[1-9][0-9]) picked=$(sed -n "${picked}p" "$tmp") ;; *) rm -f "$tmp"; return ;; esac
+        rm -f "$tmp"
+    fi
+    [ -n "$picked" ] || { say "Canceled."; return; }
+    case "$picked" in -* ) err "Invalid version."; return ;; esac
+    if ! printf '%s\n' "$vers" | grep -Fxq -- "$picked"; then err "Invalid version selection."; return; fi
+    if ! printf '%s\n' "$picked" | grep -qE '^[A-Za-z0-9._+~:-]+$'; then err "Invalid version format."; return; fi
+    if ! confirm_danger "$ICON_REINSTALL Downgrade $PKG_NAME to $picked?"; then say "Canceled."; return; fi
+    say "$ICON_REINSTALL Downgrading $PKG_NAME=$picked..."
+    if out=$("$MGR" install -y "$PKG_NAME=$picked" 2>&1); then
+        hint=$(apt_hint "$out")
+        ok "${hint:-$PKG_NAME downgraded to $picked!}"
+    else
+        hint=$(apt_hint "$out")
+        err "${hint:-Failed to downgrade $PKG_NAME}"
+        log_err "downgrade $PKG_NAME=$picked: ${hint:-failed}"
+        printf '%s\n' "$out" | tail -n 4
+    fi
+}
+
+do_dlonly() {
+    ask_name "Package to download (no install)"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    if ! confirm "$ICON_CACHE Download $PKG_NAME without installing?"; then say "Canceled."; return; fi
+    log "download $PKG_NAME"
+    say "$ICON_CACHE Downloading $PKG_NAME..."
+    local out hint dir sz
+    dir="$PREFIX/var/cache/apt/archives"
+    if out=$(apt download "$PKG_NAME" 2>&1); then
+        ok "Downloaded $PKG_NAME to $(pwd)"
+        # shellcheck disable=SC2012
+        ls -lh ./*.deb 2>/dev/null | tail -5 || { sz=$(du -sh "$dir" 2>/dev/null | cut -f1); [ -n "$sz" ] && say "Cache now: $sz"; }
+    elif out=$("$MGR" install --download-only -y "$PKG_NAME" 2>&1); then
+        ok "Downloaded $PKG_NAME to cache $dir"
+        # shellcheck disable=SC2012
+        ls -lh "$dir"/*.deb 2>/dev/null | tail -5 || true
+    else
+        hint=$(apt_hint "$out")
+        err "${hint:-Failed to download $PKG_NAME}"
+        log_err "download $PKG_NAME: ${hint:-failed}"
+        printf '%s\n' "$out" | tail -n 4
+    fi
+}
+
+do_holdver() {
+    local a
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_HOLD  Hold specific version" "Hold current version" "Hold to chosen version" "Show held packages" "Back")
+    else
+        printf '1) Hold current version\n2) Hold to chosen version\n3) Show held packages\n4) Back\n> ' >&2
+        read -r a
+        case "$a" in 1) a="Hold current version" ;; 2) a="Hold to chosen version" ;; 3) a="Show held packages" ;; *) return ;; esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Hold*current*)
+            ask_name "Package to hold at current version"
+            [ -n "$PKG_NAME" ] || return
+            log "holdver $PKG_NAME current"
+            if apt-mark hold "$PKG_NAME" 2>/dev/null; then ok "$PKG_NAME held at current version"; else err "Failed to hold $PKG_NAME"; fi
+            ;;
+        Hold*chosen*)
+            ask_name "Package to hold at specific version"
+            [ -n "$PKG_NAME" ] || return
+            local vers picked out hint
+            vers=$(apt-cache madison "$PKG_NAME" 2>/dev/null | awk '{print $3}' | head -20)
+            [ -n "$vers" ] || { err "No versions found."; return; }
+            if [ "$GUM" = "1" ]; then picked=$(printf '%s\n' "$vers" | gum choose --header "Pick version to hold"); else printf '%s\n' "$vers" >&2; printf 'Version: ' >&2; read -r picked; fi
+            [ -n "$picked" ] || return
+            case "$picked" in -* ) err "Invalid version."; return ;; esac
+            if ! printf '%s\n' "$vers" | grep -Fxq -- "$picked"; then err "Invalid version selection."; return; fi
+            if ! printf '%s\n' "$picked" | grep -qE '^[A-Za-z0-9._+~:-]+$'; then err "Invalid version format."; return; fi
+            say "Installing $PKG_NAME=$picked then holding..."
+            if out=$("$MGR" install -y "$PKG_NAME=$picked" 2>&1) && apt-mark hold "$PKG_NAME" 2>/dev/null; then log "holdver $PKG_NAME=$picked"; ok "$PKG_NAME held at $picked"; else err "Failed to hold $PKG_NAME at $picked"; log_err "holdver $PKG_NAME=$picked failed"; fi
+            ;;
+        Show*)
+            say "$ICON_HOLD Held packages (with versions):"
+            local held
+            held=$(apt-mark showhold 2>/dev/null)
+            if [ -n "$held" ]; then
+                while IFS= read -r p; do
+                    [ -n "$p" ] || continue
+                    ver=$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null || echo "?")
+                    printf '  %s  %s\n' "$p" "$ver"
+                done <<< "$held"
+            else
+                say "None"
+            fi
+            ;;
+    esac
+}
+
+do_filesearch() {
+    local pat
+    if [ "$GUM" = "1" ]; then
+        pat=$(gum input --prompt "➜ " --placeholder "File pattern (e.g. bin/python, libssl.so)")
+    else
+        printf 'File pattern to search (e.g. bin/python): ' >&2
+        read -r pat
+    fi
+    pat=$(printf '%s\n' "$pat" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    [ -n "$pat" ] || { warn "No pattern given."; return; }
+    case "$pat" in -* ) err "Invalid pattern."; return ;; esac
+    log "filesearch $pat"
+    say "$ICON_SEARCH Searching for file: $pat"
+    local out
+    if command -v apt-file >/dev/null 2>&1; then
+        out=$(apt-file search -- "$pat" 2>/dev/null | head -40)
+        if [ -n "$out" ]; then printf '%s\n' "$out"; else say "No match via apt-file."; fi
+    elif command -v pkgfile >/dev/null 2>&1; then
+        out=$(pkgfile -- "$pat" 2>/dev/null | head -40)
+        if [ -n "$out" ]; then printf '%s\n' "$out"; else say "No match via pkgfile."; fi
+    else
+        say "apt-file/pkgfile not installed — searching installed files (dpkg -S):"
+        out=$(dpkg -S -- "$pat" 2>/dev/null | head -40)
+        if [ -n "$out" ]; then printf '%s\n' "$out"; else err "No installed package owns '$pat' (install apt-file for pre-install search)"; fi
+    fi
+}
+
+do_changelog() {
+    ask_name "Package for changelog"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    log "changelog $PKG_NAME"
+    say "$ICON_HISTORY Changelog for $PKG_NAME:"
+    local out
+    if out=$(apt changelog "$PKG_NAME" 2>&1 | head -80) && [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    elif out=$(apt-get changelog "$PKG_NAME" 2>&1 | head -80) && [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    else
+        out=$("$MGR" show "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
+        if [ -n "$out" ]; then
+            printf '%s\n' "$out" | head -40
+            say "— no changelog available, showing package info"
+        else
+            err "Package not found"
+        fi
+    fi
+}
+
+do_why() {
+    ask_name "Package to explain"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    log "why $PKG_NAME"
+    say "$ICON_DEPENDS Why is $PKG_NAME installed?"
+    local manual auto
+    if apt-mark showmanual 2>/dev/null | grep -Fxq "$PKG_NAME"; then manual=1; else manual=0; fi
+    if apt-mark showauto 2>/dev/null | grep -Fxq "$PKG_NAME"; then auto=1; else auto=0; fi
+    if [ "$manual" = "1" ]; then ok "$PKG_NAME was manually installed"; elif [ "$auto" = "1" ]; then warn "$PKG_NAME was auto-installed as dependency"; else say "Install status unknown (not in manual/auto lists)"; fi
+    say "Reverse dependencies (who needs it):"
+    local out
+    out=$(apt rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:' | head -30)
+    if [ -n "$out" ]; then printf '%s\n' "$out"; else say "(none or package not found)"; fi
+    if dpkg -s "$PKG_NAME" >/dev/null 2>&1; then
+        out=$(apt-cache rdepends --installed "$PKG_NAME" 2>/dev/null | head -20)
+        if [ -n "$out" ]; then say "Installed reverse deps:"; printf '%s\n' "$out"; fi
+    fi
+}
+
+do_notes() {
+    local NOTES_FILE="$HOME/.pkg-manager-notes"
+    local a
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_MEMO  User notes" "Add note" "Remove note" "Show all notes" "Search notes" "Show note for package" "Back")
+    else
+        printf '1) Add note\n2) Remove note\n3) Show all notes\n4) Search notes\n5) Show note for package\n6) Back\n> ' >&2
+        read -r a
+        case "$a" in 1) a="Add note" ;; 2) a="Remove note" ;; 3) a="Show all notes" ;; 4) a="Search notes" ;; 5) a="Show note for package" ;; *) return ;; esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Add*)
+            ask_name "Package to annotate"
+            [ -n "$PKG_NAME" ] || return
+            local note
+            if [ "$GUM" = "1" ]; then note=$(gum input --prompt "➜ " --placeholder "Note for $PKG_NAME"); else printf 'Note for %s: ' "$PKG_NAME" >&2; read -r note; fi
+            note=$(printf '%s\n' "$note" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/::/--/g')
+            [ -n "$note" ] || { warn "No note given."; return; }
+            if [ -f "$NOTES_FILE" ] && awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
+                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note updated for $PKG_NAME"; log "note add $PKG_NAME"; fi
+            else
+                if tmp=$(scratch_new); then
+                    [ -f "$NOTES_FILE" ] && cat "$NOTES_FILE" > "$tmp" 2>/dev/null || true
+                    printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
+                else
+                    printf '%s::%s\n' "$PKG_NAME" "$note" >> "$NOTES_FILE"; ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
+                fi
+            fi
+            ;;
+        Remove*)
+            [ -s "$NOTES_FILE" ] || { warn "No notes yet."; return; }
+            ask_name "Package to remove note"
+            [ -n "$PKG_NAME" ] || return
+            if awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
+                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; mv -f "$tmp" "$NOTES_FILE"; ok "Note removed for $PKG_NAME"; log "note remove $PKG_NAME"; fi
+            else
+                warn "No note for $PKG_NAME"
+            fi
+            ;;
+        Show*all*)
+            if [ ! -s "$NOTES_FILE" ]; then say "No notes yet."; return; fi
+            say "$ICON_MEMO User notes:"
+            cat "$NOTES_FILE"
+            ;;
+        Search*)
+            [ -s "$NOTES_FILE" ] || { warn "No notes yet."; return; }
+            local q
+            if [ "$GUM" = "1" ]; then q=$(gum input --prompt "➜ " --placeholder "Search term"); else printf 'Search: ' >&2; read -r q; fi
+            [ -n "$q" ] || return
+            grep -i -- "$q" "$NOTES_FILE" || say "No matches."
+            ;;
+        Show*package*)
+            ask_name "Package to show note"
+            [ -n "$PKG_NAME" ] || return
+            if [ -f "$NOTES_FILE" ]; then
+                if ! awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; print substr($0, index($0,"::")+2); exit} END{exit !found}' "$NOTES_FILE"; then say "No note for $PKG_NAME"; fi
+            else
+                say "No notes yet."
+            fi
+            ;;
+    esac
+}
+
+do_snapshot() {
+    local a
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_BACKUP  Full snapshot" "Create snapshot" "List snapshots" "Diff snapshots" "Restore snapshot" "Delete snapshot" "Back")
+    else
+        printf '1) Create snapshot\n2) List snapshots\n3) Diff snapshots\n4) Restore snapshot\n5) Delete snapshot\n6) Back\n> ' >&2
+        read -r a
+        case "$a" in 1) a="Create snapshot" ;; 2) a="List snapshots" ;; 3) a="Diff snapshots" ;; 4) a="Restore snapshot" ;; 5) a="Delete snapshot" ;; *) return ;; esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Create*)
+            local file tmp stage
+            file="$HOME/pkg-snapshot-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
+            say "$ICON_BACKUP Creating snapshot $file..."
+            if ! tmp=$(scratch_new); then err "No temp file."; return; fi
+            list_installed_names > "$tmp" 2>/dev/null
+            if [ ! -s "$tmp" ]; then err "No packages to snapshot."; rm -f "$tmp"; return; fi
+            stage=$(mktemp -d "$HOME/.pkg-snapshot.XXXXXX" 2>/dev/null) || { err "No stage dir"; rm -f "$tmp"; return; }
+            mv -f "$tmp" "$stage/pkg-list.txt"
+            [ -f "$FAVS_FILE" ] && cp "$FAVS_FILE" "$stage/" 2>/dev/null || true
+            [ -f "$GROUPS_FILE" ] && cp "$GROUPS_FILE" "$stage/" 2>/dev/null || true
+            [ -f "$HOME/.pkg-manager.conf" ] && cp "$HOME/.pkg-manager.conf" "$stage/" 2>/dev/null || true
+            [ -f "$HOME/.pkg-manager-notes" ] && cp "$HOME/.pkg-manager-notes" "$stage/" 2>/dev/null || true
+            if tar -czf "$file" -C "$stage" . 2>/dev/null && [ -f "$file" ]; then
+                log "snapshot create $file"
+                ok "Snapshot created: $file"
+                ls -lh "$file" 2>/dev/null || true
+            else
+                err "Snapshot failed"
+                rm -f "$file"
+            fi
+            rm -rf "$stage" 2>/dev/null
+            ;;
+        List*)
+            say "$ICON_BACKUP Snapshots in $HOME:"
+            # shellcheck disable=SC2012
+            ls -lh "$HOME"/pkg-snapshot-* 2>/dev/null || say "No snapshots yet."
+            ;;
+        Diff*)
+            local snaps picked
+            # shellcheck disable=SC2012
+            snaps=$(ls "$HOME"/pkg-snapshot-* 2>/dev/null)
+            [ -n "$snaps" ] || { warn "No snapshots."; return; }
+            if [ "$GUM" = "1" ]; then
+                # shellcheck disable=SC2086
+                picked=$(printf '%s\n' $snaps | gum choose --no-limit --header "Pick 2 snapshots to diff" | tr '\n' ' ')
+                # shellcheck disable=SC2086
+                set -- $picked
+                [ $# -ge 2 ] || { say "Need 2 snapshots."; return; }
+                diff -u <(tar -tzf "$1" 2>/dev/null | sort) <(tar -tzf "$2" 2>/dev/null | sort) | head -60 || true
+            else
+                # shellcheck disable=SC2086
+                printf '%s\n' $snaps >&2
+                printf 'Diff not implemented in text mode — use tar -tzf to inspect.\n' >&2
+            fi
+            ;;
+        Restore*)
+            local file
+            file=$(pick_file "Select snapshot")
+            case "$file" in -* ) err "Invalid path."; return ;; esac
+            [ -n "$file" ] && [ -f "$file" ] || { warn "No file."; return; }
+            if ! confirm_danger "$ICON_RESTORE Restore from $file? This may overwrite favs/groups/notes."; then say "Canceled."; return; fi
+            log "snapshot restore $file"
+            say "$ICON_RESTORE Restoring $file..."
+            if tar -xzf "$file" -C "$HOME" 2>/dev/null; then ok "Snapshot restored to $HOME"; else err "Restore failed (try tar -tzf $file to inspect)"; fi
+            ;;
+        Delete*)
+            local file
+            file=$(pick_file "Select snapshot to delete")
+            [ -n "$file" ] && [ -f "$file" ] || { warn "No file."; return; }
+            if confirm_danger "$ICON_TRASH Delete $file?"; then
+                if rm -f "$file"; then ok "Deleted $file"; log "snapshot delete $file"; else err "Failed to delete"; fi
+            fi
+            ;;
+    esac
+}
+
+do_palette() {
+    local all
+    all=$(printf '%s\n' "${MENU_ITEMS[@]}")
+    local picked
+    if [ "$GUM" = "1" ] && command -v gum >/dev/null 2>&1 && gum filter --help >/dev/null 2>&1; then
+        picked=$(printf '%s\n' "$all" | gum filter --header "Command palette — type to filter" --placeholder "Filter commands...")
+    elif [ "$GUM" = "1" ]; then
+        picked=$(printf '%s\n' "$all" | gum choose --header "Command palette")
+    else
+        printf 'Palette — type substring to filter (empty for all): ' >&2
+        read -r picked
+        if [ -n "$picked" ]; then all=$(printf '%s\n' "$all" | grep -i -- "$picked" || printf '%s\n' "$all"); fi
+        if ! tmp=$(scratch_new); then return; fi
+        printf '%s\n' "$all" > "$tmp"
+        nl -w2 -s') ' "$tmp" >&2
+        printf 'Pick number: ' >&2
+        read -r picked
+        case "$picked" in [1-9]|[1-9][0-9]) picked=$(sed -n "${picked}p" "$tmp") ;; *) rm -f "$tmp"; return ;; esac
+        rm -f "$tmp"
+    fi
+    [ -n "$picked" ] || { say "Canceled."; return; }
+    say "$ICON_WAND Running: $picked"
+    case "$picked" in
+        "$OPTION_INSTALL") do_install ;;
+        "$OPTION_UNINSTALL") do_uninstall ;;
+        "$OPTION_SEARCH") do_search ;;
+        "$OPTION_LIST") do_list ;;
+        "$OPTION_REINSTALL") do_reinstall ;;
+        "$OPTION_UPDATE") do_upgrade_center ;;
+        "$OPTION_CLEAN") do_clean ;;
+        "$OPTION_INFO") do_info ;;
+        "$OPTION_AUTOREMOVE") do_autoremove ;;
+        "$OPTION_DEPENDS") do_depends ;;
+        "$OPTION_RDEPENDS") do_rdepends ;;
+        "$OPTION_SIZE") do_size ;;
+        "$OPTION_FILES") do_files ;;
+        "$OPTION_OWNER") do_owner ;;
+        "$OPTION_HOLD") do_hold ;;
+        "$OPTION_PURGE") do_purge ;;
+        "$OPTION_FIXBROKEN") do_fixbroken ;;
+        "$OPTION_UPGRADABLE") do_upgradable ;;
+        "$OPTION_BACKUP") do_backup ;;
+        "$OPTION_RESTORE") do_restore ;;
+        "$OPTION_EXPORT") do_export ;;
+        "$OPTION_IMPORT") do_import ;;
+        "$OPTION_DOCTOR") do_doctor ;;
+        "$OPTION_SETTINGS") do_settings ;;
+        "$OPTION_HISTORY") do_history ;;
+        "$OPTION_SIMULATE") do_simulate ;;
+        "$OPTION_STATS") do_stats ;;
+        "$OPTION_CACHE") do_cache ;;
+        "$OPTION_DEPTREE") do_deptools ;;
+        "$OPTION_BULK") do_bulk ;;
+        "$OPTION_FAVS") do_favs ;;
+        "$OPTION_INSPECT") do_inspect ;;
+        "$OPTION_MAINT") do_maintenance ;;
+        "$OPTION_GROUPS") do_groups ;;
+        "$OPTION_LOCALDEB") do_localdeb ;;
+        "$OPTION_DOWNGRADE") do_downgrade ;;
+        "$OPTION_DLONLY") do_dlonly ;;
+        "$OPTION_HOLDVER") do_holdver ;;
+        "$OPTION_FILESEARCH") do_filesearch ;;
+        "$OPTION_CHANGELOG") do_changelog ;;
+        "$OPTION_WHY") do_why ;;
+        "$OPTION_NOTES") do_notes ;;
+        "$OPTION_SNAPSHOT") do_snapshot ;;
+        "$OPTION_PALETTE") do_palette ;;
+        *) err "Unknown palette selection." ;;
+    esac
+}
 pin_install() {
     local pkg="$1" out hint
     [ -n "$pkg" ] || { err "Invalid pinned package name."; return; }
@@ -2265,6 +2695,16 @@ while true; do
         "$OPTION_INSPECT")    do_inspect ;;
         "$OPTION_MAINT")      do_maintenance ;;
         "$OPTION_GROUPS")     do_groups ;;
+        "$OPTION_LOCALDEB")   do_localdeb ;;
+        "$OPTION_DOWNGRADE")  do_downgrade ;;
+        "$OPTION_DLONLY")     do_dlonly ;;
+        "$OPTION_HOLDVER")    do_holdver ;;
+        "$OPTION_FILESEARCH") do_filesearch ;;
+        "$OPTION_CHANGELOG")  do_changelog ;;
+        "$OPTION_WHY")        do_why ;;
+        "$OPTION_NOTES")      do_notes ;;
+        "$OPTION_SNAPSHOT")   do_snapshot ;;
+        "$OPTION_PALETTE")    do_palette ;;
         *"Pinned:"*)          pin_install "${choice##*Pinned: }" ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
         "__INVALID__")        err "Invalid option, try again." ;;

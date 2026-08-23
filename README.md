@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v2.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v3.0-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-130%20passing-brightgreen" alt="Tests">
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E2.3k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E2.7k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -28,7 +28,7 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.dev) 
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
- ────── Easy Package Manager · v2.0 ────── 
+ ────── Easy Package Manager · v3.0 ────── 
 ```
 
 > With `gum` installed, the banner renders inside a double-border box in your chosen theme colors. The art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
@@ -68,7 +68,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 
 | | |
 |--|--|
-| 🎛️ **35 menu entries** (34 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
+| 🎛️ **45 menu entries** (44 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
 | 👁️ **Simulate before changing** — dry-run previews (`apt -s`) | 📊 **Package stats & disk** — sizes, per-dir usage, biggest files, cache breakdown |
 | 🗃️ **Cache manager** — clean all or outdated `.deb`s, browse | 🌳 **Dependency tools** — recursive tree + orphan finder |
 | 🔍 **Package inspector** — info, deps, reverse deps, files, hold | 🩺 **Maintenance wizard** — on-demand or on-launch health pass |
@@ -93,6 +93,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 30, 31, 34 |
 | 💾 **Data** | Backup, restore, export (txt/JSON), import | 19–22 |
 | 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/undo/clear), settings | 23–25, 28 |
+| 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 35–44 |
 
 ## 📋 Requirements
 
@@ -148,13 +149,13 @@ pkg-manager      # installed via install.sh / manual method
 > With **gum** installed you arrow-key through the menu; without it, just type a number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v2.0
+ ✨ Easy Termux Package Manager · v3.0
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
  [3]  🔎 Search packages
   ⋮
- [34] 🗂️ Package groups
+ [44] 🪄 Command palette
  [0]  🚪 Exit
  Choose an option:
 ```
@@ -230,11 +231,26 @@ pkg-manager      # installed via install.sh / manual method
 | 31 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
 | 34 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
 
+#### 🆕 New in 3.0 — advanced (35–44)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 35 | 📁 Local .deb install | `dpkg -i <file>` then `apt --fix-broken install -y` if needed |
+| 36 | 🔧 Downgrade package | `apt install <pkg>=<ver>` from `apt-cache madison` |
+| 37 | 🗃️ Download only | `apt download` or `apt install --download-only` to cache |
+| 38 | 📌 Hold specific version | install chosen version then `apt-mark hold` |
+| 39 | 🔎 File search (pre-install) | `apt-file search` / `pkgfile` or `dpkg -S` fallback |
+| 40 | 📋 Changelog | `apt changelog` / `apt-get changelog` or `apt show` |
+| 41 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
+| 42 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
+| 43 | 💾 Full snapshot | tar `pkg-list.txt` + favs/groups/conf/notes to `~/pkg-snapshot-*.tar.gz` |
+| 44 | 🪄 Command palette | `gum filter` fuzzy finder across all 44 options |
+
 #### 🚪 Exit & pinned favorites
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 35+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
+| 45+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
 > Labels above use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update these tables too.
@@ -288,7 +304,7 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~2.3k lines, single file)
+├── manager.sh      # the entire app (~2.7k lines, single file)
 ├── tests/          # automated harness (fakebin stubs + 120 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
@@ -316,7 +332,7 @@ A few ground rules to keep the docs in sync:
 
 - **Menu labels** in the README menu-map tables must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
-- **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v2.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
+- **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v3.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
 - Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 120 scenario tests).
 
@@ -335,10 +351,10 @@ Distributed under the [MIT License](LICENSE).
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
- ────── Easy Package Manager · v2.0 ────── 
+ ────── Easy Package Manager · v3.0 ────── 
 ```
 
-**Easy Termux Package Manager** · v2.0 · MIT
+**Easy Termux Package Manager** · v3.0 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 

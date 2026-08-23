@@ -30,7 +30,7 @@ trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
 # ── Header ────────────────────────────────────────────────────────────────
 printf '%b\n' "${CYN}╭────────────────────────────────────────────────╮${R}"
-printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v2.0${R}      ${CYN}│${R}"
+printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v3.0${R}      ${CYN}│${R}"
 printf '%b\n' "${CYN}│${R}     the one-command Termux package manager     ${CYN}│${R}"
 printf '%b\n' "${CYN}╰────────────────────────────────────────────────╯${R}"
 divider

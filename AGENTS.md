@@ -2,7 +2,7 @@
 
 ## What this is
 
-Single-file Bash app (`manager.sh`, ~2.3k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
+Single-file Bash app (`manager.sh`, ~2.7k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
 
 > **This is Termux, not Linux.** Termux runs on Android without root, uses Bionic libc (not glibc), has no FHS-compliant filesystem, and packages live under `/data/data/com.termux/files/usr`. Every assumption about standard Linux paths, permissions, or system calls can break here.
 
@@ -18,7 +18,7 @@ bash manager.sh
 bash tests/run-tests.sh
 ```
 
-Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real Termux needed. Run from the `tests/` dir or from the repo root; the script `cd`s into its own directory. 120 scenario tests in text and gum modes. `tests/tmp/` is gitignored.
+Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real Termux needed. Run from the `tests/` dir or from the repo root; the script `cd`s into its own directory. 130 scenario tests in text and gum modes. `tests/tmp/` is gitignored.
 
 ## Code structure
 
@@ -83,10 +83,12 @@ All in `$HOME`:
 | `~/.pkg-manager-groups` | `groupname::pkg1 pkg2 pkg3` (one group per line) | Package groups |
 | `~/pkg-backup-*.txt` | One package name per line | Backup option |
 | `~/pkg-export.{txt,json}` | Plain text or JSON `{"packages":[...]}` | Export option |
+| `~/.pkg-manager-notes` | `pkg::note` (one per line) | User notes |
+| `~/pkg-snapshot-*.tar.gz` | tar of `pkg-list.txt` + favs/groups/conf/notes | Full snapshot |
 
 ## Version bump
 
-Three places: badge in README, ASCII art line (`v2.0`), fallback string in `manager.sh:237`. Then regenerate `BANNER_B64` (compressed blob).
+Three places: badge in README, ASCII art line (`v3.0`), fallback string in `manager.sh:236`. Then regenerate `BANNER_B64` (compressed blob).
 
 ## Gotchas
 
@@ -214,7 +216,7 @@ Three places: badge in README, ASCII art line (`v2.0`), fallback string in `mana
 - **Interactive gum commands require a TTY** -- piped stdin/stdout or CI contexts make them fail or hang. This app's `refresh_gum()` probes gum with `gum style "probe"` before trusting it; keep that probe when touching UI init.
 - **`gum spin` swallows child output by default** -- use `--show-output` if output must survive. This app uses `run_spin()` which returns the wrapped command's exit code -- preserve that contract.
 - **`gum choose` prints selection(s) to stdout, one per line** with `--no-limit`. The fake `gum` in tests pops one base64-encoded line from `GUM_QUEUE` per call -- adding new gum flag usage requires updating `tests/helps/<subcommand>` allowlists or tests fail with `UNKNOWN FLAG`.
-- **Flags are validated against known-good lists in tests** -- every `-flag` passed to gum is grepped against `tests/helps/{choose,input,confirm,file,style,pager,spin}`; unknown flags fail the suite.
+- **Flags are validated against known-good lists in tests** -- every `-flag` passed to gum is grepped against `tests/helps/{choose,input,confirm,file,style,pager,spin,filter}`; unknown flags fail the suite.
 
 ### Terminal rendering quirks in Termux
 

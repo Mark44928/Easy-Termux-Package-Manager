@@ -138,7 +138,7 @@ T group_create     <(printf '34\n4\nmytools\ncurl wget\n') "created" ".pkg-manag
 T bulk_pick_rm     <(printf '30\n3\n1 2\ny\n')         "✓ python3"
 T bulk_pick_up     <(printf '30\n4\n1\ny\n')           "✓ python3"
 T fav_pin          <(printf '31\n5\n')                 "Favorites pinned"
-T pin_installed    <(printf '35\ny\n')                 "Installing python3"
+T pin_installed    <(printf '45\ny\n')                 "Installing python3"
 T log_errors       <(printf '1\ninvalidpkg\n\n25\n2\n') "FAIL: install invalidpkg" ".pkg-manager.log|FAIL: install invalidpkg|"
 T undo_remove      <(printf '2\npython3\ny\n\n25\n4\ny\n') "Undo complete!"
 T search_install   <(printf '3\npython\npython-tool\ny\n') "✓ python-tool"
@@ -233,6 +233,18 @@ G gum_stats_disk   <(printf '📊 Package stats & disk\nDisk usage by directory\
 G gum_bulk_pick    <(printf '📚 Bulk operations\nRemove (pick from installed list)\npython3\ny\n') "✓ python3"
 GP gum_pkg_list    <(printf '📜 List installed packages\n') "python3"
 GP gum_pkg_upgrade <(printf '🔄 Upgrade center\nAll packages\ny\ny\n') "Cache cleaned!"
+
+# --- v3.0 new features (text/apt) ---
+T localdeb_ok      <(printf '35\n%s/tmp/localdeb_ok/var/cache/apt/archives/python3_3.12_arm64.deb\ny\n' "$PWD") "Installed"
+T downgrade_ok     <(printf '36\npython3\n1\ny\n') "downgraded"
+T dlonly_ok        <(printf '37\npython3\ny\n') "Downloaded"
+T holdver_show     <(printf '38\n3\n') "Held packages"
+T filesearch_ok    <(printf '39\nbin/python\n') "python3:"
+T changelog_ok     <(printf '40\npython3\n') "Changelog"
+T why_ok           <(printf '41\npython3\n') "Why is"
+T notes_add        <(printf '42\n1\npython3\nmy note for 3.0\n\n42\n3\n') "Note added"
+T snapshot_create  <(printf '43\n1\n\n43\n2\n') "Snapshot created"
+T palette_choose   <(printf '44\n\n1\npython3\n') "Installing python3"
 
 echo
 echo "== RESULTS =="

@@ -6,5 +6,7 @@ case "$sub" in
     hold)   echo "$1 set to hold."; exit 0 ;;
     unhold) echo "$1 set to unhold."; exit 0 ;;
     showhold) echo "python3"; exit 0 ;;
+    showauto) echo "python-pip"; echo "libfoo"; exit 0 ;;
+    showmanual) echo "python3"; echo "git"; exit 0 ;;
 esac
 exit 1
