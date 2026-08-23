@@ -2397,15 +2397,16 @@ do_dlonly() {
     ask_name "Package to download (no install)"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     if ! confirm "$ICON_CACHE Download $PKG_NAME without installing?"; then say "Canceled."; return; fi
-    log "download $PKG_NAME"
     say "$ICON_CACHE Downloading $PKG_NAME..."
     local out hint dir sz
     dir="$PREFIX/var/cache/apt/archives"
     if out=$(apt download -- "$PKG_NAME" 2>&1); then
+        log "download $PKG_NAME"
         ok "Downloaded $PKG_NAME to $(pwd)"
         # shellcheck disable=SC2012
         ls -lh ./*.deb 2>/dev/null | tail -5 || { sz=$(du -sh "$dir" 2>/dev/null | cut -f1); [ -n "$sz" ] && say "Cache now: $sz"; }
     elif out=$("$MGR" install --download-only -y "$PKG_NAME" 2>&1); then
+        log "download $PKG_NAME"
         ok "Downloaded $PKG_NAME to cache $dir"
         # shellcheck disable=SC2012
         ls -lh "$dir"/*.deb 2>/dev/null | tail -5 || true
@@ -2643,12 +2644,18 @@ do_snapshot() {
         List*)
             say "$ICON_BACKUP Snapshots in $HOME:"
             # shellcheck disable=SC2012
-            ls -lh "$HOME"/pkg-snapshot-* 2>/dev/null || say "No snapshots yet."
+            if ! ls -lh "$HOME"/pkg-snapshot-* 2>/dev/null; then
+                if compgen -G "$HOME/pkg-snapshot-*.tar.gz" >/dev/null 2>&1; then
+                    ls -lh "$HOME"/pkg-snapshot-*.tar.gz 2>/dev/null || true
+                else
+                    say "No snapshots yet."
+                fi
+            fi
             ;;
         Diff*)
             local snaps picked
             # shellcheck disable=SC2012
-            snaps=$(ls "$HOME"/pkg-snapshot-* 2>/dev/null)
+            snaps=$(ls "$HOME"/pkg-snapshot-* 2>/dev/null || compgen -G "$HOME/pkg-snapshot-*" 2>/dev/null || true)
             [ -n "$snaps" ] || { warn "No snapshots."; return; }
             if [ "$GUM" = "1" ]; then
                 # shellcheck disable=SC2086
