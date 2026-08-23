@@ -209,11 +209,13 @@ if [ "$GUM_ENABLED" = "1" ]; then
         printf "Install gum now? [y/N] "
         read -r _yn
         if [[ "${_yn,,}" == "y" ]]; then
-            if "$MGR" install -y gum >/dev/null 2>&1; then
+            out=""
+            if out=$("$MGR" install -y gum 2>&1); then
                 GUM=1
                 echo "gum installed!"
             else
                 echo "Failed to install gum. Continuing in basic text mode."
+                printf '%s\n' "$out" | tail -n 4
             fi
         else
             echo "Continuing in basic text mode."
@@ -838,37 +840,50 @@ do_upgrade_center() {
     fi
     [ -n "$choice" ] || { say "Canceled."; return; }
     if [ "$choice" = "All packages" ]; then
-        log "upgrade all"
         say "$ICON_UP  Upgrading all packages..."
-        if run_spin "Upgrading..." "$MGR" upgrade -y; then
-            ok "Upgrade complete!"
+        local out hint
+        if out=$(run_spin "Upgrading..." "$MGR" upgrade -y 2>&1); then
+            log "upgrade all"
+            hint=$(apt_hint "$out")
+            ok "${hint:-Upgrade complete!}"
         else
-            err "Upgrade failed."
-            log_err "upgrade all: upgrade failed"
+            hint=$(apt_hint "$out")
+            err "${hint:-Upgrade failed.}"
+            log_err "upgrade all: ${hint:-failed}"
+            printf '%s\n' "$out" | tail -n 4
         fi
     else
         sel=$(printf '%s\n' "$choice" | filter_pkgs)
         [ -n "$sel" ] || { say "Nothing selected."; return; }
-        log "upgrade: $(printf '%s' "$sel" | tr '\n' ' ')"
         say "$ICON_UP  Upgrading selected packages..."
         local -a _pkgs=()
         mapfile -t _pkgs <<< "$sel"
-        run_multi_op install "${_pkgs[@]}"
+        if run_multi_op install "${_pkgs[@]}"; then
+            log "upgrade: $(printf '%s' "$sel" | tr '\n' ' ')"
+        fi
     fi
     if confirm_danger "$ICON_AUTOREMOVE Remove now-unused dependencies?"; then
-        if apt autoremove -y >/dev/null 2>&1; then
-            ok "Autoremoved unused dependencies."
+        local out hint
+        if out=$(apt autoremove -y 2>&1); then
+            hint=$(apt_hint "$out")
+            ok "${hint:-Autoremoved unused dependencies.}"
         else
-            err "Autoremove failed."
-            log_err "autoremove: failed"
+            hint=$(apt_hint "$out")
+            err "${hint:-Autoremove failed.}"
+            log_err "autoremove: ${hint:-failed}"
+            printf '%s\n' "$out" | tail -n 4
         fi
     fi
     if confirm_danger "$ICON_CLEAN Clean the download cache?"; then
-        if "$MGR" clean >/dev/null 2>&1; then
-            ok "Cache cleaned!"
+        local out hint
+        if out=$("$MGR" clean 2>&1); then
+            hint=$(apt_hint "$out")
+            ok "${hint:-Cache cleaned!}"
         else
-            err "Failed to clean cache."
-            log_err "clean cache: failed"
+            hint=$(apt_hint "$out")
+            err "${hint:-Failed to clean cache.}"
+            log_err "clean cache: ${hint:-failed}"
+            printf '%s\n' "$out" | tail -n 4
         fi
     fi
 }
@@ -878,11 +893,16 @@ do_clean() {
         say "Canceled."
         return
     fi
-    log "clean cache"
-    if run_spin "Cleaning cache..." "$MGR" clean; then
-        ok "Cache cleaned!"
+    local out hint
+    if out=$(run_spin "Cleaning cache..." "$MGR" clean 2>&1); then
+        log "clean cache"
+        hint=$(apt_hint "$out")
+        ok "${hint:-Cache cleaned!}"
     else
-        err "Failed to clean cache"
+        hint=$(apt_hint "$out")
+        err "${hint:-Failed to clean cache}"
+        log_err "clean cache: ${hint:-failed}"
+        printf '%s\n' "$out" | tail -n 4
     fi
 }
 
@@ -905,9 +925,9 @@ do_autoremove() {
         say "Canceled."
         return
     fi
-    log "autoremove"
     local out hint
     if out=$(apt autoremove -y 2>&1); then
+        log "autoremove"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -921,6 +941,7 @@ do_autoremove() {
         else
             err "Autoremove failed."
         fi
+        log_err "autoremove: ${hint:-failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -952,14 +973,16 @@ do_size() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "size $PKG_NAME"
     say "$ICON_SIZE  Sizes for $PKG_NAME:"
-    local out
-    out=$(apt-cache show "$PKG_NAME" 2>/dev/null \
+    local out hint
+    out=$(apt-cache show "$PKG_NAME" 2>&1 \
         | grep -E '^(Package|Version|Size|Installed-Size):' \
         | sed 's/^Size:/Download size (bytes):/; s/^Installed-Size:/Installed size (KiB):/')
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
-        err "Package not in cache — run $ICON_UPDATE Upgrade center first?"
+        hint=$(apt_hint "$out")
+        err "${hint:-Package not in cache — run $ICON_UPDATE Upgrade center first?}"
+        [ -n "$hint" ] && log_err "size $PKG_NAME: $hint"
     fi
 }
 
@@ -968,12 +991,15 @@ do_files() {
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "files $PKG_NAME"
     say "$ICON_FILES Files installed by $PKG_NAME:"
-    local out
-    out=$(dpkg -L "$PKG_NAME" 2>/dev/null | tail -n +2)
+    local out hint
+    out=$(dpkg -L "$PKG_NAME" 2>&1 | tail -n +2)
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
-        err "Package may not be installed"
+        hint=$(apt_hint "$out")
+        err "${hint:-Package may not be installed}"
+        [ -n "$hint" ] && log_err "files $PKG_NAME: $hint"
+        printf '%s\n' "$out" | tail -n 4
     fi
 }
 
@@ -1010,14 +1036,32 @@ do_hold() {
         Hold*)
             ask_name "Package to hold"
             [ -n "$PKG_NAME" ] || return
-            log "hold $PKG_NAME"
-            if apt-mark hold "$PKG_NAME" 2>/dev/null; then ok "$PKG_NAME is now held"; else err "Failed to hold $PKG_NAME"; fi
+            local out hint
+            if out=$(apt-mark hold "$PKG_NAME" 2>&1); then
+                log "hold $PKG_NAME"
+                hint=$(apt_hint "$out")
+                ok "${hint:-$PKG_NAME is now held}"
+            else
+                hint=$(apt_hint "$out")
+                err "${hint:-Failed to hold $PKG_NAME}"
+                log_err "hold $PKG_NAME: ${hint:-failed}"
+                printf '%s\n' "$out" | tail -n 4
+            fi
             ;;
         Unhold*)
             ask_name "Package to unhold"
             [ -n "$PKG_NAME" ] || return
-            log "unhold $PKG_NAME"
-            if apt-mark unhold "$PKG_NAME" 2>/dev/null; then ok "$PKG_NAME is no longer held"; else err "Failed to unhold $PKG_NAME"; fi
+            local out hint
+            if out=$(apt-mark unhold "$PKG_NAME" 2>&1); then
+                log "unhold $PKG_NAME"
+                hint=$(apt_hint "$out")
+                ok "${hint:-$PKG_NAME is no longer held}"
+            else
+                hint=$(apt_hint "$out")
+                err "${hint:-Failed to unhold $PKG_NAME}"
+                log_err "unhold $PKG_NAME: ${hint:-failed}"
+                printf '%s\n' "$out" | tail -n 4
+            fi
             ;;
         Show*)
             say "$ICON_HOLD Held packages:"
@@ -1066,10 +1110,10 @@ do_fixbroken() {
         say "Canceled."
         return
     fi
-    log "fix-broken"
     say "$ICON_FIXBROKEN Fixing broken packages..."
     local out hint
     if out=$(apt --fix-broken install -y 2>&1); then
+        log "fix-broken"
         hint=$(apt_hint "$out")
         if [ -n "$hint" ]; then
             ok "$hint"
@@ -1083,6 +1127,7 @@ do_fixbroken() {
         else
             err "Fix-broken failed."
         fi
+        log_err "fix-broken: ${hint:-failed}"
         printf '%s\n' "$out" | tail -n 4
     fi
 }
@@ -1123,19 +1168,40 @@ do_simulate() {
             [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
             log "simulate install $PKG_NAME"
             say "$ICON_EYE  Dry-run — what installing $PKG_NAME would change:"
-            "$MGR" install -s "$PKG_NAME" 2>&1 || err "Could not simulate install"
+            local out hint
+            if ! out=$("$MGR" install -s "$PKG_NAME" 2>&1); then
+                hint=$(apt_hint "$out")
+                err "${hint:-Could not simulate install}"
+                printf '%s\n' "$out" | tail -n 4
+            else
+                printf '%s\n' "$out"
+            fi
             ;;
         *remove*)
             ask_name "Package name to preview"
             [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
             log "simulate remove $PKG_NAME"
             say "$ICON_EYE  Dry-run — what removing $PKG_NAME would change:"
-            "$MGR" remove -s "$PKG_NAME" 2>&1 || err "Could not simulate remove"
+            local out hint
+            if ! out=$("$MGR" remove -s "$PKG_NAME" 2>&1); then
+                hint=$(apt_hint "$out")
+                err "${hint:-Could not simulate remove}"
+                printf '%s\n' "$out" | tail -n 4
+            else
+                printf '%s\n' "$out"
+            fi
             ;;
         *upgrade*)
             log "simulate upgrade"
             say "$ICON_EYE  Dry-run — full system upgrade preview:"
-            "$MGR" upgrade -s 2>&1 || err "Could not simulate upgrade"
+            local out hint
+            if ! out=$("$MGR" upgrade -s 2>&1); then
+                hint=$(apt_hint "$out")
+                err "${hint:-Could not simulate upgrade}"
+                printf '%s\n' "$out" | tail -n 4
+            else
+                printf '%s\n' "$out"
+            fi
             ;;
     esac
 }
@@ -1239,21 +1305,31 @@ do_cache() {
     case "$a" in
         *"Clean all"*)
             if confirm_danger "$ICON_CACHE  Delete every cached .deb?"; then
-                log "apt clean"
-                if run_spin "Cleaning cache..." "$MGR" clean; then
-                    ok "Cache cleaned!"
+                local out hint
+                if out=$(run_spin "Cleaning cache..." "$MGR" clean 2>&1); then
+                    log "apt clean"
+                    hint=$(apt_hint "$out")
+                    ok "${hint:-Cache cleaned!}"
                 else
-                    err "Failed to clean cache."
+                    hint=$(apt_hint "$out")
+                    err "${hint:-Failed to clean cache.}"
+                    log_err "apt clean: ${hint:-failed}"
+                    printf '%s\n' "$out" | tail -n 4
                 fi
             fi
             ;;
         *"outdated"*)
             if confirm_danger "$ICON_CACHE  Remove outdated .deb files only?"; then
-                log "apt autoclean"
-                if run_spin "Autocleaning..." apt autoclean; then
-                    ok "Outdated packages cleaned!"
+                local out hint
+                if out=$(run_spin "Autocleaning..." apt autoclean 2>&1); then
+                    log "apt autoclean"
+                    hint=$(apt_hint "$out")
+                    ok "${hint:-Outdated packages cleaned!}"
                 else
-                    err "Autoclean failed."
+                    hint=$(apt_hint "$out")
+                    err "${hint:-Autoclean failed.}"
+                    log_err "apt autoclean: ${hint:-failed}"
+                    printf '%s\n' "$out" | tail -n 4
                 fi
             fi
             ;;
@@ -1326,10 +1402,15 @@ do_deptools() {
                     printf '%s\n' "$orphans"
                     if confirm_danger "$ICON_AUTOREMOVE  Autoremove them?"; then
                         log "autoremove orphans"
-                        if apt autoremove -y >/dev/null 2>&1; then
-                            ok "Orphans removed!"
+                        local out hint
+                        if out=$(apt autoremove -y 2>&1); then
+                            hint=$(apt_hint "$out")
+                            ok "${hint:-Orphans removed!}"
                         else
-                            err "Autoremove failed."
+                            hint=$(apt_hint "$out")
+                            err "${hint:-Autoremove failed.}"
+                            log_err "autoremove orphans: ${hint:-failed}"
+                            printf '%s\n' "$out" | tail -n 4
                         fi
                     fi
                 else
@@ -1372,11 +1453,12 @@ do_bulk() {
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
             if confirm_danger "$ICON_INSTALL Install $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
-                log "bulk install: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_INSTALL Installing $n packages..."
                 local -a _pkgs=()
                 mapfile -t _pkgs <<< "$names"
-                run_multi_op install "${_pkgs[@]}"
+                if run_multi_op install "${_pkgs[@]}"; then
+                    log "bulk install: $(printf '%s' "$names" | tr '\n' ' ')"
+                fi
             fi
             ;;
         Remove*multiple*)
@@ -1390,11 +1472,12 @@ do_bulk() {
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
             if confirm_danger "$ICON_UNINSTALL Remove $n packages ($(printf '%s' "$names" | tr '\n' ' '))?"; then
-                log "bulk remove: $(printf '%s' "$names" | tr '\n' ' ')"
                 say "$ICON_UNINSTALL Removing $n packages..."
                 local -a _pkgs=()
                 mapfile -t _pkgs <<< "$names"
-                run_multi_op remove "${_pkgs[@]}"
+                if run_multi_op remove "${_pkgs[@]}"; then
+                    log "bulk remove: $(printf '%s' "$names" | tr '\n' ' ')"
+                fi
             fi
             ;;
         *"installed list"*)
@@ -1402,10 +1485,11 @@ do_bulk() {
             [ -n "$names" ] || { say "Nothing selected."; return; }
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             if confirm_danger "$ICON_UNINSTALL Remove $n package(s) from the installed list?"; then
-                log "bulk remove picked: $(printf '%s' "$names" | tr '\n' ' ')"
                 local -a _pkgs=()
                 mapfile -t _pkgs <<< "$names"
-                run_multi_op remove "${_pkgs[@]}"
+                if run_multi_op remove "${_pkgs[@]}"; then
+                    log "bulk remove picked: $(printf '%s' "$names" | tr '\n' ' ')"
+                fi
             fi
             ;;
         *"upgradable list"*)
@@ -1413,10 +1497,11 @@ do_bulk() {
             [ -n "$names" ] || { say "Nothing selected."; return; }
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             if confirm_danger "$ICON_UP  Upgrade $n package(s)?"; then
-                log "bulk upgrade picked: $(printf '%s' "$names" | tr '\n' ' ')"
                 local -a _pkgs=()
                 mapfile -t _pkgs <<< "$names"
-                run_multi_op install "${_pkgs[@]}"
+                if run_multi_op install "${_pkgs[@]}"; then
+                    log "bulk upgrade picked: $(printf '%s' "$names" | tr '\n' ' ')"
+                fi
             fi
             ;;
         *) return ;;
@@ -1503,17 +1588,13 @@ do_favs() {
             ask_name "Package name to favorite"
             [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
             if [ ! -f "$FAVS_FILE" ]; then
-                printf '%s\n' "$PKG_NAME" > "$FAVS_FILE"
-                log "favorite add $PKG_NAME"
-                ok "$PKG_NAME added to favorites ($FAVS_FILE)"
+                if tmp=$(scratch_new); then printf '%s\n' "$PKG_NAME" > "$tmp" && mv -f "$tmp" "$FAVS_FILE" && log "favorite add $PKG_NAME" && ok "$PKG_NAME added to favorites ($FAVS_FILE)"; else err "Could not create temp file for favorites."; fi
                 return
             fi
             if grep -Fxq "$PKG_NAME" "$FAVS_FILE"; then
                 warn "$PKG_NAME is already a favorite."
             else
-                printf '%s\n' "$PKG_NAME" >> "$FAVS_FILE"
-                log "favorite add $PKG_NAME"
-                ok "$PKG_NAME added to favorites"
+                if tmp=$(scratch_new); then cat "$FAVS_FILE" > "$tmp" 2>/dev/null || true; printf '%s\n' "$PKG_NAME" >> "$tmp" && mv -f "$tmp" "$FAVS_FILE" && log "favorite add $PKG_NAME" && ok "$PKG_NAME added to favorites"; else err "Could not create temp file for favorites."; fi
             fi
             [ "$FAVS_PINNED" = "1" ] && build_menu
             ;;
@@ -1629,14 +1710,15 @@ do_favs() {
 }
 
 do_backup() {
-    local file
+    local file tmp
     file="$HOME/pkg-backup-$(date +%Y%m%d-%H%M%S)-$$.txt"
     say "$ICON_BACKUP Backing up installed packages..."
-    if list_installed_names > "$file" 2>/dev/null && [ -s "$file" ]; then
+    if ! tmp=$(scratch_new); then err "Could not create temp file for backup."; return; fi
+    if list_installed_names > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$file"; then
         log "backup → $file"
         ok "Backed up $(wc -l < "$file") packages → $file"
     else
-        rm -f "$file"
+        rm -f "$tmp" "$file"
         err "Backup failed"
     fi
 }
@@ -1762,11 +1844,16 @@ do_doctor() {
     if [ "${#missing[@]}" -gt 0 ]; then
         if confirm "Install: ${missing[*]} ?"; then
             log "install helpers: ${missing[*]}"
-            if "$MGR" install -y "${missing[@]}" 2>/dev/null; then
-                ok "Installed: ${missing[*]}"
+            local out hint
+            if out=$("$MGR" install -y "${missing[@]}" 2>&1); then
+                hint=$(apt_hint "$out")
+                ok "${hint:-Installed: ${missing[*]}}"
                 refresh_gum
             else
-                err "Install failed"
+                hint=$(apt_hint "$out")
+                err "${hint:-Install failed}"
+                log_err "install helpers ${missing[*]}: ${hint:-failed}"
+                printf '%s\n' "$out" | tail -n 4
             fi
         fi
     else
@@ -2010,37 +2097,58 @@ do_maintenance() {
     warn "$issues issue(s) found."
     say "$ICON_WAND  Offer to fix them..."
     if confirm_danger "$ICON_FIXBROKEN  Run apt fix-broken now?"; then
+        local hint
         if output=$(apt --fix-broken install -y 2>&1); then
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
+            [ -n "$hint" ] && ok "$hint"
         else
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
-            err "apt fix-broken failed."
-            log_err "fix-broken: failed"
+            err "${hint:-apt fix-broken failed.}"
+            log_err "fix-broken: ${hint:-failed}"
             issues=$((issues+1))
         fi
     fi
     if confirm_danger "$ICON_AUTOREMOVE  Remove orphaned packages now?"; then
+        local hint
         if output=$(apt autoremove -y 2>&1); then
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
+            [ -n "$hint" ] && ok "$hint"
         else
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
-            err "apt autoremove failed."
-            log_err "autoremove: failed"
+            err "${hint:-apt autoremove failed.}"
+            log_err "autoremove: ${hint:-failed}"
             issues=$((issues+1))
         fi
     fi
     if confirm_danger "$ICON_UP  Upgrade all packages now?"; then
+        local hint
         if output=$("$MGR" upgrade -y 2>&1); then
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
+            [ -n "$hint" ] && ok "$hint"
         else
+            hint=$(apt_hint "$output")
             printf '%s\n' "$output" | tail -n 5
-            err "upgrade failed."
-            log_err "upgrade all: failed"
+            err "${hint:-upgrade failed.}"
+            log_err "upgrade all: ${hint:-failed}"
             issues=$((issues+1))
         fi
     fi
     if confirm "$ICON_CLEAN  Clean the download cache?"; then
-        "$MGR" clean 2>/dev/null && ok "Cache cleaned."
+        local out hint
+        if out=$("$MGR" clean 2>&1); then
+            hint=$(apt_hint "$out")
+            ok "${hint:-Cache cleaned.}"
+        else
+            hint=$(apt_hint "$out")
+            err "${hint:-Failed to clean cache.}"
+            log_err "clean cache: ${hint:-failed}"
+            printf '%s\n' "$out" | tail -n 4
+        fi
     fi
 }
 
@@ -2147,10 +2255,16 @@ do_groups() {
                 warn "A group named \"$gname\" already exists."
                 return
             fi
-            printf '%s::%s\n' "$gname" "$(printf '%s' "$gpkgs" | tr '\n' ' ')" >> "$GROUPS_FILE"
-            load_groups
-            log "group create $gname"
-            ok "Group \"$gname\" created."
+            if tmp=$(scratch_new); then
+                [ -f "$GROUPS_FILE" ] && cat "$GROUPS_FILE" > "$tmp" 2>/dev/null || true
+                if printf '%s::%s\n' "$gname" "$(printf '%s' "$gpkgs" | tr '\n' ' ')" >> "$tmp" && mv -f "$tmp" "$GROUPS_FILE"; then
+                    load_groups; log "group create $gname"; ok "Group \"$gname\" created."
+                else
+                    err "Failed to create group"; rm -f "$tmp"
+                fi
+            else
+                err "Could not create temp file for groups."
+            fi
             ;;
         Delete*)
             if [ ! -s "$GROUPS_FILE" ]; then
@@ -2317,8 +2431,17 @@ do_holdver() {
         Hold*current*)
             ask_name "Package to hold at current version"
             [ -n "$PKG_NAME" ] || return
-            log "holdver $PKG_NAME current"
-            if apt-mark hold "$PKG_NAME" 2>/dev/null; then ok "$PKG_NAME held at current version"; else err "Failed to hold $PKG_NAME"; fi
+            local out hint
+            if out=$(apt-mark hold "$PKG_NAME" 2>&1); then
+                log "holdver $PKG_NAME current"
+                hint=$(apt_hint "$out")
+                ok "${hint:-$PKG_NAME held at current version}"
+            else
+                hint=$(apt_hint "$out")
+                err "${hint:-Failed to hold $PKG_NAME}"
+                log_err "holdver $PKG_NAME current: ${hint:-failed}"
+                printf '%s\n' "$out" | tail -n 4
+            fi
             ;;
         Hold*chosen*)
             ask_name "Package to hold at specific version"

@@ -23,8 +23,8 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 FONT_DIR="$DIR/fonts"
 FONT_REMOTE_DIR="$REPO/fonts"
 TERMUX_FONT="$HOME/.termux/font.ttf"
-BIN_TMP="$BIN.tmp"
-FONT_TMP="$HOME/.termux/.font.ttf.tmp"
+BIN_TMP=$(mktemp "$PREFIX/bin/.pkg-manager.XXXXXX" 2>/dev/null) || BIN_TMP="$BIN.tmp"
+FONT_TMP=$(mktemp "$HOME/.termux/.font.ttf.XXXXXX" 2>/dev/null) || FONT_TMP="$HOME/.termux/.font.ttf.tmp"
 
 trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
@@ -39,7 +39,7 @@ info "Installing globally to: ${BD}${BIN}${R}"
 # ── Fetch the manager ────────────────────────────────────────────────────
 if [ -f "$DIR/manager.sh" ]; then
     ok "Using local ${BD}manager.sh${R} from this repository..."
-    cp "$DIR/manager.sh" "$BIN_TMP"
+    cp "$DIR/manager.sh" "$BIN_TMP" || { warn "Failed to copy $DIR/manager.sh to $BIN_TMP"; exit 1; }
 else
     if ! command -v curl >/dev/null 2>&1; then
         warn "${RED}curl not found — aborting.${R} Install it with: ${BD}pkg install curl${R}"
@@ -54,13 +54,18 @@ else
         fi
     fi
     hdr "Downloading manager.sh"
-    curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP"
+    curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP" || { warn "Failed to download $REPO/manager.sh to $BIN_TMP"; exit 1; }
 fi
 
-mkdir -p "$(dirname "$BIN")"
-mv -f "$BIN_TMP" "$BIN"
-chmod +x "$BIN"
-sed -i "1s|^#!.*|#!$(command -v bash)|" "$BIN"
+mkdir -p "$(dirname "$BIN")" || { warn "Failed to create $(dirname "$BIN")"; exit 1; }
+mv -f "$BIN_TMP" "$BIN" || { warn "Failed to move $BIN_TMP to $BIN"; exit 1; }
+chmod +x "$BIN" || { warn "Failed to chmod $BIN"; exit 1; }
+bash_path=$(command -v bash)
+if [ -n "$bash_path" ]; then
+    sed -i "1s|^#!.*|#!$bash_path|" "$BIN" || warn "Failed to fix shebang in $BIN"
+else
+    warn "bash not found — cannot fix shebang in $BIN"
+fi
 
 divider
 ok "Installed → ${BD}${BIN}${R}"
@@ -78,13 +83,13 @@ divider
 install_font() {
     local font="$1"
     hdr "Installing font: $font"
-    mkdir -p "$HOME/.termux"
+    mkdir -p "$HOME/.termux" || { warn "Failed to create $HOME/.termux"; return 1; }
     if [ -f "$FONT_DIR/$font" ]; then
-        cp "$FONT_DIR/$font" "$FONT_TMP"
+        cp "$FONT_DIR/$font" "$FONT_TMP" || { warn "Failed to copy $FONT_DIR/$font to $FONT_TMP"; return 1; }
     else
-        curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$FONT_TMP"
+        curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$FONT_TMP" || { warn "Failed to download $FONT_REMOTE_DIR/$font to $FONT_TMP"; return 1; }
     fi
-    mv -f "$FONT_TMP" "$TERMUX_FONT"
+    mv -f "$FONT_TMP" "$TERMUX_FONT" || { warn "Failed to move $FONT_TMP to $TERMUX_FONT"; return 1; }
     ok "$font installed → $TERMUX_FONT"
     if command -v termux-reload-settings >/dev/null 2>&1; then
         termux-reload-settings >/dev/null 2>&1 || true
