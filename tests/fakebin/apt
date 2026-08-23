@@ -1,6 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # fake apt
 if [[ "$1" == --* ]]; then
+    # Leading global option (e.g. --fix-broken) is consumed only to shift it
+    # off argv; the stub does not act on its value.
+    # shellcheck disable=SC2034
     extra="$1"
     shift
 fi

@@ -304,8 +304,9 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~2.7k lines, single file)
-├── tests/          # automated harness (fakebin stubs + 120 tests) — bash tests/run-tests.sh
+├── manager.sh      # the entire app (~2.9k lines, single file)
+├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
+├── tests/          # automated harness (fakebin stubs + 130 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -314,7 +315,9 @@ Easy-Termux-Package-Manager/
 ~/.pkg-manager.log       # action history (created on the first logged action)
 ~/.pkg-manager-favs      # favorites list (created by the Favorites option)
 ~/.pkg-manager-groups    # custom package groups (created by Package groups)
+~/.pkg-manager-notes     # user notes (created by User notes option)
 ~/pkg-backup-*.txt       # backups (created by Backup option)
+~/pkg-snapshot-*.tar.gz  # full snapshots (created by Full snapshot option)
 ```
 
 ## 🧹 Removing
@@ -334,7 +337,22 @@ A few ground rules to keep the docs in sync:
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
 - **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v3.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 120 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 130 scenario tests).
+
+### 🛠️ Make targets (developers)
+
+Termux needs `pkg install make shellcheck` once. From the repo root:
+
+| Command | What it does |
+|---------|--------------|
+| `make` / `make help` | list targets |
+| `make run` | launch the app (`GUM_ENABLED=0 make run` for text mode) |
+| `make test` | full 130-test suite (~2 min, fakebin — no real apt) |
+| `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
+| `make check` | lint + test |
+| `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
+| `make uninstall` | remove `$PREFIX/bin/pkg-manager` |
+| `make clean` | delete `tests/tmp/` artifacts |
 
 ## 📜 License
 

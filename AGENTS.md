@@ -2,9 +2,22 @@
 
 ## What this is
 
-Single-file Bash app (`manager.sh`, ~2.7k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
+Single-file Bash app (`manager.sh`, ~2.9k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
 
 > **This is Termux, not Linux.** Termux runs on Android without root, uses Bionic libc (not glibc), has no FHS-compliant filesystem, and packages live under `/data/data/com.termux/files/usr`. Every assumption about standard Linux paths, permissions, or system calls can break here.
+
+## Make
+
+`make` is not preinstalled in Termux -- `pkg install make shellcheck` once.
+
+| Target | Does |
+|--------|------|
+| `make run` | launch app (`GUM_ENABLED=0 make run` = text mode) |
+| `make test` | full 130-test suite (~2 min) |
+| `make lint` | `bash -n` + `shellcheck --severity=style` on all shell scripts (must stay at 0 findings; the one intentional `SC2034` in `tests/fakebin/apt` carries an inline disable) |
+| `make check` | lint + test |
+| `make install` / `make uninstall` | via `install.sh` / `rm $PREFIX/bin/pkg-manager` |
+| `make clean` | delete `tests/tmp/` |
 
 ## Run
 
@@ -24,6 +37,7 @@ Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real 
 
 - `manager.sh` -- the entire app. Every menu option, every function.
 - `install.sh` -- global installer, copies `manager.sh` to `$PREFIX/bin/pkg-manager`, offers Nerd Font install.
+- `Makefile` -- dev targets: `run`, `test`, `lint`, `check`, `install`, `uninstall`, `clean`. `lint` must stay at 0 findings.
 - `fonts/` -- bundled Nerd Font TTFs (CaskaydiaCove, FiraCode).
 - `tests/fakebin/` -- stubs for `apt`, `dpkg`, `gum`, `curl`, etc. used by the test harness.
 - `tests/seeds/` -- per-test seed data (copied into fake `$HOME`/`$PREFIX`).
@@ -88,7 +102,7 @@ All in `$HOME`:
 
 ## Version bump
 
-Three places: badge in README, ASCII art line (`v3.0`), fallback string in `manager.sh:236`. Then regenerate `BANNER_B64` (compressed blob).
+Three places: badge in README, ASCII art line (`v3.0`), fallback string in `manager.sh:238`. Then regenerate `BANNER_B64` (compressed blob).
 
 ## Gotchas
 
