@@ -11,6 +11,7 @@ sim=0
 pkgs=()
 for a in "$@"; do
     case "$a" in
+        --) continue ;;
         -s|--simulate) sim=1 ;;
         -y|--yes|-f|--reinstall|--fix-broken|--multi) : ;;
         *) pkgs+=("$a") ;;

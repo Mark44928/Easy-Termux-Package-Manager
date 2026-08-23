@@ -37,7 +37,7 @@ scratch_new() {
 cleanup_tmp() {
     local f
     for f in "${_SCRATCH[@]:-}"; do
-        [ -n "$f" ] && rm -f -- "$f" 2>/dev/null
+        [ -n "$f" ] && rm -rf -- "$f" 2>/dev/null
     done
     _SCRATCH=()
 }
@@ -711,7 +711,7 @@ do_search() {
     log "search $PKG_NAME"
     local out installed
     installed=$(list_installed_names)
-    out=$(apt search "$PKG_NAME" 2>/dev/null | grep -vE '^(Sorting|Full Text Search)')
+    out=$(apt search -- "$PKG_NAME" 2>/dev/null | grep -vE '^(Sorting|Full Text Search)')
     if [ -z "$out" ]; then
         err "No results — check the name or run $ICON_UPDATE Upgrade center first?"
         return
@@ -988,7 +988,7 @@ do_owner() {
     esac
     log "owner $file"
     say "$ICON_OWNER  Which package owns $file:"
-    dpkg -S "$file" 2>/dev/null || err "No installed package owns that file"
+    dpkg -S -- "$file" 2>/dev/null || err "No installed package owns that file"
 }
 
 do_hold() {
@@ -1475,6 +1475,7 @@ pick_upgradable() {
                 printf '%s\n' "$(sed -n "${i}p" "$tmp")"
             fi
         done
+        rm -f "$tmp"
     fi
 }
 
@@ -2221,7 +2222,7 @@ do_localdeb() {
     log "localdeb $file"
     say "$ICON_FILES Installing $file..."
     local out hint
-    if out=$(dpkg -i "$file" 2>&1); then
+    if out=$(dpkg -i -- "$file" 2>&1); then
         ok "Installed $file"
     else
         hint=$(apt_hint "$out")
@@ -2286,7 +2287,7 @@ do_dlonly() {
     say "$ICON_CACHE Downloading $PKG_NAME..."
     local out hint dir sz
     dir="$PREFIX/var/cache/apt/archives"
-    if out=$(apt download "$PKG_NAME" 2>&1); then
+    if out=$(apt download -- "$PKG_NAME" 2>&1); then
         ok "Downloaded $PKG_NAME to $(pwd)"
         # shellcheck disable=SC2012
         ls -lh ./*.deb 2>/dev/null | tail -5 || { sz=$(du -sh "$dir" 2>/dev/null | cut -f1); [ -n "$sz" ] && say "Cache now: $sz"; }
@@ -2437,13 +2438,13 @@ do_notes() {
             note=$(printf '%s\n' "$note" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/::/--/g')
             [ -n "$note" ] || { warn "No note given."; return; }
             if [ -f "$NOTES_FILE" ] && awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
-                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note updated for $PKG_NAME"; log "note add $PKG_NAME"; fi
+                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note updated for $PKG_NAME"; log "note add $PKG_NAME"; else err "Could not create temp file for notes."; fi
             else
                 if tmp=$(scratch_new); then
                     [ -f "$NOTES_FILE" ] && cat "$NOTES_FILE" > "$tmp" 2>/dev/null || true
                     printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
                 else
-                    printf '%s::%s\n' "$PKG_NAME" "$note" >> "$NOTES_FILE"; ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
+                    err "Could not create temp file for notes."
                 fi
             fi
             ;;
@@ -2500,6 +2501,7 @@ do_snapshot() {
             list_installed_names > "$tmp" 2>/dev/null
             if [ ! -s "$tmp" ]; then err "No packages to snapshot."; rm -f "$tmp"; return; fi
             stage=$(mktemp -d "$HOME/.pkg-snapshot.XXXXXX" 2>/dev/null) || { err "No stage dir"; rm -f "$tmp"; return; }
+            _SCRATCH+=("$stage")
             mv -f "$tmp" "$stage/pkg-list.txt"
             [ -f "$FAVS_FILE" ] && cp "$FAVS_FILE" "$stage/" 2>/dev/null || true
             [ -f "$GROUPS_FILE" ] && cp "$GROUPS_FILE" "$stage/" 2>/dev/null || true
@@ -2546,6 +2548,10 @@ do_snapshot() {
             if ! confirm_danger "$ICON_RESTORE Restore from $file? This may overwrite favs/groups/notes."; then say "Canceled."; return; fi
             log "snapshot restore $file"
             say "$ICON_RESTORE Restoring $file..."
+            if tar -tzf "$file" 2>/dev/null | grep -qE '(^/|^\.\./|\.\./)'; then
+                err "Archive contains unsafe paths — aborting restore"
+                return
+            fi
             if tar -xzf "$file" -C "$HOME" 2>/dev/null; then ok "Snapshot restored to $HOME"; else err "Restore failed (try tar -tzf $file to inspect)"; fi
             ;;
         Delete*)

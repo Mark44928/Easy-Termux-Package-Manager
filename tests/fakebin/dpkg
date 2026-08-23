@@ -12,17 +12,21 @@ if [ "$1" = "-L" ]; then
     exit 0
 fi
 if [ "$1" = "-S" ]; then
-    case "$2" in
+    arg="$2"
+    [ "$arg" = "--" ] && arg="$3"
+    case "$arg" in
         *nope*) exit 1 ;;
     esac
-    echo "python3: $2"
+    echo "python3: $arg"
     exit 0
 fi
 if [ "$1" = "-i" ]; then
-    if [[ "$2" == *invalidpkg* ]]; then echo "dpkg: error processing $2" >&2; exit 1; fi
-    echo "Selecting previously unselected package $2"
-    echo "Unpacking $2"
-    echo "Setting up $2"
+    arg="$2"
+    [ "$arg" = "--" ] && arg="$3"
+    if [[ "$arg" == *invalidpkg* ]]; then echo "dpkg: error processing $arg" >&2; exit 1; fi
+    echo "Selecting previously unselected package $arg"
+    echo "Unpacking $arg"
+    echo "Setting up $arg"
     exit 0
 fi
 if [ "$1" = "-l" ]; then
