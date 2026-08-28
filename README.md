@@ -1,3 +1,5 @@
+> This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
+
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v3.0-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
