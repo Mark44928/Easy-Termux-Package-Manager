@@ -1,3 +1,34 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# fake curl — satisfies the do_doctor presence check
+# fake curl — doctor presence check, mirror timing, self-update download
+[ -n "$FAKE_CURL_FAIL" ] && exit 22
+
+out=""
+url=""
+wt=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o) out="$2"; shift 2 ;;
+        -w) wt=1; shift 2 ;;
+        -m|--max-time|--fail|-f|-s|-S|-L) shift ;;
+        -*) shift ;;
+        *) url="$1"; shift ;;
+    esac
+done
+
+if [ "$wt" = "1" ]; then
+    # timing probe used by the mirror speed test — pretend some mirrors are
+    # slower than others so the winner is deterministic
+    case "$url" in
+        *example.invalid*) echo "0.900" ;;
+        *packages.termux.dev*) echo "0.100" ;;
+        *packages-cf.termux.dev*) echo "0.120" ;;
+        *) echo "0.250" ;;
+    esac
+    exit 0
+fi
+if [ -n "$out" ] && [ -n "$url" ] && [ "$out" != "/dev/null" ]; then
+    # self-update download path
+    printf '#!/bin/bash\nset -o pipefail\necho "fake pkg-manager 9.9"\n' > "$out"
+    exit 0
+fi
 exit 0

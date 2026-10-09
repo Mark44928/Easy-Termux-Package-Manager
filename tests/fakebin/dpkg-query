@@ -1,9 +1,34 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # fake dpkg-query
-case "$*" in
-    *"-W"*)
-        printf '1024\tpython3\n2048\tgit\n'
-        exit 0
-        ;;
-esac
-exit 1
+# -f='${Version}' <pkg>  → installed version of one package
+# -W <pkg> / -W         → "size<TAB>name" listing (stats)
+fmt=""
+pkg=""
+args=("$@")
+i=0
+while [ $i -lt ${#args[@]} ]; do
+    case "${args[$i]}" in
+        -f=*) fmt="${args[$i]}" ;;
+        -W) : ;;
+        *) pkg="${args[$i]}" ;;
+    esac
+    i=$((i+1))
+done
+
+if [ -n "$fmt" ]; then
+    case "$fmt" in
+        *Installed-Size*)
+            printf '1024\tpython3\n2048\tgit\n'
+            exit 0
+            ;;
+    esac
+    case "$pkg" in
+        python3) echo "3.12" ;;
+        git) echo "2.40.0" ;;
+        invalidpkg) exit 1 ;;
+        *) echo "1.0" ;;
+    esac
+    exit 0
+fi
+printf '1024\tpython3\n2048\tgit\n'
+exit 0

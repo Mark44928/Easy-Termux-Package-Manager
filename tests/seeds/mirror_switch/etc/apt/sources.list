@@ -1,0 +1,2 @@
+# test mirror
+deb https://example.invalid/termux-main stable main

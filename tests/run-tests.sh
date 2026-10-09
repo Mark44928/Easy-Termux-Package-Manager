@@ -138,14 +138,14 @@ T group_create     <(printf '34\n4\nmytools\ncurl wget\n') "created" ".pkg-manag
 T bulk_pick_rm     <(printf '30\n3\n1 2\ny\n')         "✓ python3"
 T bulk_pick_up     <(printf '30\n4\n1\ny\n')           "✓ python3"
 T fav_pin          <(printf '31\n5\n')                 "Favorites pinned"
-T pin_installed    <(printf '45\ny\n')                 "Installing python3"
+T pin_installed    <(printf '51\ny\n')                 "Installing python3"
 T log_errors       <(printf '1\ninvalidpkg\n\n25\n2\n') "FAIL: install invalidpkg" ".pkg-manager.log|FAIL: install invalidpkg|"
-T undo_remove      <(printf '2\npython3\ny\n\n25\n4\ny\n') "Undo complete!"
+T undo_remove      <(printf '2\npython3\ny\n\n25\n5\ny\n') "Undo complete!"
 T search_install   <(printf '3\npython\npython-tool\ny\n') "✓ python-tool"
 T quiet_mode       <(printf '2\npython3\n')             "python3 removed!"
 T lock_mode        <(printf '2\npython3\n')             "Canceled."
 T group_delete     <(printf '34\n5\n1\ny\n\n34\n5\n')    "No custom groups to delete" ".pkg-manager-groups|"
-T undo_pick        <(printf '30\n3\n1 2\ny\n\n25\n4\ny\n') "Undo complete!" "||Setting up picked"
+T undo_pick        <(printf '30\n3\n1 2\ny\n\n25\n5\ny\n') "Undo complete!" "||Setting up picked"
 T history_installs <(printf '1\npython3\n\n25\n3\n')    "Install / remove actions:" "||Action history"
 T fav_remove_last  <(printf '31\n2\n1\n\n31\n3\n')      "No favorites yet — add some first!"
 
@@ -197,7 +197,7 @@ T owner_ok         <(printf '14\n/usr/bin/python\n')         "python3"
 T doctor_ok        <(printf '23\ny\n')                       "All helper tools present!"
 T export_json      <(printf '21\n2\n\n')                     "Exported 2 packages" "pkg-export.json|"
 T fav_unpin        <(printf '31\n5\n\n31\n5\n')              "Favorites removed from the main menu"
-T history_clear    <(printf '1\npython3\n\n25\n5\ny\n')      "History cleared" ".pkg-manager.log|"
+T history_clear    <(printf '1\npython3\n\n25\n6\ny\n') "History cleared" ".pkg-manager.log|"
 T import_ok        <(printf '22\n%s/tmp/import_ok/pkg-list.txt\ny\n' "$PWD") "Import complete!"
 T group_remove     <(printf '34\n3\n1\ny\n')                 "Removing group"
 T fixbroken_ok     <(printf '17\ny\n')                       "Dependency problems fixed!"
@@ -245,6 +245,84 @@ T why_ok           <(printf '41\npython3\n') "Why is"
 T notes_add        <(printf '42\n1\npython3\nmy note for 3.0\n\n42\n3\n') "Note added"
 T snapshot_create  <(printf '43\n1\n\n43\n2\n') "Snapshot created"
 T palette_choose   <(printf '44\n\n1\npython3\n') "Installing python3"
+
+# --- v4.0 new themes (text/apt) ---
+T theme_nord       <(printf '24\n2\n5\n\n24\n7\n')        "Settings saved" ".pkg-manager.conf|THEME=nord|"
+T theme_teal       <(printf '24\n2\n7\n\n24\n7\n')        "Settings saved" ".pkg-manager.conf|THEME=teal|"
+T theme_invalid    <(printf '24\n2\n1\n\n24\n7\n')        "Settings saved" ".pkg-manager.conf|THEME=green|"
+
+# --- v4.0 package watchlist (text/apt) ---
+T watch_add        <(printf '45\n1\npython3\n')            "added to the watchlist" ".pkg-manager-watch|"
+T watch_dup        <(printf '45\n1\npython3\n')            "already on the watchlist"
+T watch_show       <(printf '45\n3\n')                     "Watchlist is empty."
+T watch_list       <(printf '45\n3\n')                     "Watchlist (/"
+T watch_check      <(printf '45\n4\n')                     "up to date (3.12)"
+T watch_missing    <(printf '45\n4\n')                     "no longer available in the repositories"
+T watch_rm         <(printf '45\n2\n1\n')                  "removed from the watchlist"
+
+# --- v4.0 mirror speed test (text/apt) ---
+T mirror_fastest   <(printf '46\n')                        "already the fastest"
+T mirror_switch    <(printf '46\ny\n\n')                   "Mirror switched" "etc/apt/sources.list|packages.termux.dev|"
+FAKE_CURL_FAIL=1
+export FAKE_CURL_FAIL
+T mirror_fail      <(printf '46\n')                        "No mirror responded"
+unset FAKE_CURL_FAIL
+
+# --- v4.0 system audit (text/apt) ---
+T audit_ok         <(printf '47\n')                        "Health score"
+T audit_report     <(printf '47\n')                        "Audit report"
+
+# --- v4.0 mark manual / auto (text/apt) ---
+T mark_manual      <(printf '48\n1\npython3\n')            "marked as manual"
+T mark_auto        <(printf '48\n2\ngit\n')                "marked as auto"
+T mark_show_manual <(printf '48\n3\n')                     "Manually installed packages"
+T mark_show_auto   <(printf '48\n4\n')                     "Automatically installed packages"
+T mark_satisfies   <(printf '48\n5\npython3\n')            "Packages providing"
+
+# --- v4.0 recycle bin (text/apt) ---
+T recycle_empty    <(printf '49\n')                        "recycle bin is empty"
+T recycle_archive  <(printf '2\npython3\ny\n')              "archived to the recycle bin" "pkg-trash/*.deb|"
+T recycle_restore  <(printf '49\n1\npython3_3.12_arm64.deb\ny\n') "Restored python3_3.12_arm64.deb"
+T recycle_all      <(printf '49\n2\ny\n')                  "Recycle bin fully restored!"
+T recycle_show     <(printf '49\n3\n')                     "Recycle bin contents"
+T recycle_trash    <(printf '49\n4\ny\n')                  "Recycle bin emptied."
+
+# --- v4.0 history charts (text/apt) ---
+T history_charts   <(printf '1\npython3\n\n25\n4\n')       "Charts & statistics"
+T charts_bars      <(printf '1\npython3\n\n25\n4\n')       "Actions per day (last 14 days"
+
+# --- v4.0 self-update (text/apt, decline + failure paths) ---
+T selfupdate_cancel <(printf '50\nn\n')                    "Update canceled"
+FAKE_CURL_FAIL=1
+export FAKE_CURL_FAIL
+T selfupdate_fail  <(printf '50\n')                        "Could not download the latest version"
+unset FAKE_CURL_FAIL
+
+# --- v4.0 (gum/apt) ---
+G gum_watch        <(printf '👁️ Package watchlist\nAdd package to watchlist\npython3\n') "added to the watchlist" ".pkg-manager-watch|"
+G gum_watch_check  <(printf '👁️ Package watchlist\nCheck watchlist for updates\n') "up to date (3.12)"
+G gum_mirror       <(printf '▶️ Mirror speed test\n')        "already the fastest"
+G gum_audit        <(printf '🛡️ System audit\n')             "Health score"
+G gum_marks        <(printf '☑️ Mark manual / auto\nMark package as manually installed\npython3\n') "marked as manual"
+G gum_recycle      <(printf '🗑️ Recycle bin\n')            "recycle bin is empty"
+G gum_charts       <(printf '📦 Install a package\npython3\n📋 History & log viewer\nCharts & statistics\n') "Charts & statistics"
+G gum_selfupdate   <(printf '⬆️ Update pkg-manager\nn\n')  "Update canceled"
+
+# --- self-update replace path: runs against a COPY of the script, never the repo file ---
+TOTAL=$((TOTAL+1))
+home2="$PWD/tmp/selfupdate_replace"
+rm -rf "$home2"
+mkdir -p "$home2"
+cp "$MANAGER" "$home2/pkg-manager"
+export HOME="$home2" PREFIX="$home2" GUM_ENABLED=0 MGR=apt
+printf '50\ny\n' | timeout 30 bash "$home2/pkg-manager" > "$home2/run.log" 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+    FAIL=$((FAIL+1)); FAILED+=("selfupdate_replace:exit=$rc")
+elif grep -q "fake pkg-manager 9.9" "$home2/pkg-manager" && grep -q "Updated to" "$home2/run.log"; then
+    PASS=$((PASS+1))
+else
+    FAIL=$((FAIL+1)); FAILED+=("selfupdate_replace")
+fi
 
 echo
 echo "== RESULTS =="

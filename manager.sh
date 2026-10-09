@@ -11,6 +11,7 @@ set -o pipefail
 [ -v LOG_ENABLED ] && LOG_ENABLED_ENV=$LOG_ENABLED || LOG_ENABLED_ENV=""
 [ -v GUM_ENABLED ] && GUM_ENABLED_ENV=$GUM_ENABLED || GUM_ENABLED_ENV=""
 [ -v ICONS ] && ICONS_ENV=$ICONS || ICONS_ENV=""
+[ -v RECYCLE ] && RECYCLE_ENV=$RECYCLE || RECYCLE_ENV=""
 
 MGR="apt"
 THEME="green"
@@ -22,6 +23,7 @@ QUIET=0
 LOCK=0
 STARTUP_CHECK=0
 FAVS_PINNED=0
+RECYCLE=0
 
 # Scratch files: use mktemp (unique, unguessable names) so a predictable
 # fixed path can't be pre-planted as a symlink to truncate a victim via the
@@ -47,7 +49,7 @@ trap cleanup_tmp EXIT
 # may be planted / hand-edited, and sourcing it would run arbitrary code.
 load_config() {
     local line k v
-    local c_mgr c_theme c_confirm c_log c_gum c_icons c_quiet c_lock c_startup c_favs
+    local c_mgr c_theme c_confirm c_log c_gum c_icons c_quiet c_lock c_startup c_favs c_recycle
     [ -f "$HOME/.pkg-manager.conf" ] || return 0
     while IFS= read -r line; do
         case "$line" in
@@ -68,6 +70,7 @@ load_config() {
             LOCK)           c_lock=$v ;;
             STARTUP_CHECK)  c_startup=$v ;;
             FAVS_PINNED)    c_favs=$v ;;
+            RECYCLE)        c_recycle=$v ;;
         esac
     done < "$HOME/.pkg-manager.conf"
     [ -n "$c_mgr" ] && MGR=$c_mgr
@@ -80,6 +83,7 @@ load_config() {
     [ -n "$c_lock" ] && LOCK=$c_lock
     [ -n "$c_startup" ] && STARTUP_CHECK=$c_startup
     [ -n "$c_favs" ] && FAVS_PINNED=$c_favs
+    [ -n "$c_recycle" ] && RECYCLE=$c_recycle
     return 0
 }
 load_config
@@ -93,10 +97,11 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 [ -n "$LOG_ENABLED_ENV" ] && LOG_ENABLED=$LOG_ENABLED_ENV
 [ -n "$GUM_ENABLED_ENV" ] && GUM_ENABLED=$GUM_ENABLED_ENV
 [ -n "$ICONS_ENV" ] && ICONS=$ICONS_ENV
+[ -n "$RECYCLE_ENV" ] && RECYCLE=$RECYCLE_ENV
 
 # validate both the config file and any env override with the same guards
 case "$MGR" in apt|pkg) ;; *) MGR="apt" ;; esac
-case "$THEME" in green|blue|purple|red) ;; *) THEME="green" ;; esac
+case "$THEME" in green|blue|purple|red|nord|amber|teal|mono) ;; *) THEME="green" ;; esac
 case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
 case "$GUM_ENABLED" in 0|1) ;; *) GUM_ENABLED=1 ;; esac
@@ -105,7 +110,8 @@ case "$QUIET" in 0|1) ;; *) QUIET=0 ;; esac
 case "$LOCK" in 0|1) ;; *) LOCK=0 ;; esac
 case "$STARTUP_CHECK" in 0|1) ;; *) STARTUP_CHECK=0 ;; esac
 case "$FAVS_PINNED" in 0|1) ;; *) FAVS_PINNED=0 ;; esac
-unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV GUM_ENABLED_ENV ICONS_ENV
+case "$RECYCLE" in 0|1) ;; *) RECYCLE=0 ;; esac
+unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV GUM_ENABLED_ENV ICONS_ENV RECYCLE_ENV
 
 GREEN=46
 CYAN=45
@@ -118,6 +124,10 @@ set_theme() {
         blue)   CYAN=33;  PINK=208; GREEN=76;  YELLOW=214; RED=196 ;;
         purple) CYAN=99;  PINK=212; GREEN=48;  YELLOW=220; RED=196 ;;
         red)    CYAN=203; PINK=229; GREEN=46;  YELLOW=220; RED=196 ;;
+        nord)   CYAN=110; PINK=139; GREEN=108; YELLOW=222; RED=167 ;;
+        amber)  CYAN=179; PINK=216; GREEN=114; YELLOW=214; RED=203 ;;
+        teal)   CYAN=80;  PINK=121; GREEN=79;  YELLOW=191; RED=203 ;;
+        mono)   CYAN=252; PINK=250; GREEN=255; YELLOW=253; RED=247 ;;
         *)      CYAN=45;  PINK=212; GREEN=46;  YELLOW=220; RED=196 ;;
     esac
 }
@@ -189,6 +199,9 @@ init_icons
 LOG_FILE="$HOME/.pkg-manager.log"
 FAVS_FILE="$HOME/.pkg-manager-favs"
 GROUPS_FILE="$HOME/.pkg-manager-groups"
+WATCH_FILE="$HOME/.pkg-manager-watch"
+TRASH_DIR="$HOME/pkg-trash"
+UPDATE_URL="https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/manager.sh"
 
 refresh_gum() {
     if [ "$GUM_ENABLED" = "1" ] && command -v gum >/dev/null 2>&1 \
@@ -230,12 +243,12 @@ ok()   { if [ "$GUM" = "1" ]; then gum style --foreground "$GREEN" "✓ $1"; els
 err()  { if [ "$GUM" = "1" ]; then gum style --foreground "$RED"   "✗ $1"; else printf '✗ %s\n' "$1"; fi; }
 warn() { if [ "$GUM" = "1" ]; then gum style --foreground "$YELLOW" "⚠ $1"; else printf '⚠ %s\n' "$1"; fi; }
 
-BANNER_B64="H4sIAAAAAAAAA21PMQoCMRDs84ppbW4FW7nOUrCyWghB5ArBQkEQtvAR/sXep/iSm91EOcXsZmczMwkb5LowBaBtVsccNVlrLLgKUIIKYAymMgSS8GHiVsAsdMpvRbHlaeKNxx3oct1L86LHEvh+t7rVZ2gmC0rQkQ2vT2n1b9Fr1kqZOieSxbmE1/32k1iV8xWbsjuUYY91ORJOeD5wWXTzf/40ApIyPb1NAQAA"
+BANNER_B64="H4sIAAAAAAACA21PMQoCMRDs84ppbW4tLOU6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT5RSzm53NzCRskOvCFIC2WR1z1GStseAqQAkqgDGYyhBIwoeJWwGz0Cm/FcWWp4k3Hnegy3UvzYseS+D73epWn6GZLChBRza8PqXVv0WvWStl6pxIFucSXvfbT2JVzldsyu5Qhj3W5Ug44fnAZdHN//nTCOUFJYxNAQAA"
 
 banner() {
     local art
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
-        art="TERMUX Pkg Manager v3.0"
+        art="TERMUX Pkg Manager v4.0"
     fi
     if [ "$GUM" = "1" ]; then
         gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
@@ -307,6 +320,12 @@ build_menu() {
     OPTION_NOTES="$ICON_MEMO User notes"
     OPTION_SNAPSHOT="$ICON_BACKUP Full snapshot"
     OPTION_PALETTE="$ICON_WAND Command palette"
+    OPTION_WATCH="$ICON_EYE Package watchlist"
+    OPTION_MIRROR="$ICON_PLAY Mirror speed test"
+    OPTION_AUDIT="$ICON_SHIELD System audit"
+    OPTION_MARKS="$ICON_CHECKBOX Mark manual / auto"
+    OPTION_RECYCLE="$ICON_TRASH Recycle bin"
+    OPTION_SELFUPDATE="$ICON_UP Update pkg-manager"
     OPTION_EXIT="$ICON_EXIT Exit"
 
     MENU_ITEMS=(
@@ -321,6 +340,7 @@ build_menu() {
         "$OPTION_INSPECT" "$OPTION_MAINT" "$OPTION_GROUPS"
         "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
         "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
+        "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_SELFUPDATE"
     )
 
     FAVPIN=()
@@ -487,6 +507,7 @@ save_config() {
         printf 'LOCK=%s\n' "$LOCK"
         printf 'STARTUP_CHECK=%s\n' "$STARTUP_CHECK"
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
+        printf 'RECYCLE=%s\n' "$RECYCLE"
     } > "$tmp"
     if mv -f "$tmp" "$HOME/.pkg-manager.conf"; then
         printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
@@ -521,15 +542,19 @@ set_mgr() {
 set_theme_pick() {
     local t
     if [ "$GUM" = "1" ]; then
-        t=$(gum choose --header "$ICON_THEME  Select theme" "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)")
+        t=$(gum choose --header "$ICON_THEME  Select theme" "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)" "nord (icy/rose)" "amber (orange/rose)" "teal (cyan/mint)" "mono (grayscale)")
     else
-        printf '1) green\n2) blue\n3) purple\n4) red\n> ' >&2
+        printf '1) green\n2) blue\n3) purple\n4) red\n5) nord\n6) amber\n7) teal\n8) mono\n> ' >&2
         read -r t
         case "$t" in
             1) t="green (cyan/pink)" ;;
             2) t="blue (blue/orange)" ;;
             3) t="purple (purple/pink)" ;;
             4) t="red (red/yellow)" ;;
+            5) t="nord (icy/rose)" ;;
+            6) t="amber (orange/rose)" ;;
+            7) t="teal (cyan/mint)" ;;
+            8) t="mono (grayscale)" ;;
             *) return ;;
         esac
     fi
@@ -539,6 +564,10 @@ set_theme_pick() {
         blue*)   THEME="blue" ;;
         purple*) THEME="purple" ;;
         red*)    THEME="red" ;;
+        nord*)   THEME="nord" ;;
+        amber*)  THEME="amber" ;;
+        teal*)   THEME="teal" ;;
+        mono*)   THEME="mono" ;;
         *) return ;;
     esac
     set_theme
@@ -598,6 +627,11 @@ run_multi_op() {
     done
     total=${#uniq[@]}
     [ "$total" -eq 0 ] && return 0
+    if [ "$op" = "remove" ] && [ "$RECYCLE" = "1" ]; then
+        for p in "${uniq[@]}"; do
+            archive_pkg "$p"
+        done
+    fi
     if [ "$total" -eq 1 ]; then
         if out=$("$MGR" "$op" -y "${uniq[0]}" 2>&1); then
             hint=$(apt_hint "$out")
@@ -681,6 +715,7 @@ do_uninstall() {
         say "Canceled."
         return
     fi
+    [ "$RECYCLE" = "1" ] && archive_pkg "$PKG_NAME"
     say "$ICON_UNINSTALL  Removing $PKG_NAME..."
     local out hint
     if out=$("$MGR" remove -y "$PKG_NAME" 2>&1); then
@@ -1083,6 +1118,7 @@ do_purge() {
         say "Canceled."
         return
     fi
+    [ "$RECYCLE" = "1" ] && archive_pkg "$PKG_NAME"
     say "$ICON_PURGE Purging $PKG_NAME..."
     local out hint
     if out=$(apt purge -y "$PKG_NAME" 2>&1); then
@@ -1875,24 +1911,26 @@ do_settings() {
             "$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" \
             "$ICON_LOCK  Safety lock: $(onoff "$LOCK")" \
             "$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" \
+            "$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" \
             "$ICON_BACK  Back")
     else
-        printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Quiet mode (skip confirms): %s\n9) Safety lock: %s\n10) Maintenance on launch: %s\n11) Back\n> ' \
-            "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" >&2
+        printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Quiet mode (skip confirms): %s\n9) Safety lock: %s\n10) Maintenance on launch: %s\n11) Recycle bin (archive on remove): %s\n12) Back\n> ' \
+            "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" "$(onoff "$RECYCLE")" >&2
         read -r choice
         case "$choice" in
-            1) choice="$ICON_SLIDERS  Package manager: $MGR" ;;
-            2) choice="$ICON_THEME  Color theme: $THEME" ;;
-            3) choice="$ICON_WAND  Gum UI: $(onoff "$GUM_ENABLED")" ;;
-            4) choice="$ICON_PAINT  Icons: $ICONS" ;;
-            5) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
-            6) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
-            7) choice="$ICON_FOLDER  Show config file" ;;
-            8) choice="$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" ;;
-            9) choice="$ICON_LOCK  Safety lock: $(onoff "$LOCK")" ;;
-            10) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
-            11) choice="$ICON_BACK  Back" ;;
-            *) return ;;
+             1) choice="$ICON_SLIDERS  Package manager: $MGR" ;;
+             2) choice="$ICON_THEME  Color theme: $THEME" ;;
+             3) choice="$ICON_WAND  Gum UI: $(onoff "$GUM_ENABLED")" ;;
+             4) choice="$ICON_PAINT  Icons: $ICONS" ;;
+             5) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
+             6) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
+             7) choice="$ICON_FOLDER  Show config file" ;;
+             8) choice="$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" ;;
+             9) choice="$ICON_LOCK  Safety lock: $(onoff "$LOCK")" ;;
+             10) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
+             11) choice="$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" ;;
+             12) choice="$ICON_BACK  Back" ;;
+             *) return ;;
         esac
     fi
     [ -n "$choice" ] || return
@@ -1907,6 +1945,7 @@ do_settings() {
         *"Quiet mode"*)      QUIET=$((1-QUIET)); save_config ;;
         *"Safety lock"*)     LOCK=$((1-LOCK)); save_config ;;
         *"Maintenance on launch"*) STARTUP_CHECK=$((1-STARTUP_CHECK)); save_config ;;
+        *"Recycle bin"*)          RECYCLE=$((1-RECYCLE)); save_config ;;
         *) return ;;
     esac
 }
@@ -1930,6 +1969,44 @@ undo_last_remove() {
     fi
 }
 
+# show_charts — ASCII bar charts built from the action log: actions per day
+# (last 14 days, scaled to fit) and the most frequent action verbs.
+show_charts() {
+    if [ ! -f "$LOG_FILE" ]; then
+        say "No history yet — run some actions first!"
+        return
+    fi
+    local total fails
+    total=$(wc -l < "$LOG_FILE" 2>/dev/null | tr -d ' ')
+    fails=$(grep -c 'FAIL:' "$LOG_FILE" 2>/dev/null || true)
+    say "$ICON_CHART  Charts & statistics — ${total:-0} logged actions, ${fails:-0} failures"
+    say ""
+    printf '  Actions per day (last 14 days, # = 1+):\n'
+    grep -oE '^\[[0-9]{4}-[0-9]{2}-[0-9]{2}' "$LOG_FILE" 2>/dev/null | tr -d '[' | sort | uniq -c | tail -n 14 | awk '
+        { if ($1 > max) max = $1; rows[NR] = $0; n = NR }
+        END {
+            if (n == 0) exit
+            for (i = 1; i <= n; i++) {
+                split(rows[i], a, " ")
+                w = int(a[1] * 40 / max)
+                if (w < 1) w = 1
+                bar = ""
+                for (j = 0; j < w; j++) bar = bar "#"
+                printf "    %s  %5d  %s\n", a[2], a[1], bar
+            }
+        }'
+    say ""
+    printf '  Most frequent actions:\n'
+    sed -E 's/^\[[^]]*\] //' "$LOG_FILE" 2>/dev/null | grep -v '^FAIL:' | awk '{print $1}' \
+        | sort | uniq -c | sort -rn | head -n 8 | awk '{printf "    %5d  %s\n", $1, $2}'
+    if [ "$fails" != "0" ] && [ -n "$fails" ]; then
+        say ""
+        printf '  Failures by action:\n'
+        grep '^.*FAIL:' "$LOG_FILE" 2>/dev/null | sed -E 's/^\[[^]]*\] FAIL: //; s/:.*//' | awk '{print $1}' \
+            | sort | uniq -c | sort -rn | head -n 8 | awk '{printf "    %5d  %s\n", $1, $2}'
+    fi
+}
+
 do_history() {
     local a tmp
     if [ ! -f "$LOG_FILE" ]; then
@@ -1937,17 +2014,18 @@ do_history() {
         return
     fi
     if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_HISTORY  History & log viewer" "Show all history" "Show errors & failures" "Show installs / removals" "Undo last removal" "Clear history" "Back")
+        a=$(gum choose --header "$ICON_HISTORY  History & log viewer" "Show all history" "Show errors & failures" "Show installs / removals" "Charts & statistics" "Undo last removal" "Clear history" "Back")
     else
-        printf '1) Show all history\n2) Show errors & failures\n3) Show installs / removals\n4) Undo last removal\n5) Clear history\n6) Back\n> ' >&2
+        printf '1) Show all history\n2) Show errors & failures\n3) Show installs / removals\n4) Charts & statistics\n5) Undo last removal\n6) Clear history\n7) Back\n> ' >&2
         read -r a
         case "$a" in
             1) a="Show all history" ;;
             2) a="Show errors & failures" ;;
             3) a="Show installs / removals" ;;
-            4) a="Undo last removal" ;;
-            5) a="Clear history" ;;
-            6) a="Back" ;;
+            4) a="Charts & statistics" ;;
+            5) a="Undo last removal" ;;
+            6) a="Clear history" ;;
+            7) a="Back" ;;
             *) return ;;
         esac
     fi
@@ -1974,6 +2052,9 @@ do_history() {
         *installs*)
             say "$ICON_PLAY  Install / remove actions:"
             grep -E '\] (install|remove|purge|reinstall|upgrade|bulk|favorite|autoremove)' "$LOG_FILE" || say "None yet."
+            ;;
+        *Charts*)
+            show_charts
             ;;
         *Undo*)
             undo_last_remove
@@ -2700,6 +2781,618 @@ do_snapshot() {
     esac
 }
 
+# archive_pkg — download the currently-installed (or newest available) version
+# of "$1" into $TRASH_DIR so it can be reinstalled later from the .deb.
+# Best-effort: a failed download must never block the actual removal.
+archive_pkg() {
+    local pkg="$1" ver stage deb moved=0
+    valid_pkg_name "$pkg" || return 1
+    if ! command -v apt >/dev/null 2>&1; then
+        warn "apt not found — cannot archive $pkg."
+        return 1
+    fi
+    ver=$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null | head -n1)
+    say "$ICON_TRASH  Archiving $pkg to the recycle bin..."
+    stage=$(mktemp -d "$HOME/.pkg-archive.XXXXXX" 2>/dev/null) || { warn "Could not create a temp dir for the archive."; return 1; }
+    _SCRATCH+=("$stage")
+    if [ -n "$ver" ] && (cd "$stage" && apt download -- "$pkg=$ver" >/dev/null 2>&1); then
+        :
+    elif ! (cd "$stage" && apt download -- "$pkg" >/dev/null 2>&1); then
+        rm -rf "$stage"
+        warn "Could not download $pkg for the recycle bin (no longer in the repos?)."
+        return 1
+    fi
+    if ! mkdir -p "$TRASH_DIR" 2>/dev/null; then
+        rm -rf "$stage"
+        warn "Could not create $TRASH_DIR."
+        return 1
+    fi
+    for deb in "$stage"/*.deb; do
+        [ -e "$deb" ] || continue
+        if mv -f -- "$deb" "$TRASH_DIR/"; then moved=1; fi
+    done
+    rm -rf "$stage"
+    _SCRATCH=("${_SCRATCH[@]/$stage/}")
+    if [ "$moved" = "1" ]; then
+        log "recycle archive $pkg"
+        ok "$pkg archived to the recycle bin ($TRASH_DIR)."
+        return 0
+    fi
+    warn "No .deb was produced for $pkg — nothing archived."
+    return 1
+}
+
+# install_deb — install one local .deb file (recycle bin restore path),
+# fixing dependencies first the same way the Local .deb option does.
+install_deb() {
+    local file="$1" out hint
+    [ -f "$file" ] || { err "File not found: $file"; return 1; }
+    say "$ICON_TRASH Restoring $file..."
+    if out=$(dpkg -i -- "$file" 2>&1); then
+        log "recycle restore $file"
+        ok "Restored $(basename -- "$file")"
+        return 0
+    fi
+    hint=$(apt_hint "$out")
+    warn "${hint:-dpkg failed, trying to fix deps...}"
+    printf '%s\n' "$out" | tail -n 4
+    if out=$(apt --fix-broken install -y 2>&1); then
+        log "recycle restore $file (fixed deps)"
+        ok "Restored $(basename -- "$file") with dependency fixes."
+        return 0
+    fi
+    hint=$(apt_hint "$out")
+    err "${hint:-Restore failed for $file}"
+    log_err "recycle restore $file: ${hint:-fix-broken failed}"
+    printf '%s\n' "$out" | tail -n 4
+    return 1
+}
+
+do_recycle() {
+    local a debs n
+    if [ ! -d "$TRASH_DIR" ] || ! compgen -G "$TRASH_DIR/*.deb" >/dev/null 2>&1; then
+        say "The recycle bin is empty ($TRASH_DIR)."
+        say "Turn on Settings -> Recycle bin, and removals will keep a copy of each .deb here."
+        return
+    fi
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_TRASH  Recycle bin" "Restore a package" "Restore everything" "Show recycle bin" "Empty recycle bin" "Back")
+    else
+        printf '1) Restore a package\n2) Restore everything\n3) Show recycle bin\n4) Empty recycle bin\n5) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Restore a package" ;;
+            2) a="Restore everything" ;;
+            3) a="Show recycle bin" ;;
+            4) a="Empty recycle bin" ;;
+            5) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Restore\ a*)
+            if [ "$GUM" = "1" ]; then
+                mapfile -t debs < <(printf '%s\n' "$TRASH_DIR"/*.deb | xargs -n1 basename 2>/dev/null)
+                say "$ICON_TRASH Pick a .deb to restore:"
+                a=$(printf '%s\n' "${debs[@]}" | gum choose --header "$ICON_TRASH  Restore which package?")
+            else
+                printf 'Archived .deb files:\n' >&2
+                ls -1 "$TRASH_DIR"/*.deb >&2 2>/dev/null
+                printf 'Pick file (name or full path): ' >&2
+                read -r a
+            fi
+            [ -n "$a" ] || { say "Canceled."; return; }
+            local picked="$TRASH_DIR/$a"
+            case "$a" in /*) picked="$a" ;; esac
+            case "$picked" in /*.deb) ;; *) err "Pick a .deb from the recycle bin."; return ;; esac
+            if confirm_danger "$ICON_TRASH Reinstall from $picked?"; then
+                install_deb "$picked"
+            else
+                say "Canceled."
+            fi
+            ;;
+        Restore\ everything*)
+            if confirm_danger "$ICON_TRASH Reinstall every .deb in the recycle bin?"; then
+                local f fail=0
+                for f in "$TRASH_DIR"/*.deb; do
+                    [ -e "$f" ] || continue
+                    install_deb "$f" || fail=$((fail+1))
+                done
+                if [ "$fail" -eq 0 ]; then
+                    ok "Recycle bin fully restored!"
+                else
+                    warn "$fail file(s) failed to restore."
+                fi
+            else
+                say "Canceled."
+            fi
+            ;;
+        Show*)
+            say "$ICON_TRASH Recycle bin contents ($TRASH_DIR):"
+            ls -lh "$TRASH_DIR"/*.deb 2>/dev/null || say "(empty)"
+            ;;
+        Empty*)
+            if confirm_danger "$ICON_TRASH  Delete every .deb in the recycle bin?"; then
+                rm -f "$TRASH_DIR"/*.deb
+                log "recycle empty"
+                ok "Recycle bin emptied."
+            else
+                say "Canceled."
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+do_mark() {
+    local mode="$1" out hint
+    ask_name "Package to mark as $mode"
+    [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+    say "$ICON_CHECKBOX Marking $PKG_NAME as $mode..."
+    if out=$(apt-mark "$mode" "$PKG_NAME" 2>&1); then
+        log "mark $mode $PKG_NAME"
+        hint=$(apt_hint "$out")
+        ok "${hint:-$PKG_NAME marked as $mode.}"
+    else
+        hint=$(apt_hint "$out")
+        err "${hint:-Could not mark $PKG_NAME as $mode.}"
+        log_err "mark $mode $PKG_NAME: ${hint:-failed}"
+        printf '%s\n' "$out" | tail -n 4
+    fi
+}
+
+do_marks() {
+    local a expr out
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_CHECKBOX  Mark manual / auto" \
+            "Mark package as manually installed" \
+            "Mark package as automatically installed" \
+            "Show manually installed packages" \
+            "Show automatically installed packages" \
+            "Find what provides a virtual package" \
+            "Back")
+    else
+        printf '1) Mark package as manually installed\n2) Mark package as automatically installed\n3) Show manually installed packages\n4) Show automatically installed packages\n5) Find what provides a virtual package\n6) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Mark package as manually installed" ;;
+            2) a="Mark package as automatically installed" ;;
+            3) a="Show manually installed packages" ;;
+            4) a="Show automatically installed packages" ;;
+            5) a="Find what provides a virtual package" ;;
+            6) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        "Mark package as manually"*)      do_mark manual ;;
+        "Mark package as automatically"*) do_mark auto ;;
+        "Show manually"*)
+            log "mark showmanual"
+            say "$ICON_CHECKBOX Manually installed packages (first 50):"
+            apt-mark showmanual 2>/dev/null | head -n 50 || say "(none)"
+            ;;
+        "Show automatically"*)
+            log "mark showauto"
+            say "$ICON_CHECKBOX Automatically installed packages (first 50):"
+            apt-mark showauto 2>/dev/null | head -n 50 || say "(none)"
+            ;;
+        "Find what provides"*)
+            if [ "$GUM" = "1" ]; then
+                expr=$(gum input --prompt "➜ " --placeholder "e.g. python3 or python3 (>= 3.11)")
+            else
+                printf 'Package name or versioned expression (e.g. python3 (>= 3.11)): ' >&2
+                read -r expr
+            fi
+            expr=$(printf '%s\n' "$expr" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            [ -n "$expr" ] || { warn "Nothing to look up."; return; }
+            case "$expr" in -* ) err "Expression must not start with '-'."; return ;; esac
+            log "satisfies: $expr"
+            say "$ICON_DEPENDS Packages providing \"$expr\":"
+            if out=$(apt satisfies "$expr" 2>&1); then
+                printf '%s\n' "$out" | head -n 30
+            else
+                err "No packages provide \"$expr\" (or apt could not resolve it)."
+            fi
+            ;;
+        *) return ;;
+    esac
+}
+
+do_watch() {
+    local a p
+    if [ "$GUM" = "1" ]; then
+        a=$(gum choose --header "$ICON_EYE  Package watchlist" \
+            "Add package to watchlist" \
+            "Remove package from watchlist" \
+            "Show watchlist" \
+            "Check watchlist for updates" \
+            "Back")
+    else
+        printf '1) Add package to watchlist\n2) Remove package from watchlist\n3) Show watchlist\n4) Check watchlist for updates\n5) Back\n> ' >&2
+        read -r a
+        case "$a" in
+            1) a="Add package to watchlist" ;;
+            2) a="Remove package from watchlist" ;;
+            3) a="Show watchlist" ;;
+            4) a="Check watchlist for updates" ;;
+            5) a="Back" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$a" ] || return
+    case "$a" in
+        Add*)
+            ask_name "Package to watch"
+            [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
+            if [ -f "$WATCH_FILE" ] && grep -Fxq -- "$PKG_NAME" "$WATCH_FILE"; then
+                say "$PKG_NAME is already on the watchlist."
+                return
+            fi
+            if printf '%s\n' "$PKG_NAME" >> "$WATCH_FILE"; then
+                log "watch add $PKG_NAME"
+                ok "$PKG_NAME added to the watchlist."
+            else
+                err "Could not update $WATCH_FILE."
+            fi
+            ;;
+        Remove*)
+            if [ ! -s "$WATCH_FILE" ]; then
+                warn "Watchlist is empty."
+                return
+            fi
+            if [ "$GUM" = "1" ]; then
+                mapfile -t _wl < "$WATCH_FILE"
+                p=$(gum choose --header "$ICON_TRASH  Remove from watchlist" "${_wl[@]}")
+            else
+                printf 'Watchlist:\n' >&2
+                nl -w2 -s') ' "$WATCH_FILE" >&2
+                printf 'Pick number (0 = cancel): ' >&2
+                read -r p
+                case "$p" in
+                    [1-9]|[1-9][0-9]) p=$(sed -n "${p}p" "$WATCH_FILE") ;;
+                    *) return ;;
+                esac
+            fi
+            [ -n "$p" ] || return
+            valid_pkg_name "$p" || { err "Invalid package name: '$p'"; return; }
+            if tmp=$(scratch_new); then
+                grep -Fxv -- "$p" "$WATCH_FILE" > "$tmp" || true
+                if mv -f "$tmp" "$WATCH_FILE"; then
+                    log "watch remove $p"
+                    ok "$p removed from the watchlist."
+                else
+                    err "Failed to update the watchlist."
+                    rm -f "$tmp"
+                fi
+            else
+                err "Could not create a temp file for the watchlist."
+            fi
+            ;;
+        Show*)
+            if [ -s "$WATCH_FILE" ]; then
+                say "$ICON_EYE  Watchlist ($WATCH_FILE):"
+                cat "$WATCH_FILE"
+            else
+                say "Watchlist is empty."
+            fi
+            ;;
+        Check*)
+            do_watch_check
+            ;;
+        *) return ;;
+    esac
+}
+
+do_watch_check() {
+    [ -s "$WATCH_FILE" ] || { say "Watchlist is empty — add a package first."; return; }
+    log "watch check"
+    say "$ICON_EYE  Checking watchlist against the repositories..."
+    local p inst cand updates=0 gone=0
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        valid_pkg_name "$p" || continue
+        inst=$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null | head -n1)
+        cand=$(apt-cache policy "$p" 2>/dev/null | awk '/^  Candidate:/ {print $2; exit}')
+        if [ -z "$cand" ] || [ "$cand" = "(none)" ]; then
+            printf '? %s — no longer available in the repositories\n' "$p"
+            gone=$((gone+1))
+        elif [ -z "$inst" ]; then
+            printf '+ %s — not installed (candidate %s)\n' "$p" "$cand"
+            updates=$((updates+1))
+        elif [ "$inst" != "$cand" ]; then
+            printf '^ %s — %s -> %s available\n' "$p" "$inst" "$cand"
+            updates=$((updates+1))
+        else
+            printf '= %s — up to date (%s)\n' "$p" "$inst"
+        fi
+    done < "$WATCH_FILE"
+    if [ "$updates" -gt 0 ]; then
+        say "$ICON_EYE  $updates watched package(s) have updates available."
+        if command -v termux-notification >/dev/null 2>&1; then
+            termux-notification --title "Package watchlist" \
+                --content "$updates watched package(s) have updates available" \
+                >/dev/null 2>&1 || true
+        fi
+    elif [ "$gone" -gt 0 ]; then
+        warn "$gone watched package(s) are no longer in any repository."
+    else
+        ok "All watched packages are up to date."
+    fi
+}
+
+do_mirror() {
+    if ! command -v curl >/dev/null 2>&1; then
+        err "curl is required for the mirror speed test."
+        say "Install it with: $MGR install curl"
+        return 1
+    fi
+    # mirror rows are tab-separated (mirror names contain spaces)
+    local IFS=$'\t'
+    say "$ICON_PLAY Mirror speed test — timing mirrors (a few seconds each)..."
+    local cur_url="" cur_src="" u t results="" line
+    if [ -f "$PREFIX/etc/apt/sources.list" ]; then
+        u=$(grep -E '^deb[[:space:]]' "$PREFIX/etc/apt/sources.list" 2>/dev/null | grep 'termux-main' | awk '{print $2}' | head -n1)
+        if [ -n "$u" ]; then
+            cur_url="$u"
+            cur_src="$PREFIX/etc/apt/sources.list"
+        fi
+    fi
+    if [ -z "$cur_url" ]; then
+        local f
+        for f in "$PREFIX"/etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            u=$(grep -E '^deb[[:space:]]' "$f" 2>/dev/null | grep 'termux-main' | awk '{print $2}' | head -n1)
+            if [ -n "$u" ]; then
+                cur_url="$u"
+                cur_src="$f"
+                break
+            fi
+        done
+    fi
+    [ -n "$cur_url" ] || cur_url="https://packages.termux.dev/apt/termux-main"
+    say "Current main mirror: $cur_url"
+    local -a names=() urls=()
+    names+=("current"); urls+=("$cur_url")
+    local -a cand_names=(
+        "official (packages.termux.dev)" "cloudflare (packages-cf.termux.dev)"
+        "mwt (mirror.mwt.me)" "tuna (tsinghua)" "bfsu" "nju" "iscas"
+        "gnlug" "librehat" "middlendian" "krnk" "autkin"
+    )
+    local -a cand_urls=(
+        "https://packages.termux.dev/apt/termux-main" "https://packages-cf.termux.dev/apt/termux-main"
+        "https://mirror.mwt.me/termux/main" "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+        "https://mirrors.bfsu.edu.cn/termux/apt/termux-main" "https://mirrors.nju.edu.cn/termux/apt/termux-main"
+        "https://mirror.iscas.ac.cn/termux/apt/termux-main" "https://gnlug.org/pub/termux/termux-main"
+        "https://termux.librehat.com/apt/termux-main" "https://mirrors.middlendian.com/termux/termux-main"
+        "https://mirrors.krnk.org/apt/termux/termux-main" "https://mirror.autkin.net/termux/termux-main"
+    )
+    local i
+    for i in "${!cand_urls[@]}"; do
+        [ "${cand_urls[$i]}" = "$cur_url" ] && continue
+        names+=("${cand_names[$i]}")
+        urls+=("${cand_urls[$i]}")
+    done
+    results=""
+    local unreachable=0
+    for i in "${!urls[@]}"; do
+        t=$(curl -fsS -m 8 -o /dev/null -w '%{time_total}' "${urls[$i]}/dists/stable/Release" 2>/dev/null)
+        if [ -n "$t" ]; then
+            [ -n "$results" ] && results+=$'\n'
+            results+="${t}"$'\t'"${names[$i]}"$'\t'"${urls[$i]}"
+        else
+            unreachable=$((unreachable+1))
+            printf '! unreachable: %s (%s)\n' "${names[$i]}" "${urls[$i]}"
+        fi
+    done
+    if [ -z "$results" ]; then
+        err "No mirror responded — check your connection."
+        log_err "mirror test: no mirror reachable"
+        return 1
+    fi
+    say ""
+    printf '  %-8s  %-34s %s\n' "time" "mirror" "url"
+    printf '%s\n' "$results" | sort -n -s | awk -F'\t' '{printf "  %-8s  %-34s %s\n", $1"s", $2, $3}'
+    [ "$unreachable" -gt 0 ] && say "( $unreachable mirror(s) unreachable )"
+    read -r best_t best_name best_url <<< "$(printf '%s\n' "$results" | sort -n -s | head -n1)"
+    log "mirror test (best: $best_url at $best_t)"
+    if [ "$best_url" = "$cur_url" ]; then
+        ok "Your current mirror is already the fastest — nothing to do."
+        return 0
+    fi
+    say ""
+    say "Fastest reachable mirror: $best_name ($best_url) at ${best_t}s"
+    if ! confirm_danger "$ICON_PLAY Switch the main repo to $best_url?"; then
+        say "Canceled — mirror unchanged."
+        return 0
+    fi
+    local target="${cur_src:-$PREFIX/etc/apt/sources.list}" backup tmp
+    backup="$target.pkg-manager.bak"
+    if ! cp -- "$target" "$backup" 2>/dev/null; then
+        if [ ! -f "$target" ]; then
+            mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
+            : > "$target" || { err "Could not create $target"; return 1; }
+        else
+            err "Could not back up $target — aborting, mirror unchanged."
+            return 1
+        fi
+    fi
+    if ! tmp=$(scratch_new); then
+        err "Could not create a temp file for sources.list."
+        return 1
+    fi
+    {
+        grep -v -E '^deb[[:space:]].*termux-main' "$target" 2>/dev/null
+        printf '# main repo switched by Easy Termux Package Manager (backup: %s)\n' "$backup"
+        printf 'deb %s stable main\n' "$best_url"
+    } > "$tmp"
+    if ! mv -f "$tmp" "$target"; then
+        err "Failed to write $target — restore it from $backup"
+        rm -f "$tmp"
+        log_err "mirror switch: write failed"
+        return 1
+    fi
+    say "$ICON_PLAY Running apt update with the new mirror..."
+    local out hint
+    if out=$(apt update 2>&1); then
+        log "mirror switch to $best_url"
+        ok "Mirror switched to $best_url — package lists refreshed."
+    else
+        hint=$(apt_hint "$out")
+        warn "${hint:-apt update failed with the new mirror.}"
+        printf '%s\n' "$out" | tail -n 4
+        say "The old mirror is saved at $backup"
+        log_err "mirror switch to $best_url: apt update failed"
+    fi
+}
+
+do_audit() {
+    say "$ICON_SHIELD  System audit — checking your Termux install..."
+    log "audit"
+    local score=100
+    local -a issues=()
+    local up_n orph_n held_n res_n cache_k disk_k up out
+    # 1. available upgrades
+    up_n=$(list_upgradable 2>/dev/null | grep -c .)
+    if [ "$up_n" -gt 0 ]; then
+        if [ "$up_n" -ge 20 ]; then
+            score=$((score-15))
+            issues+=("$up_n packages can be upgraded — run the Upgrade center")
+        else
+            score=$((score-5))
+            issues+=("$up_n package(s) can be upgraded")
+        fi
+    fi
+    # 2. orphans
+    out=$(apt autoremove --simulate -y 2>&1)
+    orph_n=$(printf '%s\n' "$out" | awk '
+        /will be REMOVED:/ {on=1; next}
+        on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+        on { for (i=1;i<=NF;i++)
+                if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }' | grep -c .)
+    if [ "$orph_n" -gt 0 ]; then
+        score=$((score-orph_n))
+        issues+=("$orph_n orphaned package(s) can be autoremoved (option 29 or 9)")
+    fi
+    # 3. held packages (informational)
+    held_n=$(apt-mark showhold 2>/dev/null | grep -c .)
+    if [ "$held_n" -gt 0 ]; then
+        score=$((score-held_n*2))
+        issues+=("$held_n package(s) are pinned from upgrades (informational)")
+    fi
+    # 4. residual config files (rc state = purged but not auto-removed)
+    res_n=$(dpkg -l 2>/dev/null | awk '$1=="rc" && NF>1' | grep -c .)
+    if [ "$res_n" -gt 0 ]; then
+        score=$((score-5))
+        issues+=("$res_n package(s) still have leftover config files (purge them)")
+    fi
+    # 5. cache weight
+    cache_k=$(du -sk "$PREFIX/var/cache/apt/archives" 2>/dev/null | awk '{print $1}')
+    if [ -n "$cache_k" ] && [ "$cache_k" -gt 102400 ]; then
+        score=$((score-5))
+        issues+=("package cache is over 100 MiB — clean it with the Cache manager")
+    fi
+    # 6. free disk on $PREFIX
+    disk_k=$(df -Pk "$PREFIX" 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -n "$disk_k" ] && [ "$disk_k" -lt 512000 ]; then
+        score=$((score-10))
+        issues+=("less than 500 MiB free on the Termux prefix")
+    fi
+    [ "$score" -lt 0 ] && score=0
+    say ""
+    say "════════ Audit report ════════"
+    local grade
+    if [ "$score" -ge 90 ]; then grade="excellent"
+    elif [ "$score" -ge 70 ]; then grade="good"
+    elif [ "$score" -ge 40 ]; then grade="needs attention"
+    else grade="critical"
+    fi
+    say "$ICON_CHART Health score: $score/100 ($grade)"
+    say "$ICON_UPGRADABLE Upgradable packages: $up_n"
+    say "$ICON_TREE  Orphaned packages:   $orph_n"
+    say "$ICON_HOLD Pinned packages:      $held_n"
+    say "$ICON_TRASH Leftover configs:   $res_n"
+    say "$ICON_CACHE Package cache:       $([ -n "$cache_k" ] && du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | awk '{print $1}' || echo '?')"
+    say "$ICON_DISK Free on prefix:       $([ -n "$disk_k" ] && df -Ph "$PREFIX" 2>/dev/null | awk 'NR==2{print $4}' || echo '?')"
+    if [ "${#issues[@]}" -gt 0 ]; then
+        say ""
+        say "$ICON_ERROR Findings:"
+        printf '  • %s\n' "${issues[@]}"
+        say ""
+        say "$ICON_MAINT Tip: option 33 (Maintenance wizard) fixes most of these in one flow."
+    else
+        say ""
+        ok "No issues found — your install looks healthy!"
+    fi
+    say "═════════════════════════════"
+}
+
+do_selfupdate() {
+    say "$ICON_UP Checking for a new version of pkg-manager..."
+    if ! command -v curl >/dev/null 2>&1; then
+        err "curl is required to check for updates."
+        say "Install it with: $MGR install curl"
+        return 1
+    fi
+    local self="$0" resolved new_tmp local_ver remote_ver
+    case "$self" in
+        */*) ;;
+        *) resolved=$(command -v -- "$self" 2>/dev/null)
+           [ -n "$resolved" ] && self="$resolved"
+           ;;
+    esac
+    [ -n "$self" ] || self="$0"
+    if ! new_tmp=$(scratch_new); then
+        err "Could not create a temp file for the download."
+        return 1
+    fi
+    if ! curl -fsSL "$UPDATE_URL" -o "$new_tmp" 2>/dev/null; then
+        err "Could not download the latest version — check your connection."
+        log_err "self-update: download failed"
+        rm -f "$new_tmp"
+        return 1
+    fi
+    if ! bash -n "$new_tmp" 2>/dev/null; then
+        err "Downloaded file failed the bash syntax check — nothing was changed."
+        log_err "self-update: downloaded file failed bash -n"
+        rm -f "$new_tmp"
+        return 1
+    fi
+    if ! grep -q 'pkg-manager' "$new_tmp" 2>/dev/null; then
+        err "Downloaded file does not look like pkg-manager — nothing was changed."
+        log_err "self-update: downloaded file content mismatch"
+        rm -f "$new_tmp"
+        return 1
+    fi
+    if cmp -s "$new_tmp" "$self"; then
+        ok "pkg-manager is already up to date."
+        rm -f "$new_tmp"
+        return 0
+    fi
+    local_ver=$(grep -m1 -oE 'Pkg Manager v[0-9][0-9.]*' "$self" 2>/dev/null | head -n1)
+    remote_ver=$(grep -m1 -oE 'Pkg Manager v[0-9][0-9.]*' "$new_tmp" 2>/dev/null | head -n1)
+    say "New version available: ${remote_ver:-unknown version} (you have ${local_ver:-unknown})."
+    say "Update target: $self"
+    if ! confirm_danger "$ICON_UP  Replace $self with the new version?"; then
+        say "Update canceled."
+        rm -f "$new_tmp"
+        return 0
+    fi
+    if cp -- "$new_tmp" "$self.new" && mv -f -- "$self.new" "$self"; then
+        chmod +x "$self" 2>/dev/null || true
+        log "self-update to ${remote_ver:-latest}"
+        ok "Updated to ${remote_ver:-the latest version}! Restart pkg-manager to use it."
+        rm -f "$new_tmp"
+        return 0
+    fi
+    err "Failed to replace $self — nothing was changed."
+    rm -f "$new_tmp" "$self.new"
+    log_err "self-update: replace failed"
+    return 1
+}
+
 do_palette() {
     local all
     all=$(printf '%s\n' "${MENU_ITEMS[@]}")
@@ -2767,6 +3460,12 @@ do_palette() {
         "$OPTION_NOTES") do_notes ;;
         "$OPTION_SNAPSHOT") do_snapshot ;;
         "$OPTION_PALETTE") do_palette ;;
+        "$OPTION_WATCH") do_watch ;;
+        "$OPTION_MIRROR") do_mirror ;;
+        "$OPTION_AUDIT") do_audit ;;
+        "$OPTION_MARKS") do_marks ;;
+        "$OPTION_RECYCLE") do_recycle ;;
+        "$OPTION_SELFUPDATE") do_selfupdate ;;
         *) err "Unknown palette selection." ;;
     esac
 }
@@ -2843,10 +3542,16 @@ while true; do
         "$OPTION_FILESEARCH") do_filesearch ;;
         "$OPTION_CHANGELOG")  do_changelog ;;
         "$OPTION_WHY")        do_why ;;
-        "$OPTION_NOTES")      do_notes ;;
-        "$OPTION_SNAPSHOT")   do_snapshot ;;
-        "$OPTION_PALETTE")    do_palette ;;
-        *"Pinned:"*)          pin_install "${choice##*Pinned: }" ;;
+        "$OPTION_NOTES")       do_notes ;;
+        "$OPTION_SNAPSHOT")    do_snapshot ;;
+        "$OPTION_PALETTE")     do_palette ;;
+        "$OPTION_WATCH")       do_watch ;;
+        "$OPTION_MIRROR")      do_mirror ;;
+        "$OPTION_AUDIT")       do_audit ;;
+        "$OPTION_MARKS")       do_marks ;;
+        "$OPTION_RECYCLE")     do_recycle ;;
+        "$OPTION_SELFUPDATE")  do_selfupdate ;;
+        *"Pinned:"*)           pin_install "${choice##*Pinned: }" ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
         "__INVALID__")        err "Invalid option, try again." ;;
         "")                   break ;;

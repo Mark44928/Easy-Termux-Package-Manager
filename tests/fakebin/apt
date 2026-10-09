@@ -180,6 +180,16 @@ case "$sub" in
     download)
         if is_bad; then echo "E: Unable to locate package invalidpkg" >&2; exit 100; fi
         echo "Get:1 https://packages.termux.dev/apt/termux-main stable/main ${pkgs[0]} 1.0 [100 kB]"
+        # real apt writes <name>_<ver>_<arch>.deb into the current directory
+        fname=$(printf '%s' "${pkgs[0]}" | tr '=:~' '_')
+        printf 'fake deb\n' > "${fname}.deb"
+        exit 0
+        ;;
+    satisfies)
+        if is_bad; then echo "E: Unable to locate package invalidpkg" >&2; exit 100; fi
+        for p in "${pkgs[@]}"; do
+            echo "$p 3.12 arm64"
+        done
         exit 0
         ;;
     changelog)

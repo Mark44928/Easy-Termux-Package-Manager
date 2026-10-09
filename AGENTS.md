@@ -2,7 +2,7 @@
 
 ## What this is
 
-Single-file Bash app (`manager.sh`, ~2.9k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
+Single-file Bash app (`manager.sh`, ~3.6k lines) -- an interactive package manager for Termux. `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`, `apt`, and optionally `gum`.
 
 > **This is Termux, not Linux.** Termux runs on Android without root, uses Bionic libc (not glibc), has no FHS-compliant filesystem, and packages live under `/data/data/com.termux/files/usr`. Every assumption about standard Linux paths, permissions, or system calls can break here.
 
@@ -13,7 +13,7 @@ Single-file Bash app (`manager.sh`, ~2.9k lines) -- an interactive package manag
 | Target | Does |
 |--------|------|
 | `make run` | launch app (`GUM_ENABLED=0 make run` = text mode) |
-| `make test` | full 130-test suite (~2 min) |
+| `make test` | full 169-test suite (~3 min) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on all shell scripts (must stay at 0 findings; the one intentional `SC2034` in `tests/fakebin/apt` carries an inline disable) |
 | `make check` | lint + test |
 | `make install` / `make uninstall` | via `install.sh` / `rm $PREFIX/bin/pkg-manager` |
@@ -31,7 +31,7 @@ bash manager.sh
 bash tests/run-tests.sh
 ```
 
-Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real Termux needed. Run from the `tests/` dir or from the repo root; the script `cd`s into its own directory. 130 scenario tests in text and gum modes. `tests/tmp/` is gitignored.
+Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real Termux needed. Run from the `tests/` dir or from the repo root; the script `cd`s into its own directory. 169 scenario tests in text and gum modes. `tests/tmp/` is gitignored.
 
 ## Code structure
 
@@ -45,19 +45,19 @@ Uses fakebin stubs (`tests/fakebin/`) for `apt`, `dpkg`, `gum`, etc. -- no real 
 
 ## Key conventions
 
-- **Config is never `source`d** -- `load_config()` parses `~/.pkg-manager.conf` as plain `KEY=VALUE` lines (line 48-84 in `manager.sh`). Never change this to source/exec user files.
-- **Temp files use `mktemp`** -- `scratch_new()` creates unguessable names to prevent symlink attacks (line 31-43). Always use this pattern, never fixed temp paths.
+- **Config is never `source`d** -- `load_config()` parses `~/.pkg-manager.conf` as plain `KEY=VALUE` lines (line 50-88 in `manager.sh`). Never change this to source/exec user files.
+- **Temp files use `mktemp`** -- `scratch_new()` creates unguessable names to prevent symlink attacks (line 33-45). Always use this pattern, never fixed temp paths.
 - **Package name validation** -- `valid_pkg_name()` rejects leading `-` (option injection), spaces, shell metas. Use it before any user-supplied name hits `apt`/`dpkg`.
-- **Icons** -- defined in `init_icons()` (line 126-186). Nerd Font codepoints above U+FFFF use 8-digit escapes: `$'\U000XXXXX'`. Emoji branch uses plain Unicode symbols.
+- **Icons** -- defined in `init_icons()` (line 136-197). Nerd Font codepoints above U+FFFF use 8-digit escapes: `$'\U000XXXXX'`. Emoji branch uses plain Unicode symbols.
 - **`$MGR` variable** -- wraps either `apt` or `pkg`. Always use `"$MGR"` not hardcoded `apt` for install/remove/upgrade. Some operations (depends, purge, fix-broken, autoremove, dpkg queries) call `apt`/`dpkg` directly where `pkg` has no equivalent.
 - **`$GUM` flag** -- 0 or 1. Every UI function has both a `gum` branch and a plain-text branch. New features must include both.
-- **Menu labels** -- `OPTION_*` variables (line 263-298) must match README menu-map tables exactly.
+- **Menu labels** -- `OPTION_*` variables (line 279-329) must match README menu-map tables exactly. The v4.0 options 45-50 are `OPTION_WATCH`, `OPTION_MIRROR`, `OPTION_AUDIT`, `OPTION_MARKS`, `OPTION_RECYCLE`, `OPTION_SELFUPDATE` -- they deliberately reuse existing icons so no new font glyphs were needed.
 
 ## Architecture
 
 ### Config precedence
 
-Env overrides (`MGR=... pkg-manager`) beat config file values. Config file values beat hardcoded defaults (line 8-24, 88-108). Both are validated with case statements that silently reset invalid values to defaults.
+Env overrides (`MGR=... pkg-manager`) beat config file values. Config file values beat hardcoded defaults (line 18-27, 90-110). Both are validated with case statements that silently reset invalid values to defaults.
 
 ### Confirmation logic (three-layer)
 
@@ -66,23 +66,23 @@ Env overrides (`MGR=... pkg-manager`) beat config file values. Config file value
 - `LOCK=1` -- forces confirms even when QUIET is on (override safety lock)
 - `confirm_danger()` checks LOCK first, then falls through to `confirm()`
 
-### Main loop (line 2219-2269)
+### Main loop (line 3495-3544)
 
 `while true` loop. On first iteration, if `STARTUP_CHECK=1`, runs `do_maintenance` before showing the menu. After each action, `pause` waits for Enter. Pinned favorites append to the menu items and are dispatched via glob match `*"Pinned:"*`.
 
 ### Multi-package operations
 
-`run_multi_op()` (line 572-622): tries one batched `apt install/remove -y` first (fast path -- single resolver pass, single dpkg lock). If the batch fails, retries package-by-package to attribute individual failures. Returns 0 only if everything succeeded.
+`run_multi_op()` (line 615-665): tries one batched `apt install/remove -y` first (fast path -- single resolver pass, single dpkg lock). If the batch fails, retries package-by-package to attribute individual failures. Returns 0 only if everything succeeded. When `RECYCLE=1` and the op is `remove`, each package is archived to the recycle bin first (`archive_pkg()`).
 
 ### Error hinting
 
-`apt_hint()` (line 543-563) translates raw apt/dpkg output into friendly messages. Called after every install/remove/reinstall/purge/fix-broken/autoremove. Returns empty string for unrecognized output.
+`apt_hint()` (line 586-608) translates raw apt/dpkg output into friendly messages. Called after every install/remove/reinstall/purge/fix-broken/autoremove. Returns empty string for unrecognized output.
 
 ### Logging
 
-- `log()` (line 397-400) -- timestamped success entries only, appended to `~/.pkg-manager.log`
-- `log_err()` (line 404-407) -- timestamped `FAIL:` entries for real failures
-- History viewer filters: all, errors only, install/remove actions only
+- `log()` (line 431-434) -- timestamped success entries only, appended to `~/.pkg-manager.log`
+- `log_err()` (line 438-441) -- timestamped `FAIL:` entries for real failures
+- History viewer filters: all, errors only, install/remove actions only, charts & statistics (per-day bars + top actions)
 - Undo reads the log: `grep -E '\] (remove |purge |bulk remove)'` and reinstalls those packages
 
 ## Data files
@@ -99,24 +99,26 @@ All in `$HOME`:
 | `~/pkg-export.{txt,json}` | Plain text or JSON `{"packages":[...]}` | Export option |
 | `~/.pkg-manager-notes` | `pkg::note` (one per line) | User notes |
 | `~/pkg-snapshot-*.tar.gz` | tar of `pkg-list.txt` + favs/groups/conf/notes | Full snapshot |
+| `~/.pkg-manager-watch` | One package name per line | Package watchlist |
+| `~/pkg-trash/*.deb` | `.deb` files kept before removals | Recycle bin (`archive_pkg`, when `RECYCLE=1`) |
 
 ## Version bump
 
-Three places: badge in README, ASCII art line (`v3.0`), fallback string in `manager.sh:238`. Then regenerate `BANNER_B64` (compressed blob).
+Every place the version string appears: both README badges + ASCII art lines (x2) + the menu snapshot text, the installer banner in `install.sh`, and the fallback string in `manager.sh:251`. Then regenerate `BANNER_B64` (compressed blob).
 
 ## Gotchas
 
-- The banner art is gzip-compressed, base64-encoded in `BANNER_B64` (line 231). Edit the source art, then compress+encode to update.
+- The banner art is gzip-compressed, base64-encoded in `BANNER_B64` (line 246). Edit the source art, then compress+encode to update.
 - `install.sh` uses atomic writes (`.tmp` then `mv`) for both the binary and the font -- never overwrite in place.
 - `set -o pipefail` is active -- pipelines fail on the first command's error.
-- `log()` only records successes; `log_err()` records failures (line 397-407).
+- `log()` only records successes; `log_err()` records failures (line 431-441).
 - Tests set `ICONS=emoji` and `GUM_ENABLED` via env. The test harness feeds input via stdin (text mode) or base64-encoded queue files (gum mode).
-- Custom groups file uses `::` as delimiter between group name and package list (line 2040-2054).
+- Custom groups file uses `::` as delimiter between group name and package list (line 2250-2260).
 - Group names are sanitized: only `[A-Za-z0-9 _-]` allowed, others replaced with `_`.
 - `FAVS_PINNED=1` triggers `build_menu()` after every favorites change to re-append pinned items to the menu.
 - Export with JSON requires `python3`; falls back to plain text if missing.
 - `list_upgradable()` returns apt's real exit code so callers can distinguish "none upgradable" from an apt failure.
-- Dependency tree recursion depth is capped at 4 (`dep_tree()` line 1260).
+- Dependency tree recursion depth is capped at 4 (`dep_tree()` line 1386).
 
 ## Termux-specific warnings and tips
 
@@ -145,7 +147,7 @@ Three places: badge in README, ASCII art line (`v3.0`), fallback string in `mana
 
 - **Adding a new menu option**: add `OPTION_*` in `build_menu()`, add the case in the main loop, write the `do_*` function with both gum and text branches, update the README menu-map tables.
 - **Adding a new icon**: add to both branches of `init_icons()`. Nerd Font codepoints above U+FFFF must use 8-digit hex escapes (`$'\U000XXXXX'`). Verify against the bundled fonts in `fonts/`.
-- **Adding a new config key**: add default at top (line 15-24), add case in `load_config()`, add to `save_config()`, add validation case, add to Settings menu in `do_settings()`.
+- **Adding a new config key**: add default at top (line 16-25), add case in `load_config()`, add to `save_config()`, add validation case, add to Settings menu in `do_settings()`.
 - **Adding a new test**: use the `T` helper for text/apt mode, `G` for gum/apt mode. Feed menu choices as newline-separated input. Check `tests/seeds/` for pre-seeded config/data.
 - **Testing without Termux**: the fakebin stubs simulate apt/dpkg/gum behavior. Set `HOME`/`PREFIX` to a temp dir. No real packages are installed or removed.
 
@@ -220,7 +222,7 @@ Three places: badge in README, ASCII art line (`v3.0`), fallback string in `mana
 
 - **`run_multi_op` batch optimization** -- the fast path runs one `apt install/remove -y` for all packages (single resolver pass, single dpkg lock, single progress display). Only on batch failure does it fall back to per-package retry. This makes favorites restore and bulk installs fast.
 - **`apt_hint()` is O(n) on output length** -- it's a case statement that matches substrings. For normal apt output (< 100 lines) this is instant. Don't worry about it.
-- **Dependency tree depth cap at 4** -- `dep_tree()` (line 1260) stops recursion at depth 4 to prevent runaway on circular deps or massive trees. This is intentional, not a bug.
+- **Dependency tree depth cap at 4** -- `dep_tree()` (line 1386) stops recursion at depth 4 to prevent runaway on circular deps or massive trees. This is intentional, not a bug.
 - **`list_upgradable()` propagates apt's exit code** -- callers can distinguish "no packages upgradable" (exit 0, empty output) from "apt failed" (non-zero exit). Check `$?` after calling it.
 - **Menu rebuild on favorites change** -- `FAVS_PINNED=1` triggers `build_menu()` after add/remove/pin/unpin. This is O(n) on the number of menu items but n is always ~35, so it's instant.
 

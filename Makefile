@@ -16,7 +16,7 @@ help: ## Show available targets
 run: ## Launch the app (text mode: GUM_ENABLED=0 make run)
 	bash manager.sh
 
-test: ## Run the full scenario suite (130 tests, ~2 min)
+test: ## Run the full scenario suite (169 tests, ~3 min)
 	bash tests/run-tests.sh
 
 lint: ## bash -n + shellcheck on every shell script

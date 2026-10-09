@@ -1,10 +1,10 @@
 > This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v3.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v4.0-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-130%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-169%20passing-brightgreen" alt="Tests">
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
@@ -29,8 +29,8 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.dev) 
    | |  | |__  | |__) | \  / | |  | |\ V /
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
-   |_|  |______|_|  \_\_|  |_|\____//_/ \_\
- ────── Easy Package Manager · v3.0 ────── 
+    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
+  ────── Easy Package Manager · v4.0 ────── 
 ```
 
 > With `gum` installed, the banner renders inside a double-border box in your chosen theme colors. The art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
@@ -70,17 +70,18 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 
 | | |
 |--|--|
-| 🎛️ **45 menu entries** (44 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
+| 🎛️ **51 menu entries** (50 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
 | 👁️ **Simulate before changing** — dry-run previews (`apt -s`) | 📊 **Package stats & disk** — sizes, per-dir usage, biggest files, cache breakdown |
 | 🗃️ **Cache manager** — clean all or outdated `.deb`s, browse | 🌳 **Dependency tools** — recursive tree + orphan finder |
 | 🔍 **Package inspector** — info, deps, reverse deps, files, hold | 🩺 **Maintenance wizard** — on-demand or on-launch health pass |
 | 📚 **Bulk operations** — many at once, or multi-select lists | ⭐ **Favorites** — bookmark, pin to menu, reinstall all in one tap |
-| 🗂️ **Package groups** — curated bundles + your own saved ones | 📋 **History & log viewer** — filter, errors, **undo** last removal |
+| 🗂️ **Package groups** — curated bundles + your own saved ones | 📋 **History & log viewer** — filter, charts, errors, **undo** last removal |
 | 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
 | 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
-| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **4 themes** + Nerd Font or emoji icons |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **8 themes** + Nerd Font or emoji icons |
 | 🛟 **Plain-text fallback** — works even before `gum` | 📋 **Timestamped history** of every action |
+| 🆕 **New 4.0** | **Self-update**, **recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test**, **watchlist**, **history charts** | 45–50 |
 
 ## 🚀 Features
 
@@ -94,8 +95,9 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) | 15–17, 33 |
 | 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 30, 31, 34 |
 | 💾 **Data** | Backup, restore, export (txt/JSON), import | 19–22 |
-| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/undo/clear), settings | 23–25, 28 |
+| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/charts/undo/clear), settings | 23–25, 28 |
 | 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 35–44 |
+| 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin, self-update | 45–50 |
 
 ## 📋 Requirements
 
@@ -151,7 +153,7 @@ pkg-manager      # installed via install.sh / manual method
 > With **gum** installed you arrow-key through the menu; without it, just type a number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v3.0
+ ✨ Easy Termux Package Manager · v4.0
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
@@ -212,7 +214,7 @@ pkg-manager      # installed via install.sh / manual method
 |:-:|--------|--------------|
 | 23 | 🔧 Dependency doctor | check/install `gum`, `git`, `curl`, `figlet` |
 | 24 | ⚙️  Settings | backend, theme, toggles, quiet mode, safety lock |
-| 25 | 📋 History & log viewer | view/filter the log, show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
+| 25 | 📋 History & log viewer | view/filter the log (incl. **charts & statistics** — per-day bars, top actions), show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
 | 26 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
 
 #### 📊 Insight & upgrades (18, 27–29, 32)
@@ -246,7 +248,20 @@ pkg-manager      # installed via install.sh / manual method
 | 41 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
 | 42 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
 | 43 | 💾 Full snapshot | tar `pkg-list.txt` + favs/groups/conf/notes to `~/pkg-snapshot-*.tar.gz` |
-| 44 | 🪄 Command palette | `gum filter` fuzzy finder across all 44 options |
+| 44 | 🪄 Command palette | `gum filter` fuzzy finder across all 50 options |
+
+#### 🆕🆕 New in 4.0 — watch, speed, audit, recycle (45–50)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 45 | 👁️ Package watchlist | track packages in `~/.pkg-manager-watch`, compare installed vs candidate versions, `termux-notification` summary when updates appear |
+| 46 | 🌐 Mirror speed test | times candidate mirrors (official + community), shows a ranked table, optionally rewrites the main repo line in `sources.list` (old file kept as `.bak`) and runs `apt update` |
+| 47 | 🛡️ System audit | health score from upgrades, orphans, holds, leftover configs, cache weight and free disk — with a findings list |
+| 48 | ☑️ Mark manual / auto | `apt-mark manual/auto`, show manual/auto lists, `apt satisfies` (what provides a virtual package) |
+| 49 | 🗑️ Recycle bin | with **Settings → Recycle bin** on, every remove/purge first downloads the `.deb` into `~/pkg-trash/`; restore one or all of them later via `dpkg -i` (+ `apt --fix-broken install`) — no network needed |
+| 50 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
+
+> The mirror test only touches the **main** repo line; `root` and `x11` repos in `sources.list.d/` are never modified. Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
 
 #### 🚪 Exit & pinned favorites
 
@@ -283,7 +298,7 @@ Settings are persisted to `~/.pkg-manager.conf`:
 
 ```ini
 MGR=apt           # apt or pkg
-THEME=green       # green, blue, purple, red
+THEME=green       # green, blue, purple, red, nord, amber, teal, mono
 CONFIRM=1         # ask before destructive actions
 LOG_ENABLED=1     # write action history
 GUM_ENABLED=1     # use the fancy UI
@@ -292,6 +307,7 @@ QUIET=0           # 1 = skip all confirmation prompts
 LOCK=0            # 1 = always confirm destructive ops (blocks quiet mode)
 STARTUP_CHECK=0   # 1 = run the maintenance wizard on every launch
 FAVS_PINNED=0     # 1 = show favorite packages at the end of the main menu
+RECYCLE=0         # 1 = keep a .deb in ~/pkg-trash before every remove/purge
 ```
 
 Changes made in **Settings** apply immediately; edits to the file itself apply on the next launch.
@@ -306,9 +322,9 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~2.9k lines, single file)
+├── manager.sh      # the entire app (~3.4k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 130 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 169 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -318,6 +334,8 @@ Easy-Termux-Package-Manager/
 ~/.pkg-manager-favs      # favorites list (created by the Favorites option)
 ~/.pkg-manager-groups    # custom package groups (created by Package groups)
 ~/.pkg-manager-notes     # user notes (created by User notes option)
+~/.pkg-manager-watch     # watchlist, one package per line (created by Package watchlist)
+~/pkg-trash/*.deb        # recycle bin: .debs kept before removals (created by removals when RECYCLE=1)
 ~/pkg-backup-*.txt       # backups (created by Backup option)
 ~/pkg-snapshot-*.tar.gz  # full snapshots (created by Full snapshot option)
 ```
@@ -337,9 +355,9 @@ A few ground rules to keep the docs in sync:
 
 - **Menu labels** in the README menu-map tables must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
-- **Bumping the version** means updating all three: the badge at the top, the ASCII art line (`v3.0`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
+- **Bumping the version** means updating every place the name appears: the badge, both ASCII art lines, the menu snapshot, the installer banner (`install.sh`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
 - Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 130 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 169 scenario tests).
 
 ### 🛠️ Make targets (developers)
 
@@ -349,7 +367,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`GUM_ENABLED=0 make run` for text mode) |
-| `make test` | full 130-test suite (~2 min, fakebin — no real apt) |
+| `make test` | full 169-test suite (~3 min, fakebin — no real apt) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
@@ -370,11 +388,11 @@ Distributed under the [MIT License](LICENSE).
    | |  | |__  | |__) | \  / | |  | |\ V /
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
-   |_|  |______|_|  \_\_|  |_|\____//_/ \_\
- ────── Easy Package Manager · v3.0 ────── 
+    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
+  ────── Easy Package Manager · v4.0 ────── 
 ```
 
-**Easy Termux Package Manager** · v3.0 · MIT
+**Easy Termux Package Manager** · v4.0 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 
