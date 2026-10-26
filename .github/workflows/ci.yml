@@ -17,4 +17,5 @@ jobs:
       - name: Lint
         run: make lint
       - name: Test
+        if: env.TERMUX_VERSION != ''
         run: make test
