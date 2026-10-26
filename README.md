@@ -5,10 +5,11 @@
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
   <img src="https://img.shields.io/badge/tests-169%20passing-brightgreen" alt="Tests">
+  <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E2.7k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E3.5k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -45,7 +46,9 @@ curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manag
 pkg-manager
 ```
 
-The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install a **Nerd Font** so the menu glyphs render perfectly. That's it — no dependencies, no config, no fuss.
+The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install a **Nerd Font** so the menu glyphs render perfectly. That's it — no config, no fuss.
+
+> **Security note:** the one-liner pipes a remote script straight into `bash`. If you prefer to review it first, use **Option 2 — Clone & run**, or download `install.sh`, read it, then run it.
 
 ---
 
@@ -322,7 +325,7 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~3.4k lines, single file)
+├── manager.sh      # the entire app (~3.5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
 ├── tests/          # automated harness (fakebin stubs + 169 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
