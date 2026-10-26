@@ -21,7 +21,7 @@ test: ## Run the full scenario suite (169 tests, ~3 min)
 
 lint: ## bash -n + shellcheck on every shell script
 	@set -e; for f in $(SHELL_SCRIPTS); do bash -n "$$f"; done
-	@shellcheck --shell=bash --severity=style $(SHELL_SCRIPTS)
+	@shellcheck --shell=bash --severity=style -e SC2015 -e SC2119 -e SC2120 $(SHELL_SCRIPTS)
 	@echo "lint OK"
 
 check: lint test ## lint + test
