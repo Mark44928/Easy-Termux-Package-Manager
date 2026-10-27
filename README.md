@@ -352,7 +352,7 @@ rm ~/.pkg-manager.conf ~/.pkg-manager.log   # its settings & history (optional)
 
 ## 🤝 Contributing
 
-Found a bug? Have an idea for another option? Open an [issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues) or submit a PR. All contributions are welcome.
+Found a bug? Have an idea for another option? Open an [issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues) or submit a PR — see also [CONTRIBUTING.md](CONTRIBUTING.md). All contributors follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 A few ground rules to keep the docs in sync:
 
