@@ -200,7 +200,7 @@ pkg-manager      # installed via install.sh / manual method
 | 15 | 📌 Pin / hold packages | `apt-mark hold/unhold` |
 | 16 | 🧨 Purge a package | `apt purge -y <name>` |
 | 17 | 🩹 Fix broken packages | `apt --fix-broken install -y` |
-| 33 | 🩺 Maintenance wizard | health pass: upgradable, orphans, broken packages, cache, held |
+| 33 | 🩺 Maintenance wizard | health pass: optional `apt update` refresh, upgradable, orphans, broken packages, cache, held |
 
 #### 💾 Data & backup (19–22)
 

@@ -2114,6 +2114,20 @@ do_maintenance() {
     log "maintenance wizard"
     say "$ICON_MAINT  Maintenance wizard — checking your system..."
     local up orphans n broken cache held issues=0
+    if confirm "$ICON_UPDATE  Refresh package lists (apt update) first?"; then
+        local hint
+        if output=$("$MGR" update 2>&1); then
+            log "maintenance update"
+            hint=$(apt_hint "$output")
+            [ -n "$hint" ] && ok "$hint"
+            printf '%s\n' "$output" | tail -n 3
+        else
+            hint=$(apt_hint "$output")
+            printf '%s\n' "$output" | tail -n 3
+            err "${hint:-apt update failed.}"
+            log_err "maintenance update: ${hint:-failed}"
+        fi
+    fi
     if ! up=$(list_upgradable); then
         err "Could not read the upgradable list."
         issues=$((issues+1))

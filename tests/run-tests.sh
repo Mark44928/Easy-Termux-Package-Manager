@@ -127,10 +127,11 @@ T size_bad         <(printf '12\ninvalidpkg\n')        "Package not in cache"
 T stats_disk       <(printf '27\n2\n')                 "Disk usage by directory"
 T stats_files      <(printf '27\n3\n')                 "Largest files"
 T inspect_ok       <(printf '32\npython3\n')           "Inspecting python3"
-T maint_ok         <(printf '33\nn\nn\nn\nn\n')        "can be upgraded"
+T maint_ok         <(printf '33\nn\nn\nn\nn\nn\n')     "can be upgraded"
 FAKE_UPGRADABLE=empty
 export FAKE_UPGRADABLE
-T maint_clean      <(printf '33\n')                    "System looks healthy!"
+T maint_clean      <(printf '33\nn\n')                 "System looks healthy!"
+T maint_update     <(printf '33\ny\nn\nn\nn\nn\n')     "Hit:1 https"
 unset FAKE_UPGRADABLE
 T groups_show      <(printf '34\n1\n')                 "git tools"
 T groups_install   <(printf '34\n2\n1\ny\n')           "Installing group"
@@ -226,7 +227,7 @@ G gum_fav          <(printf '⭐ Favorites\nAdd favorite\npython3\n') "added to 
 G gum_upgrade_some <(printf '🔄 Upgrade center\npython3\ny\ny\n') "Cache cleaned!"
 G gum_fav_install  <(printf '⭐ Favorites\nInstall all favorites\ny\n') "Favorites installed!"
 G gum_inspect      <(printf '🔍 Package inspector\npython3\n') "Inspecting python3"
-G gum_maint        <(printf '🩺 Maintenance wizard\nn\nn\nn\nn\n') "can be upgraded"
+G gum_maint        <(printf '🩺 Maintenance wizard\nn\nn\nn\nn\nn\n') "can be upgraded"
 G gum_groups_show  <(printf '🗂️ Package groups\nShow all groups\n') "git tools"
 G gum_group_install <(printf '🗂️ Package groups\nInstall a group\ngit tools\ny\n') "Installing group"
 G gum_stats_disk   <(printf '📊 Package stats & disk\nDisk usage by directory\n') "Disk usage by directory"
