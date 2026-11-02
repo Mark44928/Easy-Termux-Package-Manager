@@ -30,7 +30,7 @@ trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
 # ── Header ────────────────────────────────────────────────────────────────
 printf '%b\n' "${CYN}╭────────────────────────────────────────────────╮${R}"
-printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v4.0${R}      ${CYN}│${R}"
+printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v4.1${R}      ${CYN}│${R}"
 printf '%b\n' "${CYN}│${R}     the one-command Termux package manager     ${CYN}│${R}"
 printf '%b\n' "${CYN}╰────────────────────────────────────────────────╯${R}"
 divider
@@ -52,6 +52,9 @@ else
         else
             warn "gum not available — continuing without it"
         fi
+    fi
+    if ! command -v fzf >/dev/null 2>&1; then
+        info "Optional: install fzf for interactive package picker: ${BD}pkg install fzf${R}"
     fi
     hdr "Downloading manager.sh"
     curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP" || { warn "Failed to download $REPO/manager.sh to $BIN_TMP"; exit 1; }
@@ -77,6 +80,9 @@ case ":$PATH:" in
         ;;
 esac
 info "Run it anytime with: ${BD}pkg-manager${R}"
+divider
+info "${BD}MAX 4.1 features:${R} fzf picker · undo engine · dep tree · health · snapshot/diff · auto-mirror · themes"
+info "Optional: ${BD}pkg install fzf${R} (for interactive picker)  |  ${BD}pkg install curl${R} (mirror speed / auto-mirror)"
 divider
 
 # ── Nerd Font install ────────────────────────────────────────────────────

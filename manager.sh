@@ -251,7 +251,7 @@ BANNER_B64="H4sIAAAAAAACA21PMQoCMRDs84ppbW4tLOU6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT
 banner() {
     local art
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
-        art="TERMUX Pkg Manager v4.0"
+        art="TERMUX Pkg Manager v4.1"
     fi
     if [ "$GUM" = "1" ]; then
         gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
@@ -328,6 +328,13 @@ build_menu() {
     OPTION_AUDIT="$ICON_SHIELD System audit"
     OPTION_MARKS="$ICON_CHECKBOX Mark manual / auto"
     OPTION_RECYCLE="$ICON_TRASH Recycle bin"
+    OPTION_REPOS="$ICON_FOLDER Optional repositories"
+    OPTION_UNDO="$ICON_HISTORY Undo last batch"
+    OPTION_DEPTREE="$ICON_DEPENDS Dependency tree"
+    OPTION_HEALTH="$ICON_SHIELD Health dashboard"
+    OPTION_SNAPSHOT="$ICON_BACKUP Snapshot / Diff"
+    OPTION_AUTO_MIRROR="$ICON_PLAY Auto-mirror"
+    OPTION_THEME="$ICON_WAND Theme switcher"
     OPTION_SELFUPDATE="$ICON_UP Update pkg-manager"
     OPTION_EXIT="$ICON_EXIT Exit"
 
@@ -343,7 +350,8 @@ build_menu() {
         "$OPTION_INSPECT" "$OPTION_MAINT" "$OPTION_GROUPS"
         "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
         "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
-        "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_SELFUPDATE"
+        "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_REPOS"
+        "$OPTION_UNDO" "$OPTION_DEPTREE" "$OPTION_HEALTH" "$OPTION_SNAPSHOT" "$OPTION_AUTO_MIRROR" "$OPTION_THEME" "$OPTION_SELFUPDATE"
     )
 
     FAVPIN=()
@@ -630,6 +638,11 @@ run_multi_op() {
     done
     total=${#uniq[@]}
     [ "$total" -eq 0 ] && return 0
+    if [ "${DRYRUN:-0}" = "1" ]; then
+        say "[DRYRUN] Would run: $MGR $op -y ${uniq[*]}"
+        audit_log "dryrun" "$op ${uniq[*]}"
+        return 0
+    fi
     if [ "$op" = "remove" ] && [ "$RECYCLE" = "1" ]; then
         for p in "${uniq[@]}"; do
             archive_pkg "$p"
@@ -687,6 +700,18 @@ list_upgradable() {
 }
 
 do_install() {
+    if command -v fzf >/dev/null 2>&1; then
+        local use_fzf_resp="n"
+        if [ "$GUM" = "1" ]; then
+            if gum confirm --default=no "Use interactive fzf picker? (y/n)" 2>/dev/null; then use_fzf_resp="y"; fi
+        else
+            printf 'Use interactive fzf picker? (y/n): '
+            read -r use_fzf_resp
+        fi
+        if [ "$use_fzf_resp" = "y" ] || [ "$use_fzf_resp" = "Y" ]; then
+            use_fzf_for_op install; return $?
+        fi
+    fi
     ask_name "Package name to install"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     say "$ICON_INSTALL Installing $PKG_NAME..."
@@ -712,6 +737,18 @@ do_install() {
 }
 
 do_uninstall() {
+    if command -v fzf >/dev/null 2>&1; then
+        local use_fzf_resp="n"
+        if [ "$GUM" = "1" ]; then
+            if gum confirm --default=no "Use interactive fzf picker? (y/n)" 2>/dev/null; then use_fzf_resp="y"; fi
+        else
+            printf 'Use interactive fzf picker? (y/n): '
+            read -r use_fzf_resp
+        fi
+        if [ "$use_fzf_resp" = "y" ] || [ "$use_fzf_resp" = "Y" ]; then
+            use_fzf_for_op remove; return $?
+        fi
+    fi
     ask_name "Package name to uninstall"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     if ! confirm_danger "$ICON_UNINSTALL  Really uninstall $PKG_NAME?"; then
@@ -3567,6 +3604,13 @@ while true; do
         "$OPTION_AUDIT")       do_audit ;;
         "$OPTION_MARKS")       do_marks ;;
         "$OPTION_RECYCLE")     do_recycle ;;
+        "$OPTION_REPOS")       do_repos ;;
+        "$OPTION_UNDO")        do_undo ;;
+        "$OPTION_DEPTREE")     do_depgraph ;;
+        "$OPTION_HEALTH")      do_health ;;
+        "$OPTION_SNAPSHOT")    do_snapshot ;;
+        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
+        "$OPTION_THEME")       do_theme ;;
         "$OPTION_SELFUPDATE")  do_selfupdate ;;
         *"Pinned:"*)           pin_install "${choice##*Pinned: }" ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
@@ -3576,3 +3620,348 @@ while true; do
     esac
     pause || break
 done
+# ============================================================================
+# MAX IMPROVEMENTS — integrated from exa web search results
+# Sources: Termux Wiki (pkg wrapper, mirror load-balancing), Mark44928/Termux-TUI-Package-Store
+# (fzf fuzzy picker, live previews, 85 slash commands, batch multi-select), APTUI (parallel
+# downloads, mirror optimization, undo, progress), jpikl/pm (POSIX unified CLI, fzf preview)
+# ============================================================================
+
+FZF_CACHE="$HOME/.pkg-manager-fzf-cache"
+
+refresh_fzf_cache() {
+    local now last
+    now=$(date +%s 2>/dev/null || echo 0)
+    last=0
+    if [ -f "$FZF_CACHE" ]; then
+        last=$(stat -c %Y "$FZF_CACHE" 2>/dev/null || echo 0)
+    fi
+    if [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
+        {
+            dpkg-query -W -f '${Package}\n' 2>/dev/null | awk '{print "[✓] " $0}'
+            apt list 2>/dev/null | awk -F/ 'NF>=2 && $1 !~ /^Listing/ {print "[ ] " $1}' | sort -u | head -n 1000
+        } | awk '!seen[$0]++' > "${FZF_CACHE}.tmp" 2>/dev/null || true
+        mv "${FZF_CACHE}.tmp" "$FZF_CACHE" 2>/dev/null || true
+    fi
+}
+
+fzf_pick_pkgs() {
+    local prompt="${1:-Select packages}" mode="${2:-install}"
+    if ! command -v fzf >/dev/null 2>&1; then
+        echo "fzf not installed. Install with: $MGR install fzf" >&2
+        return 1
+    fi
+    refresh_fzf_cache
+    if [ ! -s "$FZF_CACHE" ]; then
+        echo "Package cache empty. Try apt update first." >&2
+        return 1
+    fi
+    local selected
+    selected=$(cat "$FZF_CACHE" 2>/dev/null | fzf -m \
+        --header="$prompt" \
+        --prompt="Packages (Tab/Space multi, Enter confirm) > " \
+        --preview='line={}; pkg=$(printf "%s" "$line" | sed "s/^\[[^]]*\] //"); printf "=== %s ===\n" "$pkg"; apt-cache show "$pkg" 2>/dev/null | head -n 12' \
+        --preview-window='right:50%:wrap' \
+        --layout=reverse \
+        --cycle \
+        --bind='ctrl-a:select-all' \
+        --bind='ctrl-d:deselect-all' \
+        --bind='ctrl-r:abort' \
+        2>/dev/null)
+    if [ $? -ne 0 ]; then return 1; fi
+    [ -z "$selected" ] && return 1
+    printf '%s\n' "$selected" | sed -E 's/^\[[✓✓ ]+\] //' | sed '/^$/d' | sort -u
+}
+
+batch_preview() {
+    local op="$1"; shift
+    local pkgs=("$@")
+    local total=${#pkgs[@]}
+    [ "$total" -eq 0 ] && return 0
+    echo "=== BATCH PREVIEW ($op) ==="
+    printf 'Packages: %s\n' "${pkgs[*]}"
+    echo "Total: $total"
+    if [ "$op" = "install" ]; then
+        for p in "${pkgs[@]}"; do
+            local ver; ver=$(apt-cache policy "$p" 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
+            printf '  %s (candidate: %s)\n' "$p" "${ver:-unknown}"
+        done
+    fi
+    echo "============================="
+}
+
+audit_log() {
+    local action="$1"; shift
+    local msg="${*:-}"
+    local logfile="$HOME/.pkg-manager-audit.log"
+    printf '%s [%s] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(whoami 2>/dev/null || echo $USER)" "$action" "$msg" >> "$logfile" 2>/dev/null || true
+}
+
+do_repos() {
+    local source_file="$PREFIX/etc/apt/sources.list"
+    local backup_file="$HOME/pkg-repo-backup-$(date +%Y%m%d).txt"
+    if [ ! -f "$source_file" ]; then
+        err "Sources file not found: $source_file"
+        return 1
+    fi
+    say "$ICON_FOLDER Optional repositories — manage sources and mirrors"
+    local choice=""
+    if [ "$GUM" = "1" ]; then
+        choice=$(gum choose --header "Repo actions..." \
+            "Show sources" \
+            "Test mirror speed" \
+            "Add repo line" \
+            "Remove line by number" \
+            "Backup sources" \
+            "Apt update" \
+            "Back")
+    else
+        printf '\n1) Show sources\n2) Test mirror speed\n3) Add line\n4) Remove line\n5) Backup\n6) Apt update\n7) Back\nChoice: '
+        read -r choice
+    fi
+    case "$choice" in
+        "Show sources"|"1")
+            cat -n "$source_file" ;;
+        "Test mirror speed"|"2")
+            do_mirror ;;
+        "Add repo line"|"3")
+            ask_name "Repo line (e.g. deb https://mirror.freedif.org/termux/termux-main stable main)" "any"
+            if [ -n "$PKG_NAME" ]; then
+                echo "$PKG_NAME" >> "$source_file"
+                say "Added: $PKG_NAME"
+                audit_log "repo_add" "$PKG_NAME"
+                say "Running apt update..."
+                apt update -qq 2>/dev/null || true
+            fi ;;
+        "Remove line by number"|"4")
+            echo "Current lines:"
+            grep -n "" "$source_file" | head -n 20
+            ask_name "Line number to delete" "number"
+            if [[ "$PKG_NAME" =~ ^[0-9]+$ ]]; then
+                sed -i "${PKG_NAME}d" "$source_file"
+                say "Deleted line $PKG_NAME"
+                audit_log "repo_remove" "line $PKG_NAME"
+            else
+                err "Invalid number."
+            fi ;;
+        "Backup sources"|"5")
+            cp "$source_file" "$backup_file"
+            say "Backed up to $backup_file"
+            audit_log "repo_backup" "$backup_file" ;;
+        "Apt update"|"6")
+            apt update ;;
+        "Back"|"7"|"") return ;;
+    esac
+    say "Press Enter to return to menu..."
+    read -r _ < /dev/tty 2>/dev/null || true
+}
+
+use_fzf_for_op() {
+    local op="$1"
+    if ! command -v fzf >/dev/null 2>&1; then
+        return 1
+    fi
+    local selected
+    selected=$(fzf_pick_pkgs "Select packages for $op" "$op") || return 1
+    local -a pkgs=()
+    while IFS= read -r line; do
+        [ -n "$line" ] && pkgs+=("$line")
+    done <<< "$selected"
+    [ ${#pkgs[@]} -eq 0 ] && return 1
+    batch_preview "$op" "${pkgs[@]}"
+    local confirm="y"
+    if [ "$GUM" = "1" ]; then
+        if gum confirm --default=no "Confirm $op for ${#pkgs[@]} package(s)? (y/n/d=dry-run)"; then
+            confirm="y"; else confirm="n"; fi
+    else
+        printf 'Confirm %s %s package(s)? (y/n/d=dry-run): ' "$op" "${#pkgs[@]}"
+        read -r confirm
+    fi
+    if [ "$confirm" = "d" ]; then
+        say "Dry-run — no apt command executed."
+        audit_log "dryrun" "$op ${pkgs[*]}"
+        return 0
+    elif [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        audit_log "batch_start" "$op ${pkgs[*]}"
+        run_multi_op "$op" "${pkgs[@]}"
+        local rc=$?
+        audit_log "batch_end" "$op ${pkgs[*]} rc=$rc"
+        return $rc
+    else
+        say "Canceled."
+        return 1
+    fi
+}
+# ============================================================================
+# MAX 99 — extreme features from exa research: aptui (undo/redo, tabs, mirror fetch,
+# transaction history), pkgtui (metrics/dashboard, dependency tree breadcrumbs, disk cleanup),
+# pactool (auto-mirror, stats), glazepkg (snapshots/diffs, 36 managers), metapak (themes,
+# animations, i18n, embedded console), trx (tiered fuzzy, cache, themes)
+# ============================================================================
+
+# Transaction Undo / Redo Engine (aptui-style 'z' / transaction history)
+do_undo() {
+    local logfile="$HOME/.pkg-manager-audit.log"
+    if [ ! -f "$logfile" ]; then err "No audit log found."; return; fi
+    say "$ICON_HISTORY Transaction History — last batches (batch_start lines):"
+    grep -n "batch_start" "$logfile" 2>/dev/null | tail -n 10 | while read -r num line; do
+        printf '  %s %s\n' "$num" "$line"
+    done
+    ask_name "Line number of batch to undo (from grep output)" "number"
+    if [[ "$PKG_NAME" =~ ^[0-9]+$ ]]; then
+        local entry; entry=$(sed -n "${PKG_NAME}p" "$logfile" 2>/dev/null)
+        if echo "$entry" | grep -q "batch_start"; then
+            local op; op=$(echo "$entry" | grep -oE 'batch_start [a-z]+' | awk '{print $2}')
+            local pkgs; pkgs=$(echo "$entry" | sed 's/.*batch_start [a-z]* //')
+            [ -z "$op" ] && op="install"
+            local revert_op="remove"; [ "$op" = "remove" ] && revert_op="install"
+            if [ -n "$pkgs" ]; then
+                say "Reverting with: $revert_op $pkgs"
+                if confirm_danger "Undo $op → $revert_op for $pkgs?"; then
+                    audit_log "undo_start" "$revert_op $pkgs"
+                    run_multi_op "$revert_op" $pkgs
+                    audit_log "undo_done" "$revert_op $pkgs rc=$?"
+                fi
+            else
+                err "Could not parse packages from audit line."
+            fi
+        else
+            err "That line is not a batch_start entry."
+        fi
+    else
+        err "Invalid line number."
+    fi
+}
+
+# Colored dependency tree with breadcrumb (pkgtui / pactool style)
+do_depgraph() {
+    ask_name "Package for dependency tree" "pkg"
+    [ -n "$PKG_NAME" ] || return
+    local RED CYAN GREEN YELLOW RESET
+    RED=$(tput setaf 1 2>/dev/null || printf '\033[31m')
+    CYAN=$(tput setaf 6 2>/dev/null || printf '\033[36m')
+    GREEN=$(tput setaf 2 2>/dev/null || printf '\033[32m')
+    YELLOW=$(tput setaf 3 2>/dev/null || printf '\033[33m')
+    RESET=$(tput sgr0 2>/dev/null || printf '\033[0m')
+    say "$CYAN═══ DEPENDENCY TREE: $PKG_NAME ═══$RESET"
+    echo "$GREEN[FORWARD DEPENDENCIES]$RESET"
+    apt-cache depends "$PKG_NAME" 2>/dev/null | grep -E "^  [<>]?" | while read -r line; do
+        local symbol=""
+        case "$line" in
+            *"Depends"*) symbol="${RED}├─${RESET}" ;;
+            *"Recommends"*) symbol="${YELLOW}├─${RESET}" ;;
+            *"Suggests"*) symbol="${CYAN}├─${RESET}" ;;
+            *) symbol="${GREEN}└─${RESET}" ;;
+        esac
+        printf '  %s %s\n' "$symbol" "$line"
+    done | head -n 30
+    echo "$GREEN[REVERSE DEPENDENCIES]$RESET"
+    apt-cache rdepends "$PKG_NAME" 2>/dev/null | grep -v "^ " | grep -v "^$" | head -n 10 | while read -r line; do
+        printf '  %s %s\n' "${RED}└─${RESET}" "$line"
+    done
+    echo "$GREEN[WHY INSTALLED — manual vs dependency]$RESET"
+    apt-mark showmanual 2>/dev/null | grep -qx "$PKG_NAME" && echo "  ${GREEN}Manually installed${RESET}" || echo "  ${CYAN}Pulled in as dependency${RESET}"
+}
+
+# Health / Metrics Dashboard (pkgtui M / pactool stats style)
+do_health() {
+    say "$CYAN═══ SYSTEM HEALTH DASHBOARD ═══$RESET"
+    local total installed upgradable auto_orphan
+    total=$(dpkg-query -W 2>/dev/null | wc -l)
+    installed=$total
+    upgradable=$(apt list --upgradable 2>/dev/null | tail -n +2 | wc -l)
+    auto_orphan=$(apt-mark showauto 2>/dev/null | wc -l)
+    printf '  Installed:  %s\n' "$installed"
+    printf '  Upgradable: %s\n' "$upgradable"
+    printf '  Auto/Orphan:%s\n' "$auto_orphan"
+    local last_audit; last_audit=$(tail -n1 "$HOME/.pkg-manager-audit.log" 2>/dev/null | awk '{print $1" "$2}')
+    printf '  Last audit: %s\n' "${last_audit:-none}"
+    echo "  ${YELLOW}Top disk users (Installed-Size):${RESET}"
+    dpkg-query -W -f='${Installed-Size} ${Package}\n' 2>/dev/null | sort -nr | head -n 6 | while read -r sz pkg; do
+        printf '    %10s KB  %s\n' "$sz" "$pkg"
+    done
+    local cache_size; cache_size=$(du -sh "$PREFIX/var/cache/apt/archives" 2>/dev/null | cut -f1)
+    printf '  Apt cache:  %s\n' "${cache_size:-unknown}"
+}
+
+# Auto-mirror optimization (pactool / aptui mirror-fetch style)
+do_auto_mirror() {
+    local source_file="$PREFIX/etc/apt/sources.list"
+    [ -f "$source_file" ] || { err "No sources file."; return; }
+    say "Testing mirrors (curl latency)..."
+    local best_url="" best_time=999999
+    local urls=(
+        "https://mirror.freedif.org/termux/termux-main"
+        "https://packages.termux.dev/apt/termux-main"
+        "https://termux-archive.repo/enstry.net/packages/termux"
+    )
+    for url in "${urls[@]}"; do
+        local t; t=$(curl -o /dev/null -s -w "%{time_total}" --max-time 3 --connect-timeout 2 "$url/$ARCH/dpkg.status" 2>/dev/null || echo 999)
+        local t_int; t_int=$(printf '%d' "${t%.*}" 2>/dev/null || echo 999)
+        if [ "$t_int" -lt "$best_time" ]; then best_time="$t_int"; best_url="$url"; fi
+    done
+    if [ -n "$best_url" ]; then
+        say "Fastest: $best_url (${best_time}s)"
+        local arch_part; arch_part=$(uname -m)
+        if confirm_danger "Apply $best_url to sources.list?"; then
+            # Replace domain part while keeping path structure
+            local old_domain; old_domain=$(grep -oE '^deb https://[^/]+/termux/termux-main' "$source_file" 2>/dev/null | awk '{print $3}' | sed 's|/termux/termux-main||' | head -n1)
+            if [ -n "$old_domain" ]; then
+                sed -i "s|$old_domain|${best_url}|g" "$source_file"
+            else
+                echo "deb $best_url stable main" > "$source_file"
+            fi
+            audit_log "mirror_auto" "$best_url"
+            say "Updated. Running apt update..."
+            apt update -qq 2>/dev/null || true
+        fi
+    else
+        err "Mirror test failed."
+    fi
+}
+
+# Snapshot / Diff engine (glazepkg / pactool style)
+do_snapshot() {
+    local out="$HOME/pkg-snapshot-$(date +%Y%m%d_%H%M%S).txt"
+    dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | sort > "$out"
+    say "Snapshot saved: $out ($(wc -l < "$out") packages)"
+    audit_log "snapshot" "$out"
+}
+
+do_diff() {
+    local snaps=($(ls -t "$HOME/pkg-snapshot-"*.txt 2>/dev/null | head -n 2))
+    if [ ${#snaps[@]} -lt 2 ]; then
+        err "Need 2+ snapshots in $HOME. Use menu → Snapshot first."
+        return
+    fi
+    say "Diffing: ${snaps[1]} → ${snaps[0]} (newest vs previous)"
+    local added removed
+    added=$(comm -23 <(sort "$snaps[0]") <(sort "$snaps[1]") | wc -l)
+    removed=$(comm -13 <(sort "$snaps[0]") <(sort "$snaps[1]") | wc -l)
+    echo "  Added: $added  |  Removed: $removed"
+    echo "  First 10 added lines:"
+    comm -23 <(sort "$snaps[0]") <(sort "$snaps[1]") | head -n 10 | sed 's/^/    + /'
+    echo "  First 10 removed lines:"
+    comm -13 <(sort "$snaps[0]") <(sort "$snaps[1]") | head -n 10 | sed 's/^/    - /'
+}
+
+# Theme / color switcher (aptui / metapak style — T for theme toggle)
+do_theme() {
+    local themes=("default" "nyan" "pink" "dark")
+    say "Current theme: $THEME (default: default)"
+    if [ "$GUM" = "1" ]; then
+        local choice; choice=$(gum choose --header "Theme" "default" "pink" "nyan" "dark" "Back")
+    else
+        printf '1) default 2) pink 3) nyan 4) dark 5) Back > '; read -r choice
+        case "$choice" in 1) choice="default";; 2) choice="pink";; 3) choice="nyan";; 4) choice="dark";; 5) choice="Back";; esac
+    fi
+    if [ "$choice" = "Back" ] || [ -z "$choice" ]; then return; fi
+    case "$choice" in
+        pink) ICON_INSTALL="💖"; ICON_SHIELD="🛡️"; PINK="#FF69B4";;
+        nyan) ICON_INSTALL="🌈"; ICON_SHIELD="🌟"; PINK="#39FF14";;
+        dark) ICON_INSTALL="⚫"; ICON_SHIELD="🌑"; PINK="#555555";;
+        *) ICON_INSTALL="$ICON_INSTALL";;
+    esac
+    save_config "THEME=$choice" || true
+    say "Theme set to $choice (restart menu to fully refresh colors)"
+}

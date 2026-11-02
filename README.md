@@ -1,7 +1,7 @@
 > This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v4.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v4.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
   <img src="https://img.shields.io/badge/tests-169%20passing-brightgreen" alt="Tests">
@@ -31,7 +31,7 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.dev) 
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
     |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v4.0 ────── 
+  ────── Easy Package Manager · v4.1 ────── 
 ```
 
 > With `gum` installed, the banner renders inside a double-border box in your chosen theme colors. The art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
@@ -156,7 +156,7 @@ pkg-manager      # installed via install.sh / manual method
 > With **gum** installed you arrow-key through the menu; without it, just type a number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v4.0
+ ✨ Easy Termux Package Manager · v4.1
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
@@ -392,10 +392,10 @@ Distributed under the [MIT License](LICENSE).
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
     |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v4.0 ────── 
+  ────── Easy Package Manager · v4.1 ────── 
 ```
 
-**Easy Termux Package Manager** · v4.0 · MIT
+**Easy Termux Package Manager** · v4.1 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 
