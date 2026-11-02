@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2218,SC2034,SC2155,SC2207,SC2012,SC2086,SC2001,SC2016,SC2181
 
 # Every pipeline must report the failure of its first command, or "apt foo |
 # tail" would let real errors look like success.
@@ -3844,7 +3845,7 @@ do_depgraph() {
     YELLOW=$(tput setaf 3 2>/dev/null || printf '\033[33m')
     RESET=$(tput sgr0 2>/dev/null || printf '\033[0m')
     say "$CYAN═══ DEPENDENCY TREE: $PKG_NAME ═══$RESET"
-    echo "$GREEN[FORWARD DEPENDENCIES]$RESET"
+    echo "${GREEN}[FORWARD DEPENDENCIES]${RESET}"
     apt-cache depends "$PKG_NAME" 2>/dev/null | grep -E "^  [<>]?" | while read -r line; do
         local symbol=""
         case "$line" in
@@ -3855,11 +3856,11 @@ do_depgraph() {
         esac
         printf '  %s %s\n' "$symbol" "$line"
     done | head -n 30
-    echo "$GREEN[REVERSE DEPENDENCIES]$RESET"
+    echo "${GREEN}[REVERSE DEPENDENCIES]${RESET}"
     apt-cache rdepends "$PKG_NAME" 2>/dev/null | grep -v "^ " | grep -v "^$" | head -n 10 | while read -r line; do
         printf '  %s %s\n' "${RED}└─${RESET}" "$line"
     done
-    echo "$GREEN[WHY INSTALLED — manual vs dependency]$RESET"
+    echo "${GREEN}[WHY INSTALLED — manual vs dependency]${RESET}"
     apt-mark showmanual 2>/dev/null | grep -qx "$PKG_NAME" && echo "  ${GREEN}Manually installed${RESET}" || echo "  ${CYAN}Pulled in as dependency${RESET}"
 }
 
@@ -3886,6 +3887,7 @@ do_health() {
 
 # Auto-mirror optimization (pactool / aptui mirror-fetch style)
 do_auto_mirror() {
+    local arch_part; arch_part=$(uname -m)
     local source_file="$PREFIX/etc/apt/sources.list"
     [ -f "$source_file" ] || { err "No sources file."; return; }
     say "Testing mirrors (curl latency)..."
@@ -3896,13 +3898,12 @@ do_auto_mirror() {
         "https://termux-archive.repo/enstry.net/packages/termux"
     )
     for url in "${urls[@]}"; do
-        local t; t=$(curl -o /dev/null -s -w "%{time_total}" --max-time 3 --connect-timeout 2 "$url/$ARCH/dpkg.status" 2>/dev/null || echo 999)
+        local t; t=$(curl -o /dev/null -s -w "%{time_total}" --max-time 3 --connect-timeout 2 "$url/${arch_part}/dpkg.status" 2>/dev/null || echo 999)
         local t_int; t_int=$(printf '%d' "${t%.*}" 2>/dev/null || echo 999)
         if [ "$t_int" -lt "$best_time" ]; then best_time="$t_int"; best_url="$url"; fi
     done
     if [ -n "$best_url" ]; then
         say "Fastest: $best_url (${best_time}s)"
-        local arch_part; arch_part=$(uname -m)
         if confirm_danger "Apply $best_url to sources.list?"; then
             # Replace domain part while keeping path structure
             local old_domain; old_domain=$(grep -oE '^deb https://[^/]+/termux/termux-main' "$source_file" 2>/dev/null | awk '{print $3}' | sed 's|/termux/termux-main||' | head -n1)
@@ -3936,19 +3937,18 @@ do_diff() {
     fi
     say "Diffing: ${snaps[1]} → ${snaps[0]} (newest vs previous)"
     local added removed
-    added=$(comm -23 <(sort "$snaps[0]") <(sort "$snaps[1]") | wc -l)
-    removed=$(comm -13 <(sort "$snaps[0]") <(sort "$snaps[1]") | wc -l)
+    added=$(comm -23 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | wc -l)
+    removed=$(comm -13 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | wc -l)
     echo "  Added: $added  |  Removed: $removed"
     echo "  First 10 added lines:"
-    comm -23 <(sort "$snaps[0]") <(sort "$snaps[1]") | head -n 10 | sed 's/^/    + /'
+    comm -23 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | head -n 10 | sed 's/^/    + /'
     echo "  First 10 removed lines:"
-    comm -13 <(sort "$snaps[0]") <(sort "$snaps[1]") | head -n 10 | sed 's/^/    - /'
+    comm -13 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | head -n 10 | sed 's/^/    - /'
 }
 
 # Theme / color switcher (aptui / metapak style — T for theme toggle)
 do_theme() {
-    local themes=("default" "nyan" "pink" "dark")
-    say "Current theme: $THEME (default: default)"
+    say "Current theme: ${THEME:-default}"
     if [ "$GUM" = "1" ]; then
         local choice; choice=$(gum choose --header "Theme" "default" "pink" "nyan" "dark" "Back")
     else
@@ -3960,7 +3960,7 @@ do_theme() {
         pink) ICON_INSTALL="💖"; ICON_SHIELD="🛡️"; PINK="#FF69B4";;
         nyan) ICON_INSTALL="🌈"; ICON_SHIELD="🌟"; PINK="#39FF14";;
         dark) ICON_INSTALL="⚫"; ICON_SHIELD="🌑"; PINK="#555555";;
-        *) ICON_INSTALL="$ICON_INSTALL";;
+        *) ;;
     esac
     save_config "THEME=$choice" || true
     say "Theme set to $choice (restart menu to fully refresh colors)"
