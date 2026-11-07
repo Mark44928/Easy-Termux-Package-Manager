@@ -21,6 +21,11 @@ if [ -n "$fmt" ]; then
             printf '1024\tpython3\n2048\tgit\n'
             exit 0
             ;;
+        *Package*)
+            # manager.sh reads the full installed list with -f='${Package}\n'
+            printf 'python3\ngit\n'
+            exit 0
+            ;;
     esac
     case "$pkg" in
         python3) echo "3.12" ;;

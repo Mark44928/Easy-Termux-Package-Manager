@@ -13,10 +13,10 @@ help: ## Show available targets
 	@printf 'Easy Termux Package Manager — make targets:\n\n'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-run: ## Launch the app (text mode: GUM_ENABLED=0 make run)
+run: ## Launch the app (text mode: NO_FZF=1 make run)
 	bash manager.sh
 
-test: ## Run the full scenario suite (169 tests, ~3 min)
+test: ## Run the full scenario suite (159 tests, ~3 min)
 	bash tests/run-tests.sh
 
 lint: ## bash -n + shellcheck on every shell script

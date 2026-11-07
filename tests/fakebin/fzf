@@ -1,0 +1,23 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# fake fzf — answers selections from FZF_QUEUE (plain lines, one per answer),
+# mirroring the fake-gum queue protocol. A line starting with "MULTI:" is
+# space-split into a multi-line answer (fzf -m). With no queue (or an empty one
+# after popping) it aborts like a real fzf user pressing ESC, which makes the
+# app fall back to the typed/numeric prompts.
+LOG="${FZF_CALL_LOG:-/dev/null}"
+printf 'fzf %s\n' "$*" >> "$LOG"
+
+Q="${FZF_QUEUE:-}"
+if [ -n "$Q" ] && [ -s "$Q" ]; then
+    line=$(sed -n '1p' "$Q")
+    if [ -n "$line" ]; then
+        sed -n '2,$p' "$Q" > "$Q.tmp" && mv -f "$Q.tmp" "$Q"
+        case "$line" in
+            MULTI:*) printf '%s\n' "${line#MULTI:}" | tr ' ' '\n' ;;
+            *)       printf '%s\n' "$line" ;;
+        esac
+        exit 0
+    fi
+fi
+# no queued answer = ESC
+exit 1

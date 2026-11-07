@@ -1,10 +1,9 @@
 > This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v4.1-000000?logo=termux" alt="Version">
-  <img src="https://img.shields.io/badge/gum--powered-3DDC84?logo=gum" alt="gum powered">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.0-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-169%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-159%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
@@ -22,7 +21,7 @@ Wait that's boring, let's try again.
 
 `apt` or `pkg` for Newbies.
 
-A **gum-powered, interactive package manager** for [Termux](https://termux.dev) wrapped in one Bash script. Arrow-key through a gorgeous menu, and let the script handle all the scary apt/pkg syntax for you.
+An **fzf-powered, interactive package manager** for [Termux](https://termux.dev) wrapped in one Bash script. Fuzzy-filter through a gorgeous menu, and let the script handle all the scary apt/pkg syntax for you.
 
 ```
  _______ ______ _____  __  __ _    ___   __
@@ -31,10 +30,10 @@ A **gum-powered, interactive package manager** for [Termux](https://termux.dev) 
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
     |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v4.1 ────── 
+  ────── Easy Package Manager · v5.0 ────── 
 ```
 
-> With `gum` installed, the banner renders inside a double-border box in your chosen theme colors. The art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
+> The banner art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
 
 ## ⚡ Quick start
 
@@ -60,6 +59,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 - [Requirements](#-requirements)
 - [Installation](#-installation)
 - [Usage](#-usage)
+- [fzf pickers](#-fzf-pickers)
 - [Backup / restore workflow](#-backup--restore-workflow)
 - [Settings & config](#-settings--config)
 - [Removing](#-removing)
@@ -73,7 +73,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 
 | | |
 |--|--|
-| 🎛️ **51 menu entries** (50 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
+| 🎛️ **59 menu entries** (58 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
 | 👁️ **Simulate before changing** — dry-run previews (`apt -s`) | 📊 **Package stats & disk** — sizes, per-dir usage, biggest files, cache breakdown |
 | 🗃️ **Cache manager** — clean all or outdated `.deb`s, browse | 🌳 **Dependency tools** — recursive tree + orphan finder |
 | 🔍 **Package inspector** — info, deps, reverse deps, files, hold | 🩺 **Maintenance wizard** — on-demand or on-launch health pass |
@@ -82,9 +82,11 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
 | 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
-| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **8 themes** + Nerd Font or emoji icons |
-| 🛟 **Plain-text fallback** — works even before `gum` | 📋 **Timestamped history** of every action |
-| 🆕 **New 4.0** | **Self-update**, **recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test**, **watchlist**, **history charts** | 45–50 |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **17 themes** (9 truecolor) + Nerd Font or emoji icons |
+| 🛟 **Plain-text fallback** — works without `fzf` | 📋 **Timestamped history** of every action |
+| 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test**, **watchlist**, **history charts** | 45–49 |
+| 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 43, 55–58, 59 |
+| 🔍 **fzf integration** | fzf is a first-class picker: multi-select install/uninstall with live `apt-cache` previews, search-result multi-pick, command-palette filter, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 44 |
 
 ## 🚀 Features
 
@@ -96,11 +98,13 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner | 12–14, 27, 32 |
 | 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder | 10, 11, 29 |
 | 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) | 15–17, 33 |
-| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 30, 31, 34 |
+| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 29, 30, 33 |
 | 💾 **Data** | Backup, restore, export (txt/JSON), import | 19–22 |
-| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/charts/undo/clear), settings | 23–25, 28 |
-| 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 35–44 |
-| 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin, self-update | 45–50 |
+| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/charts/undo/clear), settings | 23, 24–25, 27, 59 |
+| 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 35–43 |
+| 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin | 45–49 |
+| 🆕 **New 4.1** | Optional repositories, undo last batch, dependency tree, health dashboard, snapshot/diff hub, auto-mirror | 50–55 |
+| 🚀🚀 **New 5.0** | Real terminal themes (truecolor + Termux `colors.properties` export), theme preview hub, **fzf-first pickers** (install/uninstall multi-select with previews, search, palette, text menu), **CLI flags** (`--help --version --theme --list-themes --export-theme`), essential toolkit, system & network info, what's-new screen | 1–3, 43, 55–59 |
 
 ## 📋 Requirements
 
@@ -108,7 +112,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 - `bash` — preinstalled
 - `apt` / `dpkg` — preinstalled
 - `curl` — needed for the one-liner / manual install (install with `pkg install curl -y`)
-- [`gum`](https://github.com/charmbracelet/gum) — **recommended** for the full fancy UI. Auto-detected, and the script can install it for you. Without gum it falls back to a clean text menu.
+- [`fzf`](https://github.com/junegunn/fzf) — **the UI**: fuzzy menu, multi-select install/uninstall with previews, search results, palette, and every submenu. Auto-installed by `install.sh`. Disable with `FZF_ENABLED=0` (falls back to the numbered text lists).
 - **Nerd Font** — **CaskaydiaCove** (recommended) or **FiraCode** (alternative), both bundled in this repo (`fonts/`); the installer lets you pick and installs it safely (atomic temp-file + rename, then `termux-reload-settings`). Without one, switch to emoji icons from **Settings → Icons**.
 
 ## 🛠️ Installation
@@ -120,12 +124,23 @@ pkg install curl -y
 curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/install.sh | bash
 ```
 
-This installs `gum` (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), and asks which **Nerd Font** to install: **CaskaydiaCove** (recommended) or **FiraCode**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself. To pick the font non-interactively, set `FONT=1`, `FONT=2`, or `FONT=skip`.)
+This installs **fzf** (if missing), downloads the manager to the global **`$PREFIX/bin/pkg-manager`** (`/data/data/com.termux/files/usr/bin` in Termux), syntax-checks it, and asks which **Nerd Font** to install: **CaskaydiaCove** (recommended) or **FiraCode**. The font is written to a temp file and atomically renamed to `~/.termux/font.ttf` (never overwritten in place — that can crash the renderer), then settings are reloaded. From then on, just type `pkg-manager` to launch it. (When run through the pipe, the installer skips auto-launching — run `pkg-manager` yourself. To pick the font non-interactively, set `FONT=1`, `FONT=2`, or `FONT=skip`.)
+
+Handy flags for scripted installs:
+
+```bash
+bash install.sh --yes                      # no prompts, don't launch the app
+bash install.sh --theme dracula            # also write the terminal palette:
+                                           #   ~/.termux/colors.properties
+bash install.sh --yes --theme catppuccin   # both — for dotfiles / cron setups
+```
+
+> `--theme` accepts the truecolor themes only (`pkg-manager --list-themes` shows them all). The previous `colors.properties` is kept as `colors.properties.pkg-manager.bak`; remove it or use **Settings → Themes → Restore** to get your old palette back.
 
 ### Option 2 — Clone & run
 
 ```bash
-pkg install git gum curl -y
+pkg install git fzf curl -y
 git clone https://github.com/Mark44928/Easy-Termux-Package-Manager.git
 cd Easy-Termux-Package-Manager
 chmod +x manager.sh
@@ -151,18 +166,50 @@ pkg-manager      # installed via install.sh / manual method
 ./manager.sh     # or run straight from the cloned repo
 ```
 
+### ⌨️ Non-interactive flags
+
+```bash
+pkg-manager --help             # full help text
+pkg-manager --version          # v5.0
+pkg-manager --list-themes      # palette preview of all 17 themes
+pkg-manager --theme dracula    # set the app theme (writes ~/.pkg-manager.conf)
+pkg-manager --export-theme tokyo
+                                # write that palette to ~/.termux/colors.properties,
+                                # then run: termux-reload-settings
+```
+
+> `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts truecolor themes only (the 9 "real" palettes); the 8 legacy 256-color themes can't be expressed as a full ANSI table.
+
+### 🔍 fzf pickers
+
+With **fzf** installed it *is* the UI — themed to match the current color scheme (backgrounds, pointer `➜`, marker `✓`). Toggle **Settings → fzf picker** to disable it (falls back to the numbered text lists).
+
+| Where | What you get |
+|-------|--------------|
+| **Text-mode main menu** | type to filter the menu (arrow keys still work). Press **ESC** to fall back to the numbered list |
+| **Install / Uninstall** (1, 2) | multi-select from every package (`Tab`/`Ctrl-a` select-all, `Ctrl-d` deselect-all) with a live `apt-cache show` preview, then a batch preview before apt runs. **ESC** drops you to the typed-name prompt |
+| **Search results** (3) | multi-pick the installable candidates straight from the results |
+| **Command palette** (43) | fuzzy-find any of the 59 options |
+
+```bash
+fzf -m --layout=reverse --cycle --info=inline \
+    --preview='apt-cache show {} | head -n 12' --preview-window='right:45%:wrap'
+```
+
+Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1` in the environment), or toggle **Settings → fzf picker**. The package list itself is cached under `~/.pkg-manager-fzf-cache` for ~30 minutes, so repeat picks open instantly.
+
 ### 📟 The menu at a glance
 
-> With **gum** installed you arrow-key through the menu; without it, just type a number and press Enter.
+> **fzf** (installed by default) *is* the UI: type to filter, Enter to run. With neither fzf nor a TTY, just type the number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v4.1
+ ✨ Easy Termux Package Manager · v5.0
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
  [3]  🔎 Search packages
   ⋮
- [44] 🪄 Command palette
+ [59] ⚙️ Settings
  [0]  🚪 Exit
  Choose an option:
 ```
@@ -193,14 +240,14 @@ pkg-manager      # installed via install.sh / manual method
 | 13 | 📁 Installed files | `dpkg -L <name>` |
 | 14 | 🏷️  File owner | `dpkg -S <path>` |
 
-#### 📌 Maintenance & safety (15–17, 33)
+#### 📌 Maintenance & safety (15–17, 32)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 15 | 📌 Pin / hold packages | `apt-mark hold/unhold` |
 | 16 | 🧨 Purge a package | `apt purge -y <name>` |
 | 17 | 🩹 Fix broken packages | `apt --fix-broken install -y` |
-| 33 | 🩺 Maintenance wizard | health pass: optional `apt update` refresh, upgradable, orphans, broken packages, cache, held |
+| 32 | 🩺 Maintenance wizard | health pass: optional `apt update` refresh, upgradable, orphans, broken packages, cache, held |
 
 #### 💾 Data & backup (19–22)
 
@@ -211,66 +258,87 @@ pkg-manager      # installed via install.sh / manual method
 | 21 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
 | 22 | 📥 Import package list | install from any list file |
 
-#### 🛠️ Tooling (23–26)
+#### 🛠️ Tooling (23–25)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 23 | 🔧 Dependency doctor | check/install `gum`, `git`, `curl`, `figlet` |
-| 24 | ⚙️  Settings | backend, theme, toggles, quiet mode, safety lock |
-| 25 | 📋 History & log viewer | view/filter the log (incl. **charts & statistics** — per-day bars, top actions), show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
-| 26 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
+| 23 | 🔧 Dependency doctor | check/install `fzf`, `git`, `curl`, `figlet` |
+| 24 | 📋 History & log viewer | view/filter the log (incl. **charts & statistics** — per-day bars, top actions), show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
+| 25 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
 
-#### 📊 Insight & upgrades (18, 27–29, 32)
+#### 📊 Insight & upgrades (18, 26–28, 31)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 18 | 📈 Upgradable list | `apt list --upgradable` |
-| 27 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
-| 28 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
-| 29 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
-| 32 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
+| 26 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
+| 27 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
+| 28 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
+| 31 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
 
-#### 📚 Bulk, favorites & groups (30–31, 34)
-
-| # | Option | What it does |
-|:-:|--------|--------------|
-| 30 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
-| 31 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
-| 34 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
-
-#### 🆕 New in 3.0 — advanced (35–44)
+#### 📚 Bulk, favorites & groups (29–30, 33)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 35 | 📁 Local .deb install | `dpkg -i <file>` then `apt --fix-broken install -y` if needed |
-| 36 | 🔧 Downgrade package | `apt install <pkg>=<ver>` from `apt-cache madison` |
-| 37 | 🗃️ Download only | `apt download` or `apt install --download-only` to cache |
-| 38 | 📌 Hold specific version | install chosen version then `apt-mark hold` |
-| 39 | 🔎 File search (pre-install) | `apt-file search` / `pkgfile` or `dpkg -S` fallback |
-| 40 | 📋 Changelog | `apt changelog` / `apt-get changelog` or `apt show` |
-| 41 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
-| 42 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
-| 43 | 💾 Full snapshot | tar `pkg-list.txt` + favs/groups/conf/notes to `~/pkg-snapshot-*.tar.gz` |
-| 44 | 🪄 Command palette | `gum filter` fuzzy finder across all 50 options |
+| 29 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
+| 30 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
+| 33 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
 
-#### 🆕🆕 New in 4.0 — watch, speed, audit, recycle (45–50)
+#### 🆕 New in 3.0 — advanced (35–43)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 45 | 👁️ Package watchlist | track packages in `~/.pkg-manager-watch`, compare installed vs candidate versions, `termux-notification` summary when updates appear |
-| 46 | 🌐 Mirror speed test | times candidate mirrors (official + community), shows a ranked table, optionally rewrites the main repo line in `sources.list` (old file kept as `.bak`) and runs `apt update` |
-| 47 | 🛡️ System audit | health score from upgrades, orphans, holds, leftover configs, cache weight and free disk — with a findings list |
-| 48 | ☑️ Mark manual / auto | `apt-mark manual/auto`, show manual/auto lists, `apt satisfies` (what provides a virtual package) |
-| 49 | 🗑️ Recycle bin | with **Settings → Recycle bin** on, every remove/purge first downloads the `.deb` into `~/pkg-trash/`; restore one or all of them later via `dpkg -i` (+ `apt --fix-broken install`) — no network needed |
-| 50 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
+| 34 | 📁 Local .deb install | `dpkg -i <file>` then `apt --fix-broken install -y` if needed |
+| 35 | 🔧 Downgrade package | `apt install <pkg>=<ver>` from `apt-cache madison` |
+| 36 | 🗃️ Download only | `apt download` or `apt install --download-only` to cache |
+| 37 | 📌 Hold specific version | install chosen version then `apt-mark hold` |
+| 38 | 🔎 File search (pre-install) | `apt-file search` / `pkgfile` or `dpkg -S` fallback |
+| 39 | 📋 Changelog | `apt changelog` / `apt-get changelog` or `apt show` |
+| 40 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
+| 41 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
+| 42 | 💾 Snapshot / Diff | full device snapshot as tar (`pkg-list.txt` + favs/groups/conf/notes) to `~/pkg-snapshot-*.tar.gz`, then list/diff/restore/delete snapshots in one hub |
+| 43 | 🪄 Command palette | fuzzy-find any of the 59 options with `fzf` |
 
-> The mirror test only touches the **main** repo line; `root` and `x11` repos in `sources.list.d/` are never modified. Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
+#### 🆕🆕 New in 4.0 — watch, speed, audit, recycle (44–48)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 44 | 👁️ Package watchlist | track packages in `~/.pkg-manager-watch`, compare installed vs candidate versions, `termux-notification` summary when updates appear |
+| 45 | 🌐 Mirror speed test | times candidate mirrors (official + community), shows a ranked table, optionally rewrites the main repo line in `sources.list` (old file kept as `.bak`) and runs `apt update` |
+| 46 | 🛡️ System audit | health score from upgrades, orphans, holds, leftover configs, cache weight and free disk — with a findings list |
+| 47 | ☑️ Mark manual / auto | `apt-mark manual/auto`, show manual/auto lists, `apt satisfies` (what provides a virtual package) |
+| 48 | 🗑️ Recycle bin | with **Settings → Recycle bin** on, every remove/purge first downloads the `.deb` into `~/pkg-trash/`; restore one or all of them later via `dpkg -i` (+ `apt --fix-broken install`) — no network needed |
+
+> The mirror test only touches the **main** repo line; `root` and `x11` repos in `sources.list.d/` are never modified.
+
+#### 🆕 New in 4.1 — repos, undo, graph, health, snapshot/diff, mirror (49–54)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 49 | 📂 Optional repositories | add/remove `root` and `x11` snippet files under `sources.list.d/` (files are kept as `disabled.bak` before removal), peek the main line |
+| 50 | 📋 Undo last batch | audit-logged replay/reverse of the last install/remove/purge batch — pick the entry to invert |
+| 51 | 🔗 Dependency tree | resolve and print `Depends`/`Provides` as an indented tree (depth-capped so cycles and huge graphs stay readable) |
+| 52 | 🛡️ Health dashboard | combined check: upgradables, broken deps, disk headroom, cache weight, stale locks, dpkg state — with repair suggestions |
+| 53 | 💾 Snapshot / Diff | shortcut to the full snapshot hub (same as 42) |
+| 54 | ▶️ Auto-mirror | time the mirrors from 45 and switch to the fastest one automatically (then `apt update`) |
+
+#### 🚀 New in 5.0 — self-update, toolkit, dashboards (55–58)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 55 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
+| 56 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
+| 57 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
+| 58 | 🚀 What's new in v5.0 | the changelog screen for this release |
+
+> Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
 
 #### 🚪 Exit & pinned favorites
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 45+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
+| 59 | ⚙️  Settings | backend, theme, quick theme picker, **Themes & terminal colors** (theme hub: preview all / export palette), toggles, quiet mode, safety lock |
+| 60+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
 > Labels above use emoji icons; in the app they render as Nerd Font glyphs by default (or emoji if `ICONS=emoji`). Keep the label *text* matching the `OPTION_*` definitions in `manager.sh` — if it changes, update these tables too.
@@ -297,11 +365,18 @@ tr ' ' '\n' < ~/pkg-backup-*.txt | xargs apt install -y
 
 ### ⚙️ Settings & config
 
+Inside **⚙️ Settings** (main menu 59, last item) you get: package manager, color theme, icons, safety confirms, history log, show config file, quiet mode, safety lock, maintenance on launch, recycle bin, **fzf picker** (on/off), **Themes & terminal colors** (theme hub: preview all / apply / export palette / restore), and Back.
+
 Settings are persisted to `~/.pkg-manager.conf`:
 
 ```ini
 MGR=apt           # apt or pkg
-THEME=green       # green, blue, purple, red, nord, amber, teal, mono
+THEME=green       # legacy 256-color: green, blue, purple, red, amber, teal, mono
+                  # real truecolor themes (official palettes): nord, dracula, catppuccin,
+                  # tokyo, gruvbox, onedark, solarized, everforest, rosepine
+                  # truecolor themes can also be exported to ~/.termux/colors.properties
+                  # from the theme hub (Settings → Themes & terminal colors) so the
+                  # whole Termux terminal matches
 CONFIRM=1         # ask before destructive actions
 LOG_ENABLED=1     # write action history
 GUM_ENABLED=1     # use the fancy UI
@@ -311,7 +386,9 @@ LOCK=0            # 1 = always confirm destructive ops (blocks quiet mode)
 STARTUP_CHECK=0   # 1 = run the maintenance wizard on every launch
 FAVS_PINNED=0     # 1 = show favorite packages at the end of the main menu
 RECYCLE=0         # 1 = keep a .deb in ~/pkg-trash before every remove/purge
+FZF_ENABLED=1     # 1 = fzf-first pickers (install/uninstall/search/palette/menu)
 ```
+> `NO_FZF=1` in the environment disables the same code paths without touching the config; handy for tests and slow terminals.
 
 Changes made in **Settings** apply immediately; edits to the file itself apply on the next launch.
 
@@ -325,9 +402,9 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~3.5k lines, single file)
+├── manager.sh      # the entire app (~4.2k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 169 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 159 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -359,8 +436,8 @@ A few ground rules to keep the docs in sync:
 - **Menu labels** in the README menu-map tables must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
 - **Bumping the version** means updating every place the name appears: the badge, both ASCII art lines, the menu snapshot, the installer banner (`install.sh`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
-- Test locally by running `bash manager.sh` in a bare Termux — `gum` is optional and the script degrades gracefully.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`gum` + 169 scenario tests).
+- Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 160 scenario tests).
 
 ### 🛠️ Make targets (developers)
 
@@ -370,7 +447,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`GUM_ENABLED=0 make run` for text mode) |
-| `make test` | full 169-test suite (~3 min, fakebin — no real apt) |
+| `make test` | full 159-test suite (~3 min, fakebin — no real apt) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
@@ -392,10 +469,10 @@ Distributed under the [MIT License](LICENSE).
    | |  |  __| |  _  /| |\/| | |  | | > <
    | |  | |____| | \ \| |  | | |__| |/ . \
     |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v4.1 ────── 
+  ────── Easy Package Manager · v5.0 ────── 
 ```
 
-**Easy Termux Package Manager** · v4.1 · MIT
+**Easy Termux Package Manager** · v5.0 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 

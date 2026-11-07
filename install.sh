@@ -23,14 +23,57 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 FONT_DIR="$DIR/fonts"
 FONT_REMOTE_DIR="$REPO/fonts"
 TERMUX_FONT="$HOME/.termux/font.ttf"
+
+# ── Flags ─────────────────────────────────────────────────────────────────
+#   --theme <name>   after install, export that theme's terminal palette to
+#                    ~/.termux/colors.properties (pkg-manager --export-theme)
+#   --yes            non-interactive: skip font + launch prompts
+#   --help           show this
+THEME_ARG=""
+YES=0
+while [ $# -ge 1 ]; do
+    case "$1" in
+        -t|--theme)
+            [ -n "${2:-}" ] || { printf 'install.sh: --theme needs a name (see: pkg-manager --list-themes)\n' >&2; exit 2; }
+            THEME_ARG="$2"; shift 2 ;;
+        --theme=*) THEME_ARG="${1#*=}"; shift ;;
+        -y|--yes) YES=1; shift ;;
+        -h|--help)
+            printf 'install.sh — Easy Termux Package Manager installer\n\n'
+            printf 'Usage: bash install.sh [--theme <name>] [--yes]\n\n'
+            printf '  --theme <name>  also set the terminal colors to that theme\n'
+            printf '                  (truecolor themes: dracula, nord, catppuccin,\n'
+            printf '                  tokyo, gruvbox, onedark, solarized, everforest,\n'
+            printf '                  rosepine ... see: pkg-manager --list-themes)\n'
+            printf '  --yes           skip all interactive prompts\n'
+            printf '  FONT=1|2|s      env: font choice (1 caskaydia, 2 firacode, s skip)\n'
+            exit 0 ;;
+        *) printf 'install.sh: unknown option %s (try --help)\n' "$1" >&2; exit 2 ;;
+    esac
+done
+
 BIN_TMP=$(mktemp "$PREFIX/bin/.pkg-manager.XXXXXX" 2>/dev/null) || BIN_TMP=$(mktemp "$HOME/.pkg-manager-install.XXXXXX") || { warn "Cannot create a temp file"; exit 1; }
 FONT_TMP=$(mktemp "$HOME/.termux/.font.ttf.XXXXXX" 2>/dev/null) || FONT_TMP=$(mktemp "$HOME/.pkg-manager-font.XXXXXX")
 
 trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
 
+# ── Helper tools: fzf is the interactive UI ─────────────────────────────
+declare -a MISSING=()
+command -v fzf >/dev/null 2>&1 || MISSING+=("fzf")
+if [ ${#MISSING[@]} -gt 0 ]; then
+    hdr "Installing helper tools:${MISSING[*]}"
+    if command -v pkg >/dev/null 2>&1; then
+        pkg install -y "${MISSING[@]}" >/dev/null 2>&1 || warn "install of ${MISSING[*]} failed — the app still works in text mode"
+    elif command -v apt >/dev/null 2>&1; then
+        apt install -y "${MISSING[@]}" >/dev/null 2>&1 || warn "install of ${MISSING[*]} failed — the app still works in text mode"
+    else
+        warn "Cannot install ${MISSING[*]} automatically (no pkg/apt on PATH)"
+    fi
+fi
+
 # ── Header ────────────────────────────────────────────────────────────────
 printf '%b\n' "${CYN}╭────────────────────────────────────────────────╮${R}"
-printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v4.1${R}      ${CYN}│${R}"
+printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v5.0${R}      ${CYN}│${R}"
 printf '%b\n' "${CYN}│${R}     the one-command Termux package manager     ${CYN}│${R}"
 printf '%b\n' "${CYN}╰────────────────────────────────────────────────╯${R}"
 divider
@@ -45,17 +88,6 @@ else
         warn "${RED}curl not found — aborting.${R} Install it with: ${BD}pkg install curl${R}"
         exit 1
     fi
-    if ! command -v gum >/dev/null 2>&1; then
-        hdr "Installing gum (for the fancy UI)"
-        if command -v pkg >/dev/null 2>&1; then
-            pkg install -y gum >/dev/null 2>&1 || warn "gum install failed — continuing without it"
-        else
-            warn "gum not available — continuing without it"
-        fi
-    fi
-    if ! command -v fzf >/dev/null 2>&1; then
-        info "Optional: install fzf for interactive package picker: ${BD}pkg install fzf${R}"
-    fi
     hdr "Downloading manager.sh"
     curl -fsSL "$REPO/manager.sh" -o "$BIN_TMP" || { warn "Failed to download $REPO/manager.sh to $BIN_TMP"; exit 1; }
 fi
@@ -69,6 +101,11 @@ if [ -n "$bash_path" ]; then
 else
     warn "bash not found — cannot fix shebang in $BIN"
 fi
+if ! bash -n "$BIN" 2>/dev/null; then
+    warn "${RED}The installed script has a syntax error — aborting.${R}"
+    warn "It may be a corrupted download; re-run this installer."
+    exit 1
+fi
 
 divider
 ok "Installed → ${BD}${BIN}${R}"
@@ -79,11 +116,14 @@ case ":$PATH:" in
         info "${BD}export PATH=\"${BIN%/pkg-manager}:\$PATH\"${R} (then re-open the terminal)"
         ;;
 esac
-info "Run it anytime with: ${BD}pkg-manager${R}"
+info "Run it anytime with: ${BD}pkg-manager${R}   ·   quick help: ${BD}pkg-manager --help${R}"
 divider
-info "${BD}MAX 4.1 features:${R} fzf picker · undo engine · dep tree · health · snapshot/diff · auto-mirror · themes"
-info "Optional: ${BD}pkg install fzf${R} (for interactive picker)  |  ${BD}pkg install curl${R} (mirror speed / auto-mirror)"
-divider
+info "${BD}AURORA 5.0${R} ${BD}features:${R} 9 truecolor themes (dracula, catppuccin, tokyo-night,"
+info "  nord, gruvbox, one-dark, solarized, everforest, rose-pine) · theme hub with live"
+info "  preview + Termux colors.properties export · ${BD}fzf pickers${R} for install/uninstall,"
+info "  search results, the command palette and the text-mode menu · essential toolkit ·"
+info "  system dashboard · undo engine · dep tree · health check · snapshot/diff · auto-mirror"
+info "Extras: ${BD}pkg install curl${R} for auto-mirror · Nerd Font below for the icon glyphs"
 
 # ── Nerd Font install ────────────────────────────────────────────────────
 install_font() {
@@ -113,6 +153,8 @@ if [ -n "${FONT:-}" ]; then
         s|skip|none)        warn "Skipping the font install." ;;
         *)                  warn "Invalid FONT value '$FONT' — skipping the font install." ;;
     esac
+elif [ $YES -eq 1 ]; then
+    warn "--yes given — skipping the font install."
 elif [ -d "$HOME/.termux" ]; then
     hdr "Nerd Font (for the icon glyphs)"
     printf '%b\n' "${BD}Install a Nerd Font for the icons?${R}"
@@ -138,6 +180,23 @@ else
     warn "(or re-run this installer after creating ~/.termux)."
 fi
 
+# ── Terminal theme export (--theme <name>) ────────────────────────────────
+if [ -n "$THEME_ARG" ]; then
+    hdr "Exporting theme: $THEME_ARG"
+    mkdir -p "$HOME/.termux" || warn "Cannot create $HOME/.termux"
+    if "$BIN" --export-theme "$THEME_ARG"; then
+        if command -v termux-reload-settings >/dev/null 2>&1; then
+            termux-reload-settings >/dev/null 2>&1 || true
+            ok "Settings reloaded — the palette should be live."
+        fi
+        info "Inside Termux, revert anytime with Settings → Themes → Restore"
+        info "(or delete $HOME/.termux/colors.properties)."
+    else
+        warn "Theme export failed — the app itself is installed and fine."
+        info "Truecolor themes only: try ${BD}pkg-manager --list-themes${R}"
+    fi
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────
 divider
 printf '%b\n' "${GRN}╭────────────────────────────────────────────────╮${R}"
@@ -145,7 +204,9 @@ printf '%b\n' "${GRN}│${R}                  ${BD}✅ All set!${R}             
 printf '%b\n' "${GRN}│${R}        ${BD}type  pkg-manager  to launch it${R}         ${GRN}│${R}"
 printf '%b\n' "${GRN}╰────────────────────────────────────────────────╯${R}"
 
-if [ -t 0 ]; then
+if [ $YES -eq 1 ]; then
+    warn "--yes given — not launching the app."
+elif [ -t 0 ]; then
     printf '%b\n' "${DM}Launching...${R}"
     "$BIN"
 fi

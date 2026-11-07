@@ -5,26 +5,27 @@
 # tail" would let real errors look like success.
 set -o pipefail
 
-# Optional env overrides (e.g. GUM_ENABLED=0 pkg-manager) — conf file still wins otherwise.
+# Optional env overrides (e.g. NO_FZF=1 pkg-manager) — conf file still wins otherwise.
 [ -v MGR ] && MGR_ENV=$MGR || MGR_ENV=""
 [ -v THEME ] && THEME_ENV=$THEME || THEME_ENV=""
 [ -v CONFIRM ] && CONFIRM_ENV=$CONFIRM || CONFIRM_ENV=""
 [ -v LOG_ENABLED ] && LOG_ENABLED_ENV=$LOG_ENABLED || LOG_ENABLED_ENV=""
-[ -v GUM_ENABLED ] && GUM_ENABLED_ENV=$GUM_ENABLED || GUM_ENABLED_ENV=""
 [ -v ICONS ] && ICONS_ENV=$ICONS || ICONS_ENV=""
 [ -v RECYCLE ] && RECYCLE_ENV=$RECYCLE || RECYCLE_ENV=""
+[ -v FZF_ENABLED ] && FZF_ENABLED_ENV=$FZF_ENABLED || FZF_ENABLED_ENV=""
 
+VERSION="5.0"
 MGR="apt"
 THEME="green"
 CONFIRM=1
 LOG_ENABLED=1
-GUM_ENABLED=1
 ICONS="nerd"
 QUIET=0
 LOCK=0
 STARTUP_CHECK=0
 FAVS_PINNED=0
 RECYCLE=0
+FZF_ENABLED=1
 
 # Scratch files: use mktemp (unique, unguessable names) so a predictable
 # fixed path can't be pre-planted as a symlink to truncate a victim via the
@@ -50,7 +51,7 @@ trap cleanup_tmp EXIT
 # may be planted / hand-edited, and sourcing it would run arbitrary code.
 load_config() {
     local line k v
-    local c_mgr c_theme c_confirm c_log c_gum c_icons c_quiet c_lock c_startup c_favs c_recycle
+    local c_mgr c_theme c_confirm c_log c_icons c_quiet c_lock c_startup c_favs c_recycle c_fzf
     [ -f "$HOME/.pkg-manager.conf" ] || return 0
     while IFS= read -r line; do
         case "$line" in
@@ -65,26 +66,26 @@ load_config() {
             THEME)          c_theme=$v ;;
             CONFIRM)        c_confirm=$v ;;
             LOG_ENABLED)    c_log=$v ;;
-            GUM_ENABLED)    c_gum=$v ;;
             ICONS)          c_icons=$v ;;
             QUIET)          c_quiet=$v ;;
             LOCK)           c_lock=$v ;;
             STARTUP_CHECK)  c_startup=$v ;;
             FAVS_PINNED)    c_favs=$v ;;
             RECYCLE)        c_recycle=$v ;;
+            FZF_ENABLED)    c_fzf=$v ;;
         esac
     done < "$HOME/.pkg-manager.conf"
     [ -n "$c_mgr" ] && MGR=$c_mgr
     [ -n "$c_theme" ] && THEME=$c_theme
     [ -n "$c_confirm" ] && CONFIRM=$c_confirm
     [ -n "$c_log" ] && LOG_ENABLED=$c_log
-    [ -n "$c_gum" ] && GUM_ENABLED=$c_gum
     [ -n "$c_icons" ] && ICONS=$c_icons
     [ -n "$c_quiet" ] && QUIET=$c_quiet
     [ -n "$c_lock" ] && LOCK=$c_lock
     [ -n "$c_startup" ] && STARTUP_CHECK=$c_startup
     [ -n "$c_favs" ] && FAVS_PINNED=$c_favs
     [ -n "$c_recycle" ] && RECYCLE=$c_recycle
+    [ -n "$c_fzf" ] && FZF_ENABLED=$c_fzf
     return 0
 }
 load_config
@@ -99,43 +100,94 @@ export PREFIX
 [ -n "$THEME_ENV" ] && THEME=$THEME_ENV
 [ -n "$CONFIRM_ENV" ] && CONFIRM=$CONFIRM_ENV
 [ -n "$LOG_ENABLED_ENV" ] && LOG_ENABLED=$LOG_ENABLED_ENV
-[ -n "$GUM_ENABLED_ENV" ] && GUM_ENABLED=$GUM_ENABLED_ENV
 [ -n "$ICONS_ENV" ] && ICONS=$ICONS_ENV
 [ -n "$RECYCLE_ENV" ] && RECYCLE=$RECYCLE_ENV
+[ -n "$FZF_ENABLED_ENV" ] && FZF_ENABLED=$FZF_ENABLED_ENV
 
 # validate both the config file and any env override with the same guards
 case "$MGR" in apt|pkg) ;; *) MGR="apt" ;; esac
-case "$THEME" in green|blue|purple|red|nord|amber|teal|mono) ;; *) THEME="green" ;; esac
+case "$THEME" in green|blue|purple|red|nord|amber|teal|mono|dracula|catppuccin|tokyo|gruvbox|onedark|solarized|everforest|rosepine) ;; *) THEME="green" ;; esac
 case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
-case "$GUM_ENABLED" in 0|1) ;; *) GUM_ENABLED=1 ;; esac
 case "$ICONS" in nerd|emoji) ;; *) ICONS="nerd" ;; esac
 case "$QUIET" in 0|1) ;; *) QUIET=0 ;; esac
 case "$LOCK" in 0|1) ;; *) LOCK=0 ;; esac
 case "$STARTUP_CHECK" in 0|1) ;; *) STARTUP_CHECK=0 ;; esac
 case "$FAVS_PINNED" in 0|1) ;; *) FAVS_PINNED=0 ;; esac
 case "$RECYCLE" in 0|1) ;; *) RECYCLE=0 ;; esac
-unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV GUM_ENABLED_ENV ICONS_ENV RECYCLE_ENV
+case "$FZF_ENABLED" in 0|1) ;; *) FZF_ENABLED=1 ;; esac
+unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV ICONS_ENV RECYCLE_ENV FZF_ENABLED_ENV
 
+# Color engine — every theme sets six roles: CYAN (accent/headers), PINK
+# (cursor/borders), GREEN (ok), YELLOW (warn), RED (err), DIM (muted).
+# Legacy themes use 256-color numbers; the real terminal themes below use
+# official #RRGGBB truecolor hex from the upstream palettes (draculatheme.com,
+# catppuccin.com, tokyonight.org, nordtheme.com, gruvbox, One Dark, solarized,
+# everforest, rosepinetheme.com).
 GREEN=46
 CYAN=45
 PINK=212
 RED=196
 YELLOW=220
+DIM=240
+
+THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo gruvbox onedark solarized everforest rosepine)
+
+# paint <color> <text...> — wrap text in an ANSI escape for a 256-color number
+# or a #RRGGBB hex value (text mode).
+paint() {
+    local c="$1"; shift
+    local s="$*" hex
+    case "$c" in
+        \#*)
+            hex="${c#\#}"
+            printf '\033[38;2;%d;%d;%dm%s\033[0m' "$((16#${hex:0:2}))" "$((16#${hex:2:2}))" "$((16#${hex:4:2}))" "$s"
+            ;;
+        *)
+            printf '\033[38;5;%sm%s\033[0m' "$c" "$s"
+            ;;
+    esac
+}
 
 set_theme() {
     case "$THEME" in
-        blue)   CYAN=33;  PINK=208; GREEN=76;  YELLOW=214; RED=196 ;;
-        purple) CYAN=99;  PINK=212; GREEN=48;  YELLOW=220; RED=196 ;;
-        red)    CYAN=203; PINK=229; GREEN=46;  YELLOW=220; RED=196 ;;
-        nord)   CYAN=110; PINK=139; GREEN=108; YELLOW=222; RED=167 ;;
-        amber)  CYAN=179; PINK=216; GREEN=114; YELLOW=214; RED=203 ;;
-        teal)   CYAN=80;  PINK=121; GREEN=79;  YELLOW=191; RED=203 ;;
-        mono)   CYAN=252; PINK=250; GREEN=255; YELLOW=253; RED=247 ;;
-        *)      CYAN=45;  PINK=212; GREEN=46;  YELLOW=220; RED=196 ;;
+        blue)       CYAN=33;        PINK=208;       GREEN=76;   YELLOW=214;    RED=196;      DIM=245 ;;
+        purple)     CYAN=99;        PINK=212;       GREEN=48;   YELLOW=220;    RED=196;      DIM=245 ;;
+        red)        CYAN=203;       PINK=229;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
+        nord)       CYAN="#88C0D0"; PINK="#B48EAD"; GREEN="#A3BE8C"; YELLOW="#EBCB8B"; RED="#BF616A"; DIM="#4C566A" ;;
+        amber)      CYAN=179;       PINK=216;       GREEN=114;  YELLOW=214;    RED=203;      DIM=245 ;;
+        teal)       CYAN=80;        PINK=121;       GREEN=79;   YELLOW=191;    RED=203;      DIM=245 ;;
+        mono)       CYAN=252;       PINK=250;       GREEN=255;  YELLOW=253;    RED=247;      DIM=240 ;;
+        dracula)    CYAN="#8BE9FD"; PINK="#FF79C6"; GREEN="#50FA7B"; YELLOW="#F1FA8C"; RED="#FF5555"; DIM="#6272A4" ;;
+        catppuccin) CYAN="#94E2D5"; PINK="#CBA6F7"; GREEN="#A6E3A1"; YELLOW="#F9E2AF"; RED="#F38BA8"; DIM="#6C7086" ;;
+        tokyo)      CYAN="#7DCFFF"; PINK="#BB9AF7"; GREEN="#9ECE6A"; YELLOW="#E0AF68"; RED="#F7768E"; DIM="#565F89" ;;
+        gruvbox)    CYAN="#8EC07C"; PINK="#D3869B"; GREEN="#B8BB26"; YELLOW="#FABD2F"; RED="#FB4934"; DIM="#928374" ;;
+        onedark)    CYAN="#56B6C2"; PINK="#C678DD"; GREEN="#98C379"; YELLOW="#E5C07B"; RED="#E06C75"; DIM="#5C6370" ;;
+        solarized)  CYAN="#2AA198"; PINK="#D33682"; GREEN="#859900"; YELLOW="#B58900"; RED="#DC322F"; DIM="#586E75" ;;
+        everforest) CYAN="#83C092"; PINK="#D699B6"; GREEN="#A7C080"; YELLOW="#DBBC7F"; RED="#E67E80"; DIM="#859289" ;;
+        rosepine)   CYAN="#9CCFD8"; PINK="#C4A7E7"; GREEN="#31748F"; YELLOW="#F6C177"; RED="#EB6F92"; DIM="#6E6A86" ;;
+        *)          CYAN=45;        PINK=212;       GREEN=46;   YELLOW=220;    RED=196;      DIM=240 ;;
     esac
 }
 set_theme
+
+# theme_ansi <name> — full 18-color terminal palette (bg fg color0..color15) as
+# bare hex for the real terminal themes, so they can be exported to
+# ~/.termux/colors.properties. Legacy 256-color themes have no table (return 1).
+theme_ansi() {
+    case "$1" in
+        dracula)    printf '%s\n' 282A36 F8F8F2 21222C FF5555 50FA7B F1FA8C BD93F9 FF79C6 8BE9FD F8F8F2 6272A4 FF6E6E 69FF94 FFFFA5 D6ACFF FF92DF A4FFFF FFFFFF ;;
+        catppuccin) printf '%s\n' 1E1E2E CDD6F4 45475A F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 BAC2DE 585B70 F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 A6ADC8 ;;
+        tokyo)      printf '%s\n' 1A1B26 C0CAF5 15161E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5 ;;
+        nord)       printf '%s\n' 2E3440 D8DEE9 3B4252 BF616A A3BE8C EBCB8B 5E81AC B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4 ;;
+        gruvbox)    printf '%s\n' 282828 EBDBB2 282828 CC241D 98971A D79921 458588 B16286 689D6A A89984 928374 FB4934 B8BB26 FABD2F 83A598 D3869B 8EC07C EBDBB2 ;;
+        onedark)    printf '%s\n' 282C34 ABB2BF 1E2127 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 ABB2BF 5C6370 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 FFFFFF ;;
+        solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 002B36 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
+        everforest) printf '%s\n' 2D353B D3C6AA 475258 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 D3C6AA 7A8478 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 9DA9A0 ;;
+        rosepine)   printf '%s\n' 191724 E0DEF4 26233A EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 6E6A86 EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 ;;
+        *) return 1 ;;
+    esac
+}
 
 init_icons() {
     if [ "$ICONS" = "emoji" ]; then
@@ -167,6 +219,8 @@ init_icons() {
         ICON_UNDO="↩️";          ICON_PLAY="▶️"
         ICON_CHECKBOX="☑️"
         ICON_BUG="🐞";          ICON_TRASH="🗑️"
+        ICON_BOLT="⚡";         ICON_GLOBE="🌐"
+        ICON_ROCKET="🚀"
     else
         ICON_INSTALL=$'\uEB29'; ICON_UNINSTALL=$'\uEA81'
         ICON_SEARCH=$'\uEA6D';  ICON_LIST=$'\uEB84'
@@ -196,6 +250,8 @@ init_icons() {
         ICON_UNDO=$'\uF0E2';    ICON_PLAY=$'\uF04B'
         ICON_CHECKBOX=$'\uF046'
         ICON_BUG=$'\uF188';     ICON_TRASH=$'\uF014'
+        ICON_BOLT=$'\uF0E7';    ICON_GLOBE=$'\uF0AC'
+        ICON_ROCKET=$'\uF135'
     fi
 }
 init_icons
@@ -207,58 +263,72 @@ WATCH_FILE="$HOME/.pkg-manager-watch"
 TRASH_DIR="$HOME/pkg-trash"
 UPDATE_URL="https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/manager.sh"
 
-refresh_gum() {
-    if [ "$GUM_ENABLED" = "1" ] && command -v gum >/dev/null 2>&1 \
-        && gum style "probe" >/dev/null 2>&1; then
-        GUM=1
+# fzf_label — three-state label for the settings row:
+#   off → on
+fzf_label() {
+    if [ "$FZF_ENABLED" != "1" ]; then
+        printf 'off'
     else
-        GUM=0
+        printf 'on'
     fi
 }
 
-GUM=0
-if [ "$GUM_ENABLED" = "1" ]; then
-    if command -v gum >/dev/null 2>&1 && gum style "probe" >/dev/null 2>&1; then
-        GUM=1
-    elif ! command -v gum >/dev/null 2>&1; then
-        echo "gum is not installed — needed for the full fancy UI."
-        echo "    $MGR install gum"
-        printf "Install gum now? [y/N] "
-        read -r _yn
-        if [[ "${_yn,,}" == "y" ]]; then
-            out=""
-            if out=$("$MGR" install -y gum 2>&1); then
-                GUM=1
-                echo "gum installed!"
-            else
-                echo "Failed to install gum. Continuing in basic text mode."
-                printf '%s\n' "$out" | tail -n 4
-            fi
-        else
-            echo "Continuing in basic text mode."
-        fi
-    else
-        echo "gum is present but not working — falling back to basic text mode."
-    fi
-fi
+# have_fzf — fzf is optional but first-class: it powers the package picker, the
+# command palette and the menu. FZF_ENABLED=0 (or NO_FZF=1) disables it.
+# The test harness uses NO_FZF=1 for hermetic runs.
+have_fzf() {
+    [ "$FZF_ENABLED" = "1" ] || return 1
+    [ "${NO_FZF:-0}" = "1" ] && return 1
+    command -v fzf >/dev/null 2>&1
+}
 
-say()  { if [ "$GUM" = "1" ]; then gum style --foreground "$CYAN"  "$1";   else printf '%s\n' "$1";   fi; }
-ok()   { if [ "$GUM" = "1" ]; then gum style --foreground "$GREEN" "✓ $1"; else printf '✓ %s\n' "$1"; fi; }
-err()  { if [ "$GUM" = "1" ]; then gum style --foreground "$RED"   "✗ $1"; else printf '✗ %s\n' "$1"; fi; }
-warn() { if [ "$GUM" = "1" ]; then gum style --foreground "$YELLOW" "⚠ $1"; else printf '⚠ %s\n' "$1"; fi; }
+# CLI mode — non-interactive flags (--help --version --theme --export-theme
+# --list-themes) are detected here and handled after all functions are defined (before FIRST_LOOP).
+case "${1:-}" in
+    -h|--help|help)           CLI_MODE="help" ;;
+    -V|--version|version)     CLI_MODE="version" ;;
+    --list-themes)            CLI_MODE="list-themes" ;;
+    --theme)                  CLI_MODE="set-theme" ;;
+    --export-theme)           CLI_MODE="export-theme" ;;
+    "")                       CLI_MODE="" ;;
+    *)                        CLI_MODE="unknown:$1" ;;
+esac
 
-BANNER_B64="H4sIAAAAAAACA21PMQoCMRDs84ppbW4tLOU6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT5RSzm53NzCRskOvCFIC2WR1z1GStseAqQAkqgDGYyhBIwoeJWwGz0Cm/FcWWp4k3Hnegy3UvzYseS+D73epWn6GZLChBRza8PqXVv0WvWStl6pxIFucSXvfbT2JVzldsyu5Qhj3W5Ug44fnAZdHN//nTCOUFJYxNAQAA"
+
+# Output helpers — text mode paints via ANSI escapes.
+# (256 number or hex), plain text mode gets a real ANSI escape via paint().
+say()  { printf '%s\n' "$(paint "$CYAN" "$1")"; }
+ok()   { printf '%s\n' "$(paint "$GREEN" "✓ $1")"; }
+err()  { printf '%s\n' "$(paint "$RED" "✗ $1")"; }
+warn() { printf '%s\n' "$(paint "$YELLOW" "⚠ $1")"; }
+dim()  { printf '%s\n' "$(paint "$DIM" "$1")"; }
+
+# hr — a full-width themed rule; section — a themed sub-header
+hr() {
+    local w line
+    w=$(tput cols 2>/dev/null || echo 0)
+    case "$w" in ''|*[!0-9]*) w=0 ;; esac
+    [ "$w" -lt 24 ] && w=60
+    line=$(printf '─%.0s' $(seq 1 "$w"))
+    printf '%s\n' "$(paint "$DIM" "$line")"
+}
+section() {
+    printf '%s\n' "$(paint "$PINK" "── $1 ──")"
+}
+
+BANNER_B64="H4sIAAAAAAACA21PMQoCMRDs84ppbW5t7OQ6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT5RSzm53NzCRskOvCFIC2WR1z1GStseAqQAkqgDGYyhBIwoeJWwGz0Cm/FcWWp4k3Hnegy3UvzYseS+D73epWn6GZLChBRza8PqXVv0WvWStl6pxIFucSXvfbT2JVzldsyu5Qhj3W5Ug44fnAZdHN//lHpoxgYkwBAAA="
 
 banner() {
-    local art
+    local art n favs
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
-        art="TERMUX Pkg Manager v4.1"
+        art="TERMUX Pkg Manager v$VERSION"
     fi
-    if [ "$GUM" = "1" ]; then
-        gum style --foreground "$CYAN" --border rounded --border-foreground "$PINK" --padding "1 1" --align center "$art"
-    else
-        printf '%s\n' "$art"
-    fi
+    printf '%s\n' "$(paint "$CYAN" "$art")"
+    # status strip: manager · theme · installed count · version
+    n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
+    favs=0
+    [ -s "$FAVS_FILE" ] && favs=$(grep -c . "$FAVS_FILE" 2>/dev/null || echo 0)
+    dim "  pkg-manager v$VERSION · manager: $MGR · theme: $THEME · installed: ${n:-?} · favorites: $favs"
 }
 
 # valid_pkg_name — 1 if "$1" is a safe package token for apt/dpkg: starts with
@@ -335,8 +405,11 @@ build_menu() {
     OPTION_HEALTH="$ICON_SHIELD Health dashboard"
     OPTION_SNAPSHOT="$ICON_BACKUP Snapshot / Diff"
     OPTION_AUTO_MIRROR="$ICON_PLAY Auto-mirror"
-    OPTION_THEME="$ICON_WAND Theme switcher"
+    OPTION_THEME="$ICON_WAND Themes & terminal colors"
     OPTION_SELFUPDATE="$ICON_UP Update pkg-manager"
+    OPTION_ESSENTIALS="$ICON_BOLT Essential toolkit"
+    OPTION_SYSINFO="$ICON_GLOBE System & network info"
+    OPTION_WHATSNEW="$ICON_ROCKET What's new in v$VERSION"
     OPTION_EXIT="$ICON_EXIT Exit"
 
     MENU_ITEMS=(
@@ -345,14 +418,15 @@ build_menu() {
         "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER"
         "$OPTION_HOLD" "$OPTION_PURGE" "$OPTION_FIXBROKEN" "$OPTION_UPGRADABLE"
         "$OPTION_BACKUP" "$OPTION_RESTORE" "$OPTION_EXPORT" "$OPTION_IMPORT"
-        "$OPTION_DOCTOR" "$OPTION_SETTINGS" "$OPTION_HISTORY"
+        "$OPTION_DOCTOR" "$OPTION_HISTORY"
         "$OPTION_SIMULATE" "$OPTION_STATS" "$OPTION_CACHE"
         "$OPTION_DEPTREE" "$OPTION_BULK" "$OPTION_FAVS"
         "$OPTION_INSPECT" "$OPTION_MAINT" "$OPTION_GROUPS"
         "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
         "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
         "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_REPOS"
-        "$OPTION_UNDO" "$OPTION_DEPTREE" "$OPTION_HEALTH" "$OPTION_SNAPSHOT" "$OPTION_AUTO_MIRROR" "$OPTION_THEME" "$OPTION_SELFUPDATE"
+        "$OPTION_UNDO" "$OPTION_DEPTREE" "$OPTION_HEALTH" "$OPTION_SNAPSHOT" "$OPTION_AUTO_MIRROR" "$OPTION_SELFUPDATE"
+        "$OPTION_ESSENTIALS" "$OPTION_SYSINFO" "$OPTION_WHATSNEW" "$OPTION_SETTINGS"
     )
 
     FAVPIN=()
@@ -377,18 +451,34 @@ main_menu() {
     for p in "${FAVPIN[@]}"; do
         opts+=( "$ICON_PIN Pinned: $p" )
     done
-    if [ "$GUM" = "1" ]; then
-        opts+=( "$OPTION_EXIT" )
-        gum choose --header "Pick an option..." --cursor "➜ " --cursor.foreground "$PINK" --selected.foreground "$CYAN" \
-            "${opts[@]}"
-    else
-        printf '\n' >&2
+    # fzf-first: fuzzy menu whenever fzf is available and preferred (default),
+    # ESC falls through to the numbered list below.
+    if have_fzf; then
+        local sel
+        sel=$(printf '%s\n' "${opts[@]}" "$OPTION_EXIT" | fzf_select "pkg-manager v$VERSION — filter & pick (ESC for the numbered list)" "> " 0) || sel=""
+        if [ -n "$sel" ]; then
+            printf '%s\n' "$sel"
+            return
+        fi
+    fi
+    # Text mode with fzf available but lower priority: still prefer fzf over
+    # typing numbers.
+    if have_fzf; then
+        sel=$(printf '%s\n' "${opts[@]}" "$OPTION_EXIT" | fzf_select "pkg-manager v$VERSION — filter & pick (ESC for the numbered list)" "> " 0) || sel=""
+        if [ -n "$sel" ]; then
+            printf '%s\n' "$sel"
+            return
+        fi
+    fi
+    printf '\n' >&2
+        printf '%s\n' "$(paint "$PINK" "  ═══ MAIN MENU ═══")" >&2
         i=1
         for o in "${opts[@]}"; do
-            printf '[%d]  %s\n' "$i" "$o" >&2
+            printf '%s  %s\n' "$(paint "$CYAN" "[$i]")" "$o" >&2
             i=$((i+1))
         done
-        printf '[0]  %s\n' "$OPTION_EXIT" >&2
+        printf '%s  %s\n' "$(paint "$CYAN" "[0]")" "$OPTION_EXIT" >&2
+        printf '%s\n' "$(paint "$DIM" "  ───────────────")" >&2
         printf 'Choose an option: ' >&2
         if ! read -r n; then
             echo "$OPTION_EXIT"
@@ -405,7 +495,6 @@ main_menu() {
             fi
         fi
         echo "__INVALID__"
-    fi
 }
 
 # ask_name <prompt> <pkghint> — read a value into PKG_NAME. With pkghint="pkg"
@@ -414,12 +503,8 @@ main_menu() {
 ask_name() {
     local prompt="$1" mode="${2:-pkg}"
     PKG_NAME=""
-    if [ "$GUM" = "1" ]; then
-        PKG_NAME=$(gum input --prompt "➜ " --placeholder "$prompt" --width 40)
-    else
-        printf '%s' "$prompt: "
-        read -r PKG_NAME
-    fi
+    printf '%s: ' "$prompt" >&2
+    read -r PKG_NAME
     # normalize: trim surrounding whitespace and CR
     PKG_NAME=$(printf '%s\n' "$PKG_NAME" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     if [ "$mode" = "pkg" ] && [ -n "$PKG_NAME" ] && ! valid_pkg_name "$PKG_NAME"; then
@@ -431,12 +516,8 @@ ask_name() {
 run_spin() {
     local title="$1"
     shift
-    if [ "$GUM" = "1" ]; then
-        gum spin --spinner dot --spinner.foreground "$CYAN" --title "$title" -- "$@"
-    else
-        printf '%s\n' "[*] $title"
-        "$@"
-    fi
+    printf '%s\n' "[*] $title"
+    "$@"
     return $?
 }
 
@@ -456,13 +537,9 @@ onoff() { [ "$1" = "1" ] && printf 'on' || printf 'off'; }
 
 confirm() {
     if [ "$CONFIRM" = "1" ] && [ "$QUIET" != "1" ]; then
-        if [ "$GUM" = "1" ]; then
-            gum confirm "$1" && return 0 || return 1
-        else
-            printf '%s [y/N]: ' "$1"
-            read -r _a
-            [ "${_a,,}" = "y" ]
-        fi
+        printf '%s [y/N]: ' "$1" >&2
+        read -r _a
+        [ "${_a,,}" = "y" ]
     else
         return 0
     fi
@@ -470,13 +547,9 @@ confirm() {
 
 confirm_danger() {
     if [ "$LOCK" = "1" ]; then
-        if [ "$GUM" = "1" ]; then
-            gum confirm "$1" && return 0 || return 1
-        else
-            printf '%s [y/N]: ' "$1"
-            read -r _a
-            [ "${_a,,}" = "y" ]
-        fi
+        printf '%s [y/N]: ' "$1" >&2
+        read -r _a
+        [ "${_a,,}" = "y" ]
     else
         confirm "$1"
     fi
@@ -492,13 +565,8 @@ list_installed_names() {
 
 pick_file() {
     local title="$1" f=""
-    if [ "$GUM" = "1" ]; then
-        f=$(gum file --header "➜ $title" --file 2>/dev/null)
-    fi
-    if [ -z "$f" ]; then
-        printf '%s (full path): ' "$title" >&2
-        read -r f
-    fi
+    printf '%s (full path): ' "$title" >&2
+    read -r f
     printf '%s\n' "$f"
 }
 
@@ -513,13 +581,13 @@ save_config() {
         printf 'THEME=%s\n' "$THEME"
         printf 'CONFIRM=%s\n' "$CONFIRM"
         printf 'LOG_ENABLED=%s\n' "$LOG_ENABLED"
-        printf 'GUM_ENABLED=%s\n' "$GUM_ENABLED"
         printf 'ICONS=%s\n' "$ICONS"
         printf 'QUIET=%s\n' "$QUIET"
         printf 'LOCK=%s\n' "$LOCK"
         printf 'STARTUP_CHECK=%s\n' "$STARTUP_CHECK"
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
         printf 'RECYCLE=%s\n' "$RECYCLE"
+        printf 'FZF_ENABLED=%s\n' "$FZF_ENABLED"
     } > "$tmp"
     if mv -f "$tmp" "$HOME/.pkg-manager.conf"; then
         printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
@@ -531,8 +599,8 @@ save_config() {
 
 set_mgr() {
     local m
-    if [ "$GUM" = "1" ]; then
-        m=$(gum choose --header "$ICON_SLIDERS  Select package manager" "apt (default, recommended)" "pkg (Termux wrapper)")
+    if have_fzf; then
+        m=$(pick_menu "$ICON_SLIDERS  Select package manager" "apt (default, recommended)" "pkg (Termux wrapper)")
     else
         printf '1) apt\n2) pkg\n> ' >&2
         read -r m
@@ -552,38 +620,112 @@ set_mgr() {
 }
 
 set_theme_pick() {
-    local t
-    if [ "$GUM" = "1" ]; then
-        t=$(gum choose --header "$ICON_THEME  Select theme" "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)" "nord (icy/rose)" "amber (orange/rose)" "teal (cyan/mint)" "mono (grayscale)")
+    local t i
+    local labels=(
+        "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)"
+        "nord (icy/rose · truecolor)" "amber (orange/rose)" "teal (cyan/mint)" "mono (grayscale)"
+        "dracula (truecolor)" "catppuccin (truecolor)" "tokyo-night (truecolor)" "gruvbox (truecolor)"
+        "one-dark (truecolor)" "solarized (truecolor)" "everforest (truecolor)" "rose-pine (truecolor)"
+    )
+    if have_fzf; then
+        t=$(pick_menu "$ICON_THEME  Select theme (current: $THEME)" "${labels[@]}")
     else
-        printf '1) green\n2) blue\n3) purple\n4) red\n5) nord\n6) amber\n7) teal\n8) mono\n> ' >&2
+        i=1
+        for l in "${labels[@]}"; do
+            printf '%d) %s\n' "$i" "$l" >&2
+            i=$((i+1))
+        done
+        printf '> ' >&2
         read -r t
         case "$t" in
-            1) t="green (cyan/pink)" ;;
-            2) t="blue (blue/orange)" ;;
-            3) t="purple (purple/pink)" ;;
-            4) t="red (red/yellow)" ;;
-            5) t="nord (icy/rose)" ;;
-            6) t="amber (orange/rose)" ;;
-            7) t="teal (cyan/mint)" ;;
-            8) t="mono (grayscale)" ;;
+            [1-9]|1[0-6]) t="${labels[$((t-1))]}" ;;
             *) return ;;
         esac
     fi
     [ -n "$t" ] || return
     case "$t" in
-        green*)  THEME="green" ;;
-        blue*)   THEME="blue" ;;
-        purple*) THEME="purple" ;;
-        red*)    THEME="red" ;;
-        nord*)   THEME="nord" ;;
-        amber*)  THEME="amber" ;;
-        teal*)   THEME="teal" ;;
-        mono*)   THEME="mono" ;;
+        green*)     THEME="green" ;;
+        blue*)      THEME="blue" ;;
+        purple*)    THEME="purple" ;;
+        red*)       THEME="red" ;;
+        nord*)      THEME="nord" ;;
+        amber*)     THEME="amber" ;;
+        teal*)      THEME="teal" ;;
+        mono*)      THEME="mono" ;;
+        dracula*)   THEME="dracula" ;;
+        catppuccin*) THEME="catppuccin" ;;
+        tokyo*)     THEME="tokyo" ;;
+        gruvbox*)   THEME="gruvbox" ;;
+        one-dark*)  THEME="onedark" ;;
+        solarized*) THEME="solarized" ;;
+        everforest*) THEME="everforest" ;;
+        rose*)      THEME="rosepine" ;;
         *) return ;;
     esac
     set_theme
     save_config
+    ok "Theme set to $THEME"
+}
+
+# theme_preview — one swatch line per theme so you can eyeball them all at once
+theme_preview() {
+    local n sw saved="$THEME"
+    section "Theme preview — ■■■■■ = accent/secondary/ok/warn/err"
+    for n in "${THEME_NAMES[@]}"; do
+        THEME="$n"
+        set_theme
+        sw="$(paint "$CYAN" "■")$(paint "$PINK" "■")$(paint "$GREEN" "■")$(paint "$YELLOW" "■")$(paint "$RED" "■")"
+        printf '  %-11s %s  %s\n' "$n" "$sw" "$(paint "$DIM" "The quick brown fox 0123")"
+    done
+    THEME="$saved"
+    set_theme
+}
+
+# apply_termux_theme — export the current theme's full ANSI palette to
+# ~/.termux/colors.properties so the whole Termux terminal matches the app.
+# The previous file is kept once as colors.properties.pkg-manager.bak.
+apply_termux_theme() {
+    local t="${1:-$THEME}" dir="$HOME/.termux" tmp i
+    local vals
+    vals=$(theme_ansi "$t") || {
+        warn "Theme '$t' is a legacy 256-color theme with no full ANSI table."
+        say "Pick a truecolor theme first: nord, dracula, catppuccin, tokyo, gruvbox, onedark, solarized, everforest, rose-pine."
+        return 1
+    }
+    mkdir -p "$dir" || { err "Cannot create $dir"; return 1; }
+    if [ -f "$dir/colors.properties" ] && [ ! -f "$dir/colors.properties.pkg-manager.bak" ]; then
+        cp -f "$dir/colors.properties" "$dir/colors.properties.pkg-manager.bak" \
+            && dim "  existing colors backed up → $dir/colors.properties.pkg-manager.bak"
+    fi
+    tmp=$(scratch_new) || { err "Could not create a temp file."; return 1; }
+    local -a v
+    mapfile -t v <<< "$vals"
+    {
+        printf 'background=#%s\n' "${v[0]}"
+        printf 'foreground=#%s\n' "${v[1]}"
+        for i in $(seq 0 15); do
+            printf 'color%d=#%s\n' "$i" "${v[$((i+2))]}"
+        done
+    } > "$tmp"
+    if mv -f "$tmp" "$dir/colors.properties"; then
+        ok "Wrote $dir/colors.properties (theme: $t)"
+        log "termux colors ← theme $t"
+        say "Run 'termux-reload-settings' (or restart Termux) to apply it to the terminal."
+        return 0
+    fi
+    err "Failed to write $dir/colors.properties"
+    return 1
+}
+
+restore_termux_theme() {
+    local dir="$HOME/.termux"
+    if [ -f "$dir/colors.properties.pkg-manager.bak" ]; then
+        mv -f "$dir/colors.properties.pkg-manager.bak" "$dir/colors.properties" \
+            && ok "Restored previous $dir/colors.properties" \
+            || err "Restore failed"
+    else
+        warn "No backup found ($dir/colors.properties.pkg-manager.bak)."
+    fi
 }
 
 pause() {
@@ -701,16 +843,14 @@ list_upgradable() {
 }
 
 do_install() {
-    if command -v fzf >/dev/null 2>&1; then
-        local use_fzf_resp="n"
-        if [ "$GUM" = "1" ]; then
-            if gum confirm --default=no "Use interactive fzf picker? (y/n)" 2>/dev/null; then use_fzf_resp="y"; fi
+    FZF_ABORTED=0
+    if have_fzf; then
+        use_fzf_for_op install
+        local rc=$?
+        if [ "$FZF_ABORTED" = "1" ]; then
+            dim "  fzf picker canceled — type a package name instead."
         else
-            printf 'Use interactive fzf picker? (y/n): '
-            read -r use_fzf_resp
-        fi
-        if [ "$use_fzf_resp" = "y" ] || [ "$use_fzf_resp" = "Y" ]; then
-            use_fzf_for_op install; return $?
+            return $rc
         fi
     fi
     ask_name "Package name to install"
@@ -738,16 +878,14 @@ do_install() {
 }
 
 do_uninstall() {
-    if command -v fzf >/dev/null 2>&1; then
-        local use_fzf_resp="n"
-        if [ "$GUM" = "1" ]; then
-            if gum confirm --default=no "Use interactive fzf picker? (y/n)" 2>/dev/null; then use_fzf_resp="y"; fi
+    FZF_ABORTED=0
+    if have_fzf; then
+        use_fzf_for_op remove
+        local rc=$?
+        if [ "$FZF_ABORTED" = "1" ]; then
+            dim "  fzf picker canceled — type a package name instead."
         else
-            printf 'Use interactive fzf picker? (y/n): '
-            read -r use_fzf_resp
-        fi
-        if [ "$use_fzf_resp" = "y" ] || [ "$use_fzf_resp" = "Y" ]; then
-            use_fzf_for_op remove; return $?
+            return $rc
         fi
     fi
     ask_name "Package name to uninstall"
@@ -812,8 +950,9 @@ do_search() {
     [ -n "$cands" ] || return
     say "$ICON_INSTALL Found installable packages:"
     printf '%s\n' "$cands"
-    if [ "$GUM" = "1" ]; then
-        sel=$(printf '%s\n' "$cands" | gum choose --no-limit --header "$ICON_CHECKBOX Select packages to install")
+    if have_fzf; then
+        sel=$(printf '%s\n' "$cands" | fzf_select "Install from results — Tab/Space multi-select, ESC for none" "install> " 1) || sel=""
+        [ -n "$sel" ] || { say "Nothing selected."; return; }
     else
         printf '\nInstall from these results? (space-separated names, or n): ' >&2
         read -r sel
@@ -842,11 +981,7 @@ do_list() {
         out=$(apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
     fi
     if [ -n "$out" ]; then
-        if [ "$GUM" = "1" ]; then
-            printf '%s\n' "$out" | gum pager 2>/dev/null || printf '%s\n' "$out"
-        else
-            printf '%s\n' "$out"
-        fi
+        printf '%s\n' "$out"
     else
         err "Could not list installed packages"
     fi
@@ -901,10 +1036,10 @@ do_upgrade_center() {
     n=$(printf '%s\n' "$pkgs" | awk 'NF' | wc -l)
     say "$ICON_UPGRADABLE $n package(s) have updates:"
     printf '%s\n' "$list"
-    if [ "$GUM" = "1" ]; then
+    if have_fzf; then
         local -a _upg=()
         mapfile -t _upg <<< "$pkgs"
-        choice=$(gum choose --no-limit --header "Select what to upgrade (SPACE toggles, ENTER goes)" "All packages" "${_upg[@]}")
+        choice=$(printf '%s\n' "All packages" "${_upg[@]}" | pick_multi "Select what to upgrade (SPACE toggles, ENTER goes)")
     else
         printf '\nUpgrade all [a], none [n], or pick some (space-separated names): ' >&2
         read -r choice
@@ -1095,18 +1230,7 @@ do_owner() {
 
 do_hold() {
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_HOLD  Pin / hold" "Hold a package" "Unhold a package" "Show held packages")
-    else
-        printf '1) Hold a package\n2) Unhold a package\n3) Show held packages\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Hold a package" ;;
-            2) a="Unhold a package" ;;
-            3) a="Show held packages" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_HOLD  Pin / hold" "Hold a package" "Unhold a package" "Show held packages")
     [ -n "$a" ] || return
     case "$a" in
         Hold*)
@@ -1226,18 +1350,7 @@ do_upgradable() {
 
 do_simulate() {
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_EYE  Simulate a change" "Simulate install" "Simulate remove" "Simulate upgrade all")
-    else
-        printf '1) Simulate install\n2) Simulate remove\n3) Simulate upgrade all\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Simulate install" ;;
-            2) a="Simulate remove" ;;
-            3) a="Simulate upgrade all" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_EYE  Simulate a change" "Simulate install" "Simulate remove" "Simulate upgrade all")
     [ -n "$a" ] || return
     case "$a" in
         *install*)
@@ -1285,20 +1398,7 @@ do_simulate() {
 
 do_stats() {
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_CHART  Package stats & disk" "Overview" "Disk usage by directory" "Largest files" "Cache breakdown" "Back")
-    else
-        printf '1) Overview\n2) Disk usage by directory\n3) Largest files\n4) Cache breakdown\n5) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Overview" ;;
-            2) a="Disk usage by directory" ;;
-            3) a="Largest files" ;;
-            4) a="Cache breakdown" ;;
-            5) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_CHART  Package stats & disk" "Overview" "Disk usage by directory" "Largest files" "Cache breakdown" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Overview)
@@ -1365,19 +1465,7 @@ do_cache() {
     else
         warn "$ICON_CACHE  Could not read cache size."
     fi
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_CACHE  Cache manager" "Clean all cached files (apt clean)" "Remove only outdated .deb (autoclean)" "Show cached files" "Back")
-    else
-        printf '1) Clean all cached files (apt clean)\n2) Remove only outdated .deb (autoclean)\n3) Show cached files\n4) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Clean all cached files (apt clean)" ;;
-            2) a="Remove only outdated .deb (autoclean)" ;;
-            3) a="Show cached files" ;;
-            4) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_CACHE  Cache manager" "Clean all cached files (apt clean)" "Remove only outdated .deb (autoclean)" "Show cached files" "Back")
     [ -n "$a" ] || return
     case "$a" in
         *"Clean all"*)
@@ -1440,18 +1528,7 @@ dep_tree() {
 
 do_deptools() {
     local a block orphans n
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_TREE  Dependency tools" "Dependency tree" "Orphan finder" "Back")
-    else
-        printf '1) Dependency tree\n2) Orphan finder\n3) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Dependency tree" ;;
-            2) a="Orphan finder" ;;
-            3) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_TREE  Dependency tools" "Dependency tree" "Orphan finder" "Back")
     [ -n "$a" ] || return
     case "$a" in
         *"tree"*)
@@ -1503,29 +1580,12 @@ do_deptools() {
 
 do_bulk() {
     local a names n sel
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_BULK  Bulk operations" "Install multiple packages" "Remove multiple packages" "Remove (pick from installed list)" "Upgrade (pick from upgradable list)" "Back")
-    else
-        printf '1) Install multiple packages\n2) Remove multiple packages\n3) Remove (pick from installed list)\n4) Upgrade (pick from upgradable list)\n5) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Install multiple packages" ;;
-            2) a="Remove multiple packages" ;;
-            3) a="Remove (pick from installed list)" ;;
-            4) a="Upgrade (pick from upgradable list)" ;;
-            5) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_BULK  Bulk operations" "Install multiple packages" "Remove multiple packages" "Remove (pick from installed list)" "Upgrade (pick from upgradable list)" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Install*)
-            if [ "$GUM" = "1" ]; then
-                names=$(gum input --prompt "➜ " --placeholder "Space-separated package names")
-            else
-                printf 'Packages (space-separated): ' >&2
-                read -r names
-            fi
+            printf 'Packages (space-separated): ' >&2
+            read -r names
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
@@ -1539,12 +1599,8 @@ do_bulk() {
             fi
             ;;
         Remove*multiple*)
-            if [ "$GUM" = "1" ]; then
-                names=$(gum input --prompt "➜ " --placeholder "Space-separated package names")
-            else
-                printf 'Packages (space-separated): ' >&2
-                read -r names
-            fi
+            printf 'Packages (space-separated): ' >&2
+            read -r names
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
             [ "$n" -gt 0 ] || { warn "No valid package names."; return; }
@@ -1587,8 +1643,8 @@ do_bulk() {
 
 pick_names() {
     local header="$1" tmp n i sel
-    if [ "$GUM" = "1" ]; then
-        list_installed_names | gum choose --no-limit --header "$header" || return 1
+    if have_fzf; then
+        list_installed_names | pick_multi "$header" || return 1
     else
         if ! tmp=$(scratch_new); then
             warn "Could not create a temp file to list packages."
@@ -1619,8 +1675,8 @@ pick_upgradable() {
     fi
     list=$(printf '%s\n' "$list" | cut -d/ -f1)
     [ -n "$list" ] || return 1
-    if [ "$GUM" = "1" ]; then
-        printf '%s\n' "$list" | gum choose --no-limit --header "$header" || return 1
+    if have_fzf; then
+        printf '%s\n' "$list" | pick_multi "$header" || return 1
     else
         if ! tmp=$(scratch_new); then
             err "Could not create a temp file to list upgradable packages."
@@ -1643,8 +1699,8 @@ pick_upgradable() {
 
 do_favs() {
     local a name n
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_STAR  Favorites" "Add favorite" "Remove favorite" "Show favorites" "Install all favorites" "Pin favorites to main menu: $(onoff "$FAVS_PINNED")" "Install one favorite" "Back")
+    if have_fzf; then
+        a=$(pick_menu "$ICON_STAR  Favorites" "Add favorite" "Remove favorite" "Show favorites" "Install all favorites" "Pin favorites to main menu: $(onoff "$FAVS_PINNED")" "Install one favorite" "Back")
     else
         printf '1) Add favorite\n2) Remove favorite\n3) Show favorites\n4) Install all favorites\n5) Pin favorites to main menu: %s\n6) Install one favorite\n7) Back\n> ' "$(onoff "$FAVS_PINNED")" >&2
         read -r a
@@ -1677,10 +1733,10 @@ do_favs() {
             ;;
         Remove*)
             [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
-            if [ "$GUM" = "1" ]; then
+            if have_fzf; then
                 local -a _favs=()
                 mapfile -t _favs < "$FAVS_FILE"
-                name=$(gum choose --header "$ICON_STAR  Pick favorite to remove" "${_favs[@]}")
+                name=$(printf '%s\n' "${_favs[@]}" | pick_one "$ICON_STAR  Pick favorite to remove")
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
@@ -1746,10 +1802,10 @@ do_favs() {
             ;;
         *"one favorite"*)
             [ -s "$FAVS_FILE" ] || { warn "No favorites yet."; return; }
-            if [ "$GUM" = "1" ]; then
+            if have_fzf; then
                 local -a _favs=()
                 mapfile -t _favs < <(awk 'NF' "$FAVS_FILE")
-                name=$(gum choose --header "$ICON_STAR  Pick favorite to install" "${_favs[@]}")
+                name=$(printf '%s\n' "${_favs[@]}" | pick_one "$ICON_STAR  Pick favorite to install")
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
@@ -1830,28 +1886,14 @@ do_restore() {
 
 do_export() {
     local fmt file ext list count
-    if [ "$GUM" = "1" ]; then
-        fmt=$(gum choose --header "$ICON_EXPORT  Export format" "Plain text (.txt)" "JSON (.json)")
-    else
-        printf '1) Plain text (.txt)\n2) JSON (.json)\n> ' >&2
-        read -r fmt
-        case "$fmt" in
-            1) fmt="Plain text (.txt)" ;;
-            2) fmt="JSON (.json)" ;;
-            *) return ;;
-        esac
-    fi
+    fmt=$(pick_menu "$ICON_EXPORT  Export format" "Plain text (.txt)" "JSON (.json)")
     [ -n "$fmt" ] || return
     case "$fmt" in
         *JSON*) ext="json" ;;
         *)      ext="txt" ;;
     esac
-    if [ "$GUM" = "1" ]; then
-        file=$(gum input --prompt "➜ " --placeholder "Save path" --value "$HOME/pkg-export.$ext")
-    else
-        printf 'Save path [%s]: ' "$HOME/pkg-export.$ext"
-        read -r file
-    fi
+    printf 'Save path [%s]: ' "$HOME/pkg-export.$ext"
+    read -r file
     [ -n "$file" ] || file="$HOME/pkg-export.$ext"
     case "$file" in
         -* ) err "Invalid path — must not start with '-'."; return ;;
@@ -1908,9 +1950,9 @@ do_import() {
 }
 
 do_doctor() {
-    local missing=() dep
+    local missing=() dep  # fzf is checked even when FZF_ENABLED=0 — doctor reports availability
     say "$ICON_DOCTOR Checking helper tools..."
-    for dep in gum git curl figlet; do
+    for dep in fzf git curl figlet; do
         if command -v "$dep" >/dev/null 2>&1; then
             ok "$dep"
         else
@@ -1925,7 +1967,6 @@ do_doctor() {
             if out=$("$MGR" install -y "${missing[@]}" 2>&1); then
                 hint=$(apt_hint "$out")
                 ok "${hint:-Installed: ${missing[*]}}"
-                refresh_gum
             else
                 hint=$(apt_hint "$out")
                 err "${hint:-Install failed}"
@@ -1940,37 +1981,40 @@ do_doctor() {
 
 do_settings() {
     local choice
-    if [ "$GUM" = "1" ]; then
-        choice=$(gum choose --header "$ICON_SETTINGS  Settings" \
-            "$ICON_SLIDERS  Package manager: $MGR" \
-            "$ICON_THEME  Color theme: $THEME" \
-            "$ICON_WAND  Gum UI: $(onoff "$GUM_ENABLED")" \
-            "$ICON_PAINT  Icons: $ICONS" \
-            "$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" \
-            "$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" \
-            "$ICON_FOLDER  Show config file" \
-            "$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" \
-            "$ICON_LOCK  Safety lock: $(onoff "$LOCK")" \
-            "$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" \
-            "$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" \
-            "$ICON_BACK  Back")
+    local settings_items=(
+        "$ICON_SLIDERS  Package manager: $MGR"
+        "$ICON_THEME  Color theme: $THEME"
+        "$ICON_PAINT  Icons: $ICONS"
+        "$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")"
+        "$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")"
+        "$ICON_FOLDER  Show config file"
+        "$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")"
+        "$ICON_LOCK  Safety lock: $(onoff "$LOCK")"
+        "$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")"
+        "$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")"
+        "$ICON_SEARCH  fzf picker: $(fzf_label)"
+        "$OPTION_THEME"
+        "$ICON_BACK  Back")
+    if have_fzf; then
+        choice=$(pick_menu "$ICON_SETTINGS  Settings" "${settings_items[@]}")
     else
-        printf '1) Package manager: %s\n2) Color theme: %s\n3) Gum UI: %s\n4) Icons: %s\n5) Safety confirms: %s\n6) History log: %s\n7) Show config file\n8) Quiet mode (skip confirms): %s\n9) Safety lock: %s\n10) Maintenance on launch: %s\n11) Recycle bin (archive on remove): %s\n12) Back\n> ' \
-            "$MGR" "$THEME" "$(onoff "$GUM_ENABLED")" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" "$(onoff "$RECYCLE")" >&2
+        printf '1) Package manager: %s\n2) Color theme: %s\n3) Icons: %s\n4) Safety confirms: %s\n5) History log: %s\n6) Show config file\n7) Quiet mode (skip confirms): %s\n8) Safety lock: %s\n9) Maintenance on launch: %s\n10) Recycle bin (archive on remove): %s\n11) fzf picker: %s\n12) %s\n13) Back\n> ' \
+            "$MGR" "$THEME" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" "$(onoff "$RECYCLE")" "$(fzf_label)" "$OPTION_THEME" >&2
         read -r choice
         case "$choice" in
              1) choice="$ICON_SLIDERS  Package manager: $MGR" ;;
              2) choice="$ICON_THEME  Color theme: $THEME" ;;
-             3) choice="$ICON_WAND  Gum UI: $(onoff "$GUM_ENABLED")" ;;
-             4) choice="$ICON_PAINT  Icons: $ICONS" ;;
-             5) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
-             6) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
-             7) choice="$ICON_FOLDER  Show config file" ;;
-             8) choice="$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" ;;
-             9) choice="$ICON_LOCK  Safety lock: $(onoff "$LOCK")" ;;
-             10) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
-             11) choice="$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" ;;
-             12) choice="$ICON_BACK  Back" ;;
+             3) choice="$ICON_PAINT  Icons: $ICONS" ;;
+             4) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
+             5) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
+             6) choice="$ICON_FOLDER  Show config file" ;;
+             7) choice="$ICON_MOON  Quiet mode (skip confirms): $(onoff "$QUIET")" ;;
+             8) choice="$ICON_LOCK  Safety lock: $(onoff "$LOCK")" ;;
+             9) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
+             10) choice="$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" ;;
+             11) choice="$ICON_SEARCH  fzf picker: $(fzf_label)" ;;
+             12) choice="$OPTION_THEME" ;;
+             13) choice="$ICON_BACK  Back" ;;
              *) return ;;
         esac
     fi
@@ -1978,7 +2022,6 @@ do_settings() {
     case "$choice" in
         *"Package manager"*) set_mgr ;;
         *"Color theme"*)     set_theme_pick ;;
-        *"Gum UI"*)          GUM_ENABLED=$((1-GUM_ENABLED)); refresh_gum; save_config ;;
         *"Icons"*)           if [ "$ICONS" = "nerd" ]; then ICONS="emoji"; else ICONS="nerd"; fi; init_icons; build_menu; save_config ;;
         *"Safety confirms"*) CONFIRM=$((1-CONFIRM)); save_config ;;
         *"History log"*)     LOG_ENABLED=$((1-LOG_ENABLED)); save_config ;;
@@ -1987,6 +2030,16 @@ do_settings() {
         *"Safety lock"*)     LOCK=$((1-LOCK)); save_config ;;
         *"Maintenance on launch"*) STARTUP_CHECK=$((1-STARTUP_CHECK)); save_config ;;
         *"Recycle bin"*)          RECYCLE=$((1-RECYCLE)); save_config ;;
+        # on/off toggle
+        *"fzf picker"*)
+            if [ "$FZF_ENABLED" != "1" ]; then
+                FZF_ENABLED=1
+            else
+                FZF_ENABLED=0
+            fi
+            say "$ICON_SEARCH fzf: $(fzf_label)"
+            save_config ;;
+        *"Themes & terminal colors"*) do_theme ;;
         *) return ;;
     esac
 }
@@ -2054,31 +2107,12 @@ do_history() {
         say "No history yet — run some actions first!"
         return
     fi
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_HISTORY  History & log viewer" "Show all history" "Show errors & failures" "Show installs / removals" "Charts & statistics" "Undo last removal" "Clear history" "Back")
-    else
-        printf '1) Show all history\n2) Show errors & failures\n3) Show installs / removals\n4) Charts & statistics\n5) Undo last removal\n6) Clear history\n7) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Show all history" ;;
-            2) a="Show errors & failures" ;;
-            3) a="Show installs / removals" ;;
-            4) a="Charts & statistics" ;;
-            5) a="Undo last removal" ;;
-            6) a="Clear history" ;;
-            7) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_HISTORY  History & log viewer" "Show all history" "Show errors & failures" "Show installs / removals" "Charts & statistics" "Undo last removal" "Clear history" "Back")
     [ -n "$a" ] || return
     case "$a" in
         *"all history"*)
             say "$ICON_HISTORY Action history ($LOG_FILE)"
-            if [ "$GUM" = "1" ]; then
-                gum pager < "$LOG_FILE" || cat "$LOG_FILE"
-            else
-                cat "$LOG_FILE"
-            fi
+            cat "$LOG_FILE"
             ;;
         *errors*)
             say "$ICON_ERROR Errors & failures in the log:"
@@ -2140,11 +2174,7 @@ do_inspect() {
             echo "$PKG_NAME is not held."
         fi
     } > "$tmp"
-    if [ "$GUM" = "1" ]; then
-        gum pager < "$tmp" || cat "$tmp"
-    else
-        cat "$tmp"
-    fi
+    cat "$tmp"
     rm -f "$tmp"
 }
 
@@ -2330,21 +2360,7 @@ group_names() {
 
 do_groups() {
     local a gname gpkgs line n
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_GROUPS  Package groups" "Show all groups" "Install a group" "Remove a group's packages" "Create custom group" "Delete custom group" "Back")
-    else
-        printf '1) Show all groups\n2) Install a group\n3) Remove a group\x27s packages\n4) Create custom group\n5) Delete custom group\n6) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Show all groups" ;;
-            2) a="Install a group" ;;
-            3) a="Remove a group's packages" ;;
-            4) a="Create custom group" ;;
-            5) a="Delete custom group" ;;
-            6) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_GROUPS  Package groups" "Show all groups" "Install a group" "Remove a group's packages" "Create custom group" "Delete custom group" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Show*)
@@ -2411,9 +2427,9 @@ do_groups() {
                 warn "No custom groups to delete."
                 return
             fi
-            if [ "$GUM" = "1" ]; then
-                mapfile -t custom_names < <(sed 's/::.*//' "$GROUPS_FILE" | grep -E '^[A-Za-z0-9 _-]+$')
-                gname=$(gum choose --header "$ICON_TRASH  Pick custom group to delete" "${custom_names[@]}")
+            mapfile -t custom_names < <(sed 's/::.*//' "$GROUPS_FILE" | grep -E '^[A-Za-z0-9 _-]+$')
+            if have_fzf; then
+                gname=$(printf '%s\n' "${custom_names[@]}" | pick_one "$ICON_TRASH  Pick custom group to delete")
             else
                 printf 'Custom groups:\n' >&2
                 nl -w2 -s') ' "$GROUPS_FILE" | sed 's/::/ /' >&2
@@ -2447,9 +2463,9 @@ do_groups() {
 
 pick_group() {
     local header="$1" a gnames
-    if [ "$GUM" = "1" ]; then
-        mapfile -t gnames < <(group_names)
-        gum choose --header "$header" "${gnames[@]}"
+    mapfile -t gnames < <(group_names)
+    if have_fzf; then
+        printf '%s\n' "${gnames[@]}" | pick_one "$header"
     else
         printf 'Groups:\n' >&2
         local i=1 n
@@ -2505,8 +2521,8 @@ do_downgrade() {
     if [ -z "$vers" ]; then err "No versions found — check name or run Upgrade center."; return; fi
     printf '%s\n' "$vers"
     local picked
-    if [ "$GUM" = "1" ]; then
-        picked=$(printf '%s\n' "$vers" | gum choose --header "Pick version to downgrade to")
+    if have_fzf; then
+        picked=$(printf '%s\n' "$vers" | pick_one "Pick version to downgrade to")
     else
         if ! tmp=$(scratch_new); then warn "Could not create temp file."; return; fi
         printf '%s\n' "$vers" > "$tmp"
@@ -2560,13 +2576,7 @@ do_dlonly() {
 
 do_holdver() {
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_HOLD  Hold specific version" "Hold current version" "Hold to chosen version" "Show held packages" "Back")
-    else
-        printf '1) Hold current version\n2) Hold to chosen version\n3) Show held packages\n4) Back\n> ' >&2
-        read -r a
-        case "$a" in 1) a="Hold current version" ;; 2) a="Hold to chosen version" ;; 3) a="Show held packages" ;; *) return ;; esac
-    fi
+    a=$(pick_menu "$ICON_HOLD  Hold specific version" "Hold current version" "Hold to chosen version" "Show held packages" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Hold*current*)
@@ -2590,7 +2600,11 @@ do_holdver() {
             local vers picked out hint
             vers=$(apt-cache madison "$PKG_NAME" 2>/dev/null | awk '{print $3}' | head -20)
             [ -n "$vers" ] || { err "No versions found."; return; }
-            if [ "$GUM" = "1" ]; then picked=$(printf '%s\n' "$vers" | gum choose --header "Pick version to hold"); else printf '%s\n' "$vers" >&2; printf 'Version: ' >&2; read -r picked; fi
+            if have_fzf; then
+                picked=$(printf '%s\n' "$vers" | pick_one "Pick version to hold")
+            else
+                printf '%s\n' "$vers" >&2; printf 'Version: ' >&2; read -r picked
+            fi
             [ -n "$picked" ] || return
             case "$picked" in -* ) err "Invalid version."; return ;; esac
             if ! printf '%s\n' "$vers" | grep -Fxq -- "$picked"; then err "Invalid version selection."; return; fi
@@ -2617,12 +2631,8 @@ do_holdver() {
 
 do_filesearch() {
     local pat
-    if [ "$GUM" = "1" ]; then
-        pat=$(gum input --prompt "➜ " --placeholder "File pattern (e.g. bin/python, libssl.so)")
-    else
-        printf 'File pattern to search (e.g. bin/python): ' >&2
-        read -r pat
-    fi
+    printf 'File pattern to search (e.g. bin/python): ' >&2
+    read -r pat
     pat=$(printf '%s\n' "$pat" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     [ -n "$pat" ] || { warn "No pattern given."; return; }
     case "$pat" in -* ) err "Invalid pattern."; return ;; esac
@@ -2685,20 +2695,14 @@ do_why() {
 do_notes() {
     local NOTES_FILE="$HOME/.pkg-manager-notes"
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_MEMO  User notes" "Add note" "Remove note" "Show all notes" "Search notes" "Show note for package" "Back")
-    else
-        printf '1) Add note\n2) Remove note\n3) Show all notes\n4) Search notes\n5) Show note for package\n6) Back\n> ' >&2
-        read -r a
-        case "$a" in 1) a="Add note" ;; 2) a="Remove note" ;; 3) a="Show all notes" ;; 4) a="Search notes" ;; 5) a="Show note for package" ;; *) return ;; esac
-    fi
+    a=$(pick_menu "$ICON_MEMO  User notes" "Add note" "Remove note" "Show all notes" "Search notes" "Show note for package" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Add*)
             ask_name "Package to annotate"
             [ -n "$PKG_NAME" ] || return
             local note
-            if [ "$GUM" = "1" ]; then note=$(gum input --prompt "➜ " --placeholder "Note for $PKG_NAME"); else printf 'Note for %s: ' "$PKG_NAME" >&2; read -r note; fi
+            printf 'Note for %s: ' "$PKG_NAME" >&2; read -r note
             note=$(printf '%s\n' "$note" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/::/--/g')
             [ -n "$note" ] || { warn "No note given."; return; }
             if [ -f "$NOTES_FILE" ] && awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
@@ -2730,7 +2734,7 @@ do_notes() {
         Search*)
             [ -s "$NOTES_FILE" ] || { warn "No notes yet."; return; }
             local q
-            if [ "$GUM" = "1" ]; then q=$(gum input --prompt "➜ " --placeholder "Search term"); else printf 'Search: ' >&2; read -r q; fi
+            printf 'Search: ' >&2; read -r q
             [ -n "$q" ] || return
             grep -i -- "$q" "$NOTES_FILE" || say "No matches."
             ;;
@@ -2748,13 +2752,7 @@ do_notes() {
 
 do_snapshot() {
     local a
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_BACKUP  Full snapshot" "Create snapshot" "List snapshots" "Diff snapshots" "Restore snapshot" "Delete snapshot" "Back")
-    else
-        printf '1) Create snapshot\n2) List snapshots\n3) Diff snapshots\n4) Restore snapshot\n5) Delete snapshot\n6) Back\n> ' >&2
-        read -r a
-        case "$a" in 1) a="Create snapshot" ;; 2) a="List snapshots" ;; 3) a="Diff snapshots" ;; 4) a="Restore snapshot" ;; 5) a="Delete snapshot" ;; *) return ;; esac
-    fi
+    a=$(pick_menu "$ICON_BACKUP  Full snapshot" "Create snapshot" "List snapshots" "Diff snapshots" "Restore snapshot" "Delete snapshot" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Create*)
@@ -2800,15 +2798,19 @@ do_snapshot() {
                 [ -f "$f" ] && snap_files+=("$f")
             done
             [ "${#snap_files[@]}" -ge 1 ] || { warn "No snapshots."; return; }
-            if [ "$GUM" = "1" ]; then
-                picked=$(printf '%s\n' "${snap_files[@]}" | gum choose --no-limit --header "Pick 2 snapshots to diff" | tr '\n' ' ')
+            if have_fzf; then
+                picked=$(printf '%s\n' "${snap_files[@]}" | pick_multi "Pick 2 snapshots to diff" | tr '\n' ' ')
+            else
+                printf 'Snapshots:\n' >&2
+                local i=1
+                for _s in "${snap_files[@]}"; do printf '%d) %s\n' "$i" "$_s" >&2; i=$((i+1)); done
+                printf 'Pick 2 (space-separated numbers): ' >&2
+                read -r picked
+                picked=$(printf '%s\n' "$picked" | tr ' ' '\n' | while read -r n; do [ -n "$n" ] && printf '%s\n' "${snap_files[$((n-1))]}"; done | tr '\n' ' ')
                 # shellcheck disable=SC2086
                 set -- $picked
                 [ $# -ge 2 ] || { say "Need 2 snapshots."; return; }
                 diff -u <(tar -tzf "$1" 2>/dev/null | sort) <(tar -tzf "$2" 2>/dev/null | sort) | head -60 || true
-            else
-                printf '%s\n' "${snap_files[@]}" >&2
-                printf 'Diff not implemented in text mode — use tar -tzf to inspect.\n' >&2
             fi
             ;;
         Restore*)
@@ -2910,30 +2912,17 @@ do_recycle() {
         say "Turn on Settings -> Recycle bin, and removals will keep a copy of each .deb here."
         return
     fi
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_TRASH  Recycle bin" "Restore a package" "Restore everything" "Show recycle bin" "Empty recycle bin" "Back")
-    else
-        printf '1) Restore a package\n2) Restore everything\n3) Show recycle bin\n4) Empty recycle bin\n5) Back\n> ' >&2
-        read -r a
-        case "$a" in
-            1) a="Restore a package" ;;
-            2) a="Restore everything" ;;
-            3) a="Show recycle bin" ;;
-            4) a="Empty recycle bin" ;;
-            5) a="Back" ;;
-            *) return ;;
-        esac
-    fi
+    a=$(pick_menu "$ICON_TRASH  Recycle bin" "Restore a package" "Restore everything" "Show recycle bin" "Empty recycle bin" "Back")
     [ -n "$a" ] || return
     case "$a" in
         Restore\ a*)
-            if [ "$GUM" = "1" ]; then
-                mapfile -t debs < <(printf '%s\n' "$TRASH_DIR"/*.deb | xargs -n1 basename 2>/dev/null)
-                say "$ICON_TRASH Pick a .deb to restore:"
-                a=$(printf '%s\n' "${debs[@]}" | gum choose --header "$ICON_TRASH  Restore which package?")
+            mapfile -t debs < <(printf '%s\n' "$TRASH_DIR"/*.deb | xargs -n1 basename 2>/dev/null)
+            say "$ICON_TRASH Pick a .deb to restore:"
+            if have_fzf; then
+                a=$(printf '%s\n' "${debs[@]}" | pick_one "$ICON_TRASH  Restore which package?")
             else
                 printf 'Archived .deb files:\n' >&2
-                ls -1 "$TRASH_DIR"/*.deb >&2 2>/dev/null
+                printf '%s\n' "${debs[@]}" >&2
                 printf 'Pick file (name or full path): ' >&2
                 read -r a
             fi
@@ -2999,14 +2988,15 @@ do_mark() {
 
 do_marks() {
     local a expr out
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_CHECKBOX  Mark manual / auto" \
-            "Mark package as manually installed" \
-            "Mark package as automatically installed" \
-            "Show manually installed packages" \
-            "Show automatically installed packages" \
-            "Find what provides a virtual package" \
-            "Back")
+    local marks_items=(
+        "Mark package as manually installed"
+        "Mark package as automatically installed"
+        "Show manually installed packages"
+        "Show automatically installed packages"
+        "Find what provides a virtual package"
+        "Back")
+    if have_fzf; then
+        a=$(pick_menu "$ICON_CHECKBOX  Mark manual / auto" "${marks_items[@]}")
     else
         printf '1) Mark package as manually installed\n2) Mark package as automatically installed\n3) Show manually installed packages\n4) Show automatically installed packages\n5) Find what provides a virtual package\n6) Back\n> ' >&2
         read -r a
@@ -3035,12 +3025,8 @@ do_marks() {
             apt-mark showauto 2>/dev/null | head -n 50 || say "(none)"
             ;;
         "Find what provides"*)
-            if [ "$GUM" = "1" ]; then
-                expr=$(gum input --prompt "➜ " --placeholder "e.g. python3 or python3 (>= 3.11)")
-            else
-                printf 'Package name or versioned expression (e.g. python3 (>= 3.11)): ' >&2
-                read -r expr
-            fi
+            printf 'Package name or versioned expression (e.g. python3 (>= 3.11)): ' >&2
+            read -r expr
             expr=$(printf '%s\n' "$expr" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
             [ -n "$expr" ] || { warn "Nothing to look up."; return; }
             case "$expr" in -* ) err "Expression must not start with '-'."; return ;; esac
@@ -3058,13 +3044,14 @@ do_marks() {
 
 do_watch() {
     local a p
-    if [ "$GUM" = "1" ]; then
-        a=$(gum choose --header "$ICON_EYE  Package watchlist" \
-            "Add package to watchlist" \
-            "Remove package from watchlist" \
-            "Show watchlist" \
-            "Check watchlist for updates" \
-            "Back")
+    local watch_items=(
+        "Add package to watchlist"
+        "Remove package from watchlist"
+        "Show watchlist"
+        "Check watchlist for updates"
+        "Back")
+    if have_fzf; then
+        a=$(pick_menu "$ICON_EYE  Package watchlist" "${watch_items[@]}")
     else
         printf '1) Add package to watchlist\n2) Remove package from watchlist\n3) Show watchlist\n4) Check watchlist for updates\n5) Back\n> ' >&2
         read -r a
@@ -3098,9 +3085,9 @@ do_watch() {
                 warn "Watchlist is empty."
                 return
             fi
-            if [ "$GUM" = "1" ]; then
+            if have_fzf; then
                 mapfile -t _wl < "$WATCH_FILE"
-                p=$(gum choose --header "$ICON_TRASH  Remove from watchlist" "${_wl[@]}")
+                p=$(printf '%s\n' "${_wl[@]}" | pick_one "$ICON_TRASH  Remove from watchlist")
             else
                 printf 'Watchlist:\n' >&2
                 nl -w2 -s') ' "$WATCH_FILE" >&2
@@ -3452,10 +3439,8 @@ do_palette() {
     local all
     all=$(printf '%s\n' "${MENU_ITEMS[@]}")
     local picked
-    if [ "$GUM" = "1" ] && command -v gum >/dev/null 2>&1 && gum filter --help >/dev/null 2>&1; then
-        picked=$(printf '%s\n' "$all" | gum filter --header "Command palette — type to filter" --placeholder "Filter commands...")
-    elif [ "$GUM" = "1" ]; then
-        picked=$(printf '%s\n' "$all" | gum choose --header "Command palette")
+    if have_fzf; then
+        picked=$(printf '%s\n' "$all" | fzf_select "Command palette — type to filter" "palette> " 0) || picked=""
     else
         printf 'Palette — type substring to filter (empty for all): ' >&2
         read -r picked
@@ -3521,6 +3506,14 @@ do_palette() {
         "$OPTION_MARKS") do_marks ;;
         "$OPTION_RECYCLE") do_recycle ;;
         "$OPTION_SELFUPDATE") do_selfupdate ;;
+        "$OPTION_REPOS") do_repos ;;
+        "$OPTION_HEALTH") do_health ;;
+        "$OPTION_DEPTREE") do_depgraph ;;
+        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
+        "$OPTION_THEME") do_theme ;;
+        "$OPTION_ESSENTIALS") do_essentials ;;
+        "$OPTION_SYSINFO") do_sysinfo ;;
+        "$OPTION_WHATSNEW") do_whatsnew ;;
         *) err "Unknown palette selection." ;;
     esac
 }
@@ -3547,80 +3540,129 @@ pin_install() {
     fi
 }
 
-FIRST_LOOP=1
-while true; do
-    if [ "$FIRST_LOOP" = "1" ] && [ "$STARTUP_CHECK" = "1" ]; then
-        do_maintenance
+# Theme hub — pick a theme, preview them all, or push the palette into the
+# Termux terminal itself via ~/.termux/colors.properties
+do_theme() {
+    local choice
+    if have_fzf; then
+        choice=$(pick_menu "$ICON_WAND  Theme hub (current: $THEME)" "Pick a theme" "Preview all themes" "Apply '$THEME' to the Termux terminal" "Restore backed-up Termux colors" "$ICON_BACK  Back")
+    else
+        printf '1) Pick a theme\n2) Preview all themes\n3) Apply current theme (%s) to the Termux terminal\n4) Restore backed-up Termux colors\n5) Back\n> ' "$THEME" >&2
+        read -r choice
+        case "$choice" in
+            1) choice="Pick a theme" ;;
+            2) choice="Preview all themes" ;;
+            3) choice="Apply '$THEME' to the Termux terminal" ;;
+            4) choice="Restore backed-up Termux colors" ;;
+            *) return ;;
+        esac
     fi
-    FIRST_LOOP=0
-    banner
-    choice=$(main_menu)
+    [ -n "$choice" ] || return
     case "$choice" in
-        "$OPTION_INSTALL")    do_install ;;
-        "$OPTION_UNINSTALL")  do_uninstall ;;
-        "$OPTION_SEARCH")     do_search ;;
-        "$OPTION_LIST")       do_list ;;
-        "$OPTION_REINSTALL")  do_reinstall ;;
-        "$OPTION_UPDATE")     do_upgrade_center ;;
-        "$OPTION_CLEAN")      do_clean ;;
-        "$OPTION_INFO")       do_info ;;
-        "$OPTION_AUTOREMOVE") do_autoremove ;;
-        "$OPTION_DEPENDS")    do_depends ;;
-        "$OPTION_RDEPENDS")   do_rdepends ;;
-        "$OPTION_SIZE")       do_size ;;
-        "$OPTION_FILES")      do_files ;;
-        "$OPTION_OWNER")      do_owner ;;
-        "$OPTION_HOLD")       do_hold ;;
-        "$OPTION_PURGE")      do_purge ;;
-        "$OPTION_FIXBROKEN")  do_fixbroken ;;
-        "$OPTION_UPGRADABLE") do_upgradable ;;
-        "$OPTION_BACKUP")     do_backup ;;
-        "$OPTION_RESTORE")    do_restore ;;
-        "$OPTION_EXPORT")     do_export ;;
-        "$OPTION_IMPORT")     do_import ;;
-        "$OPTION_DOCTOR")     do_doctor ;;
-        "$OPTION_SETTINGS")   do_settings ;;
-        "$OPTION_HISTORY")    do_history ;;
-        "$OPTION_SIMULATE")   do_simulate ;;
-        "$OPTION_STATS")      do_stats ;;
-        "$OPTION_CACHE")      do_cache ;;
-        "$OPTION_DEPTREE")    do_deptools ;;
-        "$OPTION_BULK")       do_bulk ;;
-        "$OPTION_FAVS")       do_favs ;;
-        "$OPTION_INSPECT")    do_inspect ;;
-        "$OPTION_MAINT")      do_maintenance ;;
-        "$OPTION_GROUPS")     do_groups ;;
-        "$OPTION_LOCALDEB")   do_localdeb ;;
-        "$OPTION_DOWNGRADE")  do_downgrade ;;
-        "$OPTION_DLONLY")     do_dlonly ;;
-        "$OPTION_HOLDVER")    do_holdver ;;
-        "$OPTION_FILESEARCH") do_filesearch ;;
-        "$OPTION_CHANGELOG")  do_changelog ;;
-        "$OPTION_WHY")        do_why ;;
-        "$OPTION_NOTES")       do_notes ;;
-        "$OPTION_SNAPSHOT")    do_snapshot ;;
-        "$OPTION_PALETTE")     do_palette ;;
-        "$OPTION_WATCH")       do_watch ;;
-        "$OPTION_MIRROR")      do_mirror ;;
-        "$OPTION_AUDIT")       do_audit ;;
-        "$OPTION_MARKS")       do_marks ;;
-        "$OPTION_RECYCLE")     do_recycle ;;
-        "$OPTION_REPOS")       do_repos ;;
-        "$OPTION_UNDO")        do_undo ;;
-        "$OPTION_DEPTREE")     do_depgraph ;;
-        "$OPTION_HEALTH")      do_health ;;
-        "$OPTION_SNAPSHOT")    do_snapshot ;;
-        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
-        "$OPTION_THEME")       do_theme ;;
-        "$OPTION_SELFUPDATE")  do_selfupdate ;;
-        *"Pinned:"*)           pin_install "${choice##*Pinned: }" ;;
-        "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
-        "__INVALID__")        err "Invalid option, try again." ;;
-        "")                   break ;;
-        *)                    err "Invalid option, try again." ;;
+        "Pick a theme")       set_theme_pick ;;
+        "Preview all themes") theme_preview ;;
+        "Apply"*"terminal"*)  apply_termux_theme "$THEME" ;;
+        "Restore"*)           restore_termux_theme ;;
+        *) return ;;
     esac
-    pause || break
-done
+}
+
+# Essential toolkit — curated bundles of the most-installed Termux packages,
+# installed in one batched apt call.
+do_essentials() {
+    local pick pkgs="" n
+    local bundles=(
+        "Core — git curl wget nano termux-tools"
+        "Dev — python nodejs jq"
+        "Net & security — openssh rsync nmap"
+        "Power utils — htop ripgrep fd tree bat"
+        "Everything above"
+    )
+    if have_fzf; then
+        pick=$(pick_menu "$ICON_BOLT  Essential toolkit — pick a bundle" "${bundles[@]}" "$ICON_BACK  Back")
+    else
+        local i=1
+        for b in "${bundles[@]}"; do printf '%d) %s\n' "$i" "$b" >&2; i=$((i+1)); done
+        printf '6) Back\n> ' >&2
+        read -r pick
+        case "$pick" in
+            1|2|3|4|5) pick="${bundles[$((pick-1))]}" ;;
+            *) return ;;
+        esac
+    fi
+    [ -n "$pick" ] || return
+    case "$pick" in
+        Core*)         pkgs="git curl wget nano termux-tools" ;;
+        Dev*)          pkgs="python nodejs jq" ;;
+        "Net & security"*) pkgs="openssh rsync nmap" ;;
+        "Power utils"*)    pkgs="htop ripgrep fd tree bat" ;;
+        Everything*)  pkgs="git curl wget nano termux-tools python nodejs jq openssh rsync nmap htop ripgrep fd tree bat" ;;
+        *) return ;;
+    esac
+    local -a list=()
+    mapfile -t list <<< "$(printf '%s\n' $pkgs | filter_pkgs)"
+    n=${#list[@]}
+    [ "$n" -gt 0 ] || { warn "Nothing valid to install."; return; }
+    say "$ICON_BOLT  Bundle: $pick"
+    printf '  %s\n' "${list[@]}"
+    if confirm_danger "$ICON_BOLT  Install $n essential packages?"; then
+        log "essentials $pick"
+        run_multi_op install "${list[@]}"
+    else
+        say "Canceled."
+    fi
+}
+
+# System & network dashboard — read-only info, no package changes.
+do_sysinfo() {
+    section "System & network info"
+    local line
+    line=$(uname -srmo 2>/dev/null || uname -a)
+    printf '  %-14s %s\n' "Kernel:" "$line"
+    printf '  %-14s %s\n' "Hostname:" "$(hostname 2>/dev/null || echo unknown)"
+    printf '  %-14s %s\n' "Prefix:" "$PREFIX"
+    line=$(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ //')
+    printf '  %-14s %s (%s cores)\n' "CPU:" "${line:-unknown}" "$(nproc 2>/dev/null || echo '?')"
+    line=$(grep -m1 MemTotal /proc/meminfo 2>/dev/null)
+    printf '  %-14s %s\n' "RAM:" "${line:-unknown}"
+    printf '  %-14s %s\n' "Storage:" "$(df -h "$HOME" 2>/dev/null | tail -n1 | awk '{print $3" used / "$2" total ("$5" of "$1")"}')"
+    line=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
+    if [ -n "$line" ]; then
+        printf '  %-14s %s%% (%s)\n' "Battery:" "$line" "$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo '?')"
+    elif command -v termux-battery-status >/dev/null 2>&1; then
+        line=$(termux-battery-status 2>/dev/null | sed -n 's/.*"percentage":[[:space:]]*\([0-9]*\).*/\1%/p')
+        printf '  %-14s %s\n' "Battery:" "${line:-n/a}"
+    else
+        printf '  %-14s %s\n' "Battery:" "n/a"
+    fi
+    line=$(grep -m1 nameserver "$PREFIX/etc/resolv.conf" 2>/dev/null | awk '{print $2}')
+    printf '  %-14s %s\n' "DNS:" "${line:-none configured}"
+    local code
+    code=$(curl -o /dev/null -s -w '%{http_code}' --max-time 4 "$UPDATE_URL" 2>/dev/null)
+    if [ -n "$code" ] && [ "$code" != "000" ]; then
+        ok "Connectivity: HTTPS $code from the update server"
+    else
+        warn "Connectivity: could not reach the update server"
+    fi
+    printf '  %-14s %s\n' "Uptime:" "$(cut -d' ' -f1 /proc/uptime 2>/dev/null | awk '{printf "%.1f h", $1/3600}')"
+}
+
+# What's new in this major version
+do_whatsnew() {
+    section "What's new in pkg-manager v$VERSION"
+    say "  9 real terminal themes with official truecolor palettes:"
+    dim "  dracula · catppuccin · tokyo-night · nord · gruvbox · one-dark ·"
+    dim "  solarized · everforest · rose-pine (plus the 8 legacy 256-color ones)"
+    say "  Theme hub: preview every theme, and export the palette to"
+    dim "  ~/.termux/colors.properties so the whole terminal matches the app"
+    say "  Truecolor in plain text mode too — menus, ok/warn/err all themed"
+    say "  Status strip under the banner (manager · theme · installed count)"
+    say "  $ICON_BOLT Essential toolkit — one-tap curated package bundles"
+    say "  $ICON_GLOBE System & network dashboard (CPU, RAM, storage, battery, DNS)"
+    say "  Command palette now covers every menu entry"
+    dim "  Themes → Settings → Color theme, or the theme hub in the main menu."
+}
+
 # ============================================================================
 # MAX IMPROVEMENTS — integrated from exa web search results
 # Sources: Termux Wiki (pkg wrapper, mirror load-balancing), Mark44928/Termux-TUI-Package-Store
@@ -3646,32 +3688,117 @@ refresh_fzf_cache() {
     fi
 }
 
+# fzf_theme — build an fzf --color=... string from the active palette so the
+# picker matches the app (works for both 256-index and truecolor hex palettes).
+fzf_theme() {
+    printf -- '--color=fg:%s,hl:%s,fg+:%s,info:%s,prompt:%s,pointer:%s,marker:%s,spinner:%s,header:%s,border:%s' \
+        "$CYAN" "$GREEN" "$YELLOW" "$CYAN" "$PINK" "$PINK" "$GREEN" "$CYAN" "$DIM" "$CYAN"
+}
+
+# fzf_select <header> <prompt> <multi:0|1> — generic themed fzf picker. Choices
+# arrive on stdin (one per line); selection goes to stdout. Returns 1 on abort.
+fzf_select() {
+    local header="$1" prompt="$2" multi="$3" colors
+    colors=$(fzf_theme)
+    local args=(--layout=reverse --cycle --info=inline --height=40% --border=rounded
+        --header="$header" --prompt="$prompt" "$colors")
+    [ "$multi" = "1" ] && args+=(-m)
+    args+=(--bind='ctrl-a:select-all' --bind='ctrl-d:deselect-all')
+    fzf "${args[@]}" 2>/dev/null
+}
+
+# pick_menu <header> <item>... — single-select submenu picker.
+# fzf → numbered text list (blank = cancel).
+# The text branch prints the same 1) item … > list the app used before, so
+# scripted/text-mode behavior is unchanged.
+pick_menu() {
+    local header="$1"; shift
+    if have_fzf; then
+        printf '%s\n' "$@" | fzf_select "$header" "> " 0
+        return $?
+    fi
+    local i=1 o pick
+    for o in "$@"; do printf '%d) %s\n' "$i" "$o" >&2; i=$((i+1)); done
+    printf '> ' >&2
+    read -r pick
+    case "$pick" in
+        [1-9]|[1-9][0-9])
+            if [ "$pick" -ge 1 ] && [ "$pick" -le $# ]; then printf '%s\n' "$@" | sed -n "${pick}p"; return 0; fi
+            return 1 ;;
+        *) return 1 ;;
+    esac
+}
+
+# pick_multi <header> <item>... — multi-select submenu picker (packages,
+# files, snapshots). fzf -m first → space-separated
+# text prompt (an optional trailing prompt string via PICK_MULTI_PROMPT).
+pick_multi() {
+    local header="$1"; shift
+    if have_fzf; then
+        printf '%s\n' "$@" | fzf_select "$header" "> " 1
+        return $?
+    fi
+    local prompt="${PICK_MULTI_PROMPT:-Pick (space-separated numbers, or n): }"
+    printf '%s' "$prompt" >&2
+    read -r _picks
+    case "$_picks" in ""|n|N|no) return 1 ;; esac
+    local n out="" tok
+    for tok in $_picks; do
+        case "$tok" in
+            [1-9]|[1-9][0-9]) n=$(printf '%s\n' "$@" | sed -n "${tok}p"); out="$out$n\n" ;;
+        esac
+    done
+    [ -n "$out" ] || return 1
+    printf '%b' "$out"
+}
+
+# pick_one <header> — single-select from a stdin list (package names, version
+# lists). fzf first → numbered text prompt.
+pick_one() {
+    local header="$1" prompt="${2:-> }" list pick
+    list=$(cat)
+    if have_fzf; then
+        printf '%s\n' "$list" | fzf_select "$header" "$prompt" 0
+        return $?
+    fi
+    printf '%s\n' "$list" | nl -w2 -s') ' >&2
+    printf '%s' "$prompt" >&2
+    read -r pick
+    case "$pick" in
+        [1-9]|[1-9][0-9]) printf '%s\n' "$list" | sed -n "${pick}p" ;;
+        *) return 1 ;;
+    esac
+}
+
 fzf_pick_pkgs() {
-    local prompt="${1:-Select packages}" mode="${2:-install}"
-    if ! command -v fzf >/dev/null 2>&1; then
+    local prompt="${1:-Select packages}" mode="${2:-install}" input selected
+    if ! have_fzf; then
         echo "fzf not installed. Install with: $MGR install fzf" >&2
         return 1
     fi
-    refresh_fzf_cache
-    if [ ! -s "$FZF_CACHE" ]; then
-        echo "Package cache empty. Try apt update first." >&2
+    if [ "$mode" = "remove" ]; then
+        input=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | awk '{print "[✓] " $0}' | sort)
+    else
+        refresh_fzf_cache
+        input=$(cat "$FZF_CACHE" 2>/dev/null)
+    fi
+    if [ -z "$input" ]; then
+        echo "Package list empty. Try apt update first." >&2
         return 1
     fi
-    local selected
-    selected=$(cat "$FZF_CACHE" 2>/dev/null | fzf -m \
+    selected=$(printf '%s\n' "$input" | fzf -m \
+        --layout=reverse --cycle --info=inline --height=40% --border=rounded \
         --header="$prompt" \
-        --prompt="Packages (Tab/Space multi, Enter confirm) > " \
+        --prompt="packages> " \
         --preview='line={}; pkg=$(printf "%s" "$line" | sed "s/^\[[^]]*\] //"); printf "=== %s ===\n" "$pkg"; apt-cache show "$pkg" 2>/dev/null | head -n 12' \
-        --preview-window='right:50%:wrap' \
-        --layout=reverse \
-        --cycle \
+        --preview-window='right:45%:wrap' \
         --bind='ctrl-a:select-all' \
         --bind='ctrl-d:deselect-all' \
-        --bind='ctrl-r:abort' \
+        "$(fzf_theme)" \
         2>/dev/null)
     if [ $? -ne 0 ]; then return 1; fi
     [ -z "$selected" ] && return 1
-    printf '%s\n' "$selected" | sed -E 's/^\[[✓✓ ]+\] //' | sed '/^$/d' | sort -u
+    printf '%s\n' "$selected" | sed -E 's/^\[[^]]*\] //' | sed '/^$/d' | sort -u
 }
 
 batch_preview() {
@@ -3707,15 +3834,9 @@ do_repos() {
     fi
     say "$ICON_FOLDER Optional repositories — manage sources and mirrors"
     local choice=""
-    if [ "$GUM" = "1" ]; then
-        choice=$(gum choose --header "Repo actions..." \
-            "Show sources" \
-            "Test mirror speed" \
-            "Add repo line" \
-            "Remove line by number" \
-            "Backup sources" \
-            "Apt update" \
-            "Back")
+    local repo_items=("Show sources" "Test mirror speed" "Add repo line" "Remove line by number" "Backup sources" "Apt update" "Back")
+    if have_fzf; then
+        choice=$(pick_menu "Repo actions..." "${repo_items[@]}")
     else
         printf '\n1) Show sources\n2) Test mirror speed\n3) Add line\n4) Remove line\n5) Backup\n6) Apt update\n7) Back\nChoice: '
         read -r choice
@@ -3758,12 +3879,16 @@ do_repos() {
 }
 
 use_fzf_for_op() {
+    # Sets FZF_ABORTED=1 when the fzf picker itself was aborted (ESC), so
+    # callers can fall back to the typed-name prompt. Distinguish confirm-cancel.
+    FZF_ABORTED=0
     local op="$1"
-    if ! command -v fzf >/dev/null 2>&1; then
+    if ! have_fzf; then
+        FZF_ABORTED=1
         return 1
     fi
     local selected
-    selected=$(fzf_pick_pkgs "Select packages for $op" "$op") || return 1
+    selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC to abort" "$op") || { FZF_ABORTED=1; return 1; }
     local -a pkgs=()
     while IFS= read -r line; do
         [ -n "$line" ] && pkgs+=("$line")
@@ -3771,13 +3896,8 @@ use_fzf_for_op() {
     [ ${#pkgs[@]} -eq 0 ] && return 1
     batch_preview "$op" "${pkgs[@]}"
     local confirm="y"
-    if [ "$GUM" = "1" ]; then
-        if gum confirm --default=no "Confirm $op for ${#pkgs[@]} package(s)? (y/n/d=dry-run)"; then
-            confirm="y"; else confirm="n"; fi
-    else
-        printf 'Confirm %s %s package(s)? (y/n/d=dry-run): ' "$op" "${#pkgs[@]}"
-        read -r confirm
-    fi
+    printf 'Confirm %s %s package(s)? (y/n/d=dry-run): ' "$op" "${#pkgs[@]}" >&2
+    read -r confirm
     if [ "$confirm" = "d" ]; then
         say "Dry-run — no apt command executed."
         audit_log "dryrun" "$op ${pkgs[*]}"
@@ -3921,47 +4041,147 @@ do_auto_mirror() {
     fi
 }
 
-# Snapshot / Diff engine (glazepkg / pactool style)
-do_snapshot() {
-    local out="$HOME/pkg-snapshot-$(date +%Y%m%d_%H%M%S).txt"
-    dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | sort > "$out"
-    say "Snapshot saved: $out ($(wc -l < "$out") packages)"
-    audit_log "snapshot" "$out"
-}
+# ============================================================================
+# CLI MODE — non-interactive flags. Before this point options only configure
+# the environment; from here any leftover arg is a misuse error.
+#   --version · --help · --list-themes · --theme <name> · --export-theme <name>
+# (install.sh --theme <name> uses --export-theme via the installed copy.)
+# ============================================================================
+case "$CLI_MODE" in
+    version)
+        printf 'pkg-manager v%s — Easy Termux Package Manager\n' "$VERSION"
+        exit 0
+        ;;
+    help)
+        cat <<USAGE
+pkg-manager v$VERSION — Easy Termux Package Manager
 
-do_diff() {
-    local snaps=($(ls -t "$HOME/pkg-snapshot-"*.txt 2>/dev/null | head -n 2))
-    if [ ${#snaps[@]} -lt 2 ]; then
-        err "Need 2+ snapshots in $HOME. Use menu → Snapshot first."
-        return
-    fi
-    say "Diffing: ${snaps[1]} → ${snaps[0]} (newest vs previous)"
-    local added removed
-    added=$(comm -23 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | wc -l)
-    removed=$(comm -13 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | wc -l)
-    echo "  Added: $added  |  Removed: $removed"
-    echo "  First 10 added lines:"
-    comm -23 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | head -n 10 | sed 's/^/    + /'
-    echo "  First 10 removed lines:"
-    comm -13 <(sort "${snaps[0]}") <(sort "${snaps[1]}") | head -n 10 | sed 's/^/    - /'
-}
+Usage:
+  pkg-manager                     launch the interactive app
+  pkg-manager --help              this text
+  pkg-manager --version           print version
+  pkg-manager --list-themes       preview every theme's palette
+  pkg-manager --theme <name>      set the app theme (no menu needed)
+  pkg-manager --export-theme <t>  write that theme's terminal palette to
+                                  ~/.termux/colors.properties (truecolor
+                                  themes only; run termux-reload-settings
+                                  afterwards to apply it)
 
-# Theme / color switcher (aptui / metapak style — T for theme toggle)
-do_theme() {
-    say "Current theme: ${THEME:-default}"
-    if [ "$GUM" = "1" ]; then
-        local choice; choice=$(gum choose --header "Theme" "default" "pink" "nyan" "dark" "Back")
-    else
-        printf '1) default 2) pink 3) nyan 4) dark 5) Back > '; read -r choice
-        case "$choice" in 1) choice="default";; 2) choice="pink";; 3) choice="nyan";; 4) choice="dark";; 5) choice="Back";; esac
+Interactive extras (inside the app):
+  Settings → Command palette      filter all commands with fzf
+  Install / Uninstall             fzf multi-select picker with live
+                                  package previews (ESC to type a name)
+  Settings → Icons                nerd-font glyphs or emoji
+
+Docs: https://github.com/Mark44928/Easy-Termux-Package-Manager
+USAGE
+        exit 0
+        ;;
+    list-themes)
+        theme_preview
+        exit 0
+        ;;
+    set-theme)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
+        THEME=$2
+        case "$THEME" in
+            green|blue|purple|red|nord|amber|teal|mono|dracula|catppuccin|tokyo|gruvbox|onedark|solarized|everforest|rosepine) ;;
+            *) printf 'unknown theme: %s (run: pkg-manager --list-themes)\n' "$THEME" >&2; exit 2 ;;
+        esac
+        set_theme
+        save_config
+        ok "Theme set to $THEME"
+        exit 0
+        ;;
+    export-theme)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
+        apply_termux_theme "$2" || exit 1
+        exit 0
+        ;;
+    "unknown:"*)
+        printf 'unknown option: %s\n' "${CLI_MODE#unknown:}" >&2
+        printf "try 'pkg-manager --help'\n" >&2
+        exit 2
+        ;;
+    *)
+        :   # CLI_MODE empty → interactive app; nothing to do
+        ;;
+esac
+
+FIRST_LOOP=1
+while true; do
+    if [ "$FIRST_LOOP" = "1" ] && [ "$STARTUP_CHECK" = "1" ]; then
+        do_maintenance
     fi
-    if [ "$choice" = "Back" ] || [ -z "$choice" ]; then return; fi
+    FIRST_LOOP=0
+    banner
+    choice=$(main_menu)
     case "$choice" in
-        pink) ICON_INSTALL="💖"; ICON_SHIELD="🛡️"; PINK="#FF69B4";;
-        nyan) ICON_INSTALL="🌈"; ICON_SHIELD="🌟"; PINK="#39FF14";;
-        dark) ICON_INSTALL="⚫"; ICON_SHIELD="🌑"; PINK="#555555";;
-        *) ;;
+        "$OPTION_INSTALL")    do_install ;;
+        "$OPTION_UNINSTALL")  do_uninstall ;;
+        "$OPTION_SEARCH")     do_search ;;
+        "$OPTION_LIST")       do_list ;;
+        "$OPTION_REINSTALL")  do_reinstall ;;
+        "$OPTION_UPDATE")     do_upgrade_center ;;
+        "$OPTION_CLEAN")      do_clean ;;
+        "$OPTION_INFO")       do_info ;;
+        "$OPTION_AUTOREMOVE") do_autoremove ;;
+        "$OPTION_DEPENDS")    do_depends ;;
+        "$OPTION_RDEPENDS")   do_rdepends ;;
+        "$OPTION_SIZE")       do_size ;;
+        "$OPTION_FILES")      do_files ;;
+        "$OPTION_OWNER")      do_owner ;;
+        "$OPTION_HOLD")       do_hold ;;
+        "$OPTION_PURGE")      do_purge ;;
+        "$OPTION_FIXBROKEN")  do_fixbroken ;;
+        "$OPTION_UPGRADABLE") do_upgradable ;;
+        "$OPTION_BACKUP")     do_backup ;;
+        "$OPTION_RESTORE")    do_restore ;;
+        "$OPTION_EXPORT")     do_export ;;
+        "$OPTION_IMPORT")     do_import ;;
+        "$OPTION_DOCTOR")     do_doctor ;;
+        "$OPTION_SETTINGS")   do_settings ;;
+        "$OPTION_HISTORY")    do_history ;;
+        "$OPTION_SIMULATE")   do_simulate ;;
+        "$OPTION_STATS")      do_stats ;;
+        "$OPTION_CACHE")      do_cache ;;
+        "$OPTION_DEPTREE")    do_deptools ;;
+        "$OPTION_BULK")       do_bulk ;;
+        "$OPTION_FAVS")       do_favs ;;
+        "$OPTION_INSPECT")    do_inspect ;;
+        "$OPTION_MAINT")      do_maintenance ;;
+        "$OPTION_GROUPS")     do_groups ;;
+        "$OPTION_LOCALDEB")   do_localdeb ;;
+        "$OPTION_DOWNGRADE")  do_downgrade ;;
+        "$OPTION_DLONLY")     do_dlonly ;;
+        "$OPTION_HOLDVER")    do_holdver ;;
+        "$OPTION_FILESEARCH") do_filesearch ;;
+        "$OPTION_CHANGELOG")  do_changelog ;;
+        "$OPTION_WHY")        do_why ;;
+        "$OPTION_NOTES")       do_notes ;;
+        "$OPTION_SNAPSHOT")    do_snapshot ;;
+        "$OPTION_PALETTE")     do_palette ;;
+        "$OPTION_WATCH")       do_watch ;;
+        "$OPTION_MIRROR")      do_mirror ;;
+        "$OPTION_AUDIT")       do_audit ;;
+        "$OPTION_MARKS")       do_marks ;;
+        "$OPTION_RECYCLE")     do_recycle ;;
+        "$OPTION_REPOS")       do_repos ;;
+        "$OPTION_UNDO")        do_undo ;;
+        "$OPTION_DEPTREE")     do_depgraph ;;
+        "$OPTION_HEALTH")      do_health ;;
+        "$OPTION_SNAPSHOT")    do_snapshot ;;
+        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
+        "$OPTION_THEME")       do_theme ;;
+        "$OPTION_SELFUPDATE")  do_selfupdate ;;
+        "$OPTION_ESSENTIALS")  do_essentials ;;
+        "$OPTION_SYSINFO")     do_sysinfo ;;
+        "$OPTION_WHATSNEW")    do_whatsnew ;;
+        *"Pinned:"*)           pin_install "${choice##*Pinned: }" ;;
+        "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
+        "__INVALID__")        err "Invalid option, try again." ;;
+        "")                   break ;;
+        *)                    err "Invalid option, try again." ;;
     esac
-    save_config "THEME=$choice" || true
-    say "Theme set to $choice (restart menu to fully refresh colors)"
-}
+    pause || break
+done
