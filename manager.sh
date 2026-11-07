@@ -3413,8 +3413,8 @@ do_selfupdate() {
         rm -f "$new_tmp"
         return 0
     fi
-    local_ver=$(grep -m1 -oE 'Pkg Manager v[0-9][0-9.]*' "$self" 2>/dev/null | head -n1)
-    remote_ver=$(grep -m1 -oE 'Pkg Manager v[0-9][0-9.]*' "$new_tmp" 2>/dev/null | head -n1)
+    local_ver=$(grep -m1 -E '^VERSION=' "$self" 2>/dev/null | sed -E 's/^VERSION="([^"]*)".*/\1/')
+    remote_ver=$(grep -m1 -E '^VERSION=' "$new_tmp" 2>/dev/null | sed -E 's/^VERSION="([^"]*)".*/\1/')
     say "New version available: ${remote_ver:-unknown version} (you have ${local_ver:-unknown})."
     say "Update target: $self"
     if ! confirm_danger "$ICON_UP  Replace $self with the new version?"; then
