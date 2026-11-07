@@ -17,11 +17,4 @@ jobs:
       - name: Lint
         run: make lint
       - name: Test
-        run: bash tests/run-tests.sh || true
-      - name: Upload test logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs
-          path: tests/tmp/*/run.log
-          retention-days: 3
+        run: make test

@@ -6,6 +6,7 @@ export PATH="$PWD/fakebin:$PATH"
 # fzf installed (otherwise do_install/do_uninstall ask an extra prompt).
 export NO_FZF=1
 export ICONS=emoji
+export TERM="${TERM:-dumb}"
 
 TOTAL=0 PASS=0 FAIL=0
 FAILED=()

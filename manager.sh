@@ -733,7 +733,7 @@ pause() {
     if ! read -r _; then
         return 1
     fi
-    clear
+    clear 2>/dev/null || true
 }
 
 # Read apt/dpkg output and return a friendly explanation (empty = unknown).
