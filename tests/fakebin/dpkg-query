@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake dpkg-query
 # -f='${Version}' <pkg>  → installed version of one package
 # -W <pkg> / -W         → "size<TAB>name" listing (stats)

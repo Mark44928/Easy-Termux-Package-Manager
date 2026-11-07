@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake curl — doctor presence check, mirror timing, self-update download
 [ -n "$FAKE_CURL_FAIL" ] && exit 22
 

@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake dpkg
 if [ "$1" = "--audit" ]; then
     exit 0

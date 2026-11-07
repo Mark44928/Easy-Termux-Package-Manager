@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake apt
 if [[ "$1" == --* ]]; then
     # Leading global option (e.g. --fix-broken) is consumed only to shift it

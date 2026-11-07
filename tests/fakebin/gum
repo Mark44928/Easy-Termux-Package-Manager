@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake gum — answers GUM_QUEUE, validates flags against helps/
 CMD="$1"
 

@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # fake fzf — answers selections from FZF_QUEUE (plain lines, one per answer),
 # mirroring the fake-gum queue protocol. A line starting with "MULTI:" is
 # space-split into a multi-line answer (fzf -m). With no queue (or an empty one
