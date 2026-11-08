@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/data/data/com.termux/files/usr/bin/env bash
 set -e
 
 # ── Terminal styling (auto-disabled when piped or NO_COLOR) ──────────────
@@ -71,9 +71,18 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     fi
 fi
 
+# ── Version (read from manager.sh so the installer can never drift) ───────
+detect_version() {
+    local f="$1" v=""
+    [ -f "$f" ] || { echo ""; return; }
+    v=$(grep -m1 -oP '^VERSION="\K[^"]+' "$f" 2>/dev/null || true)
+    echo "$v"
+}
+VERSION="$(detect_version "$DIR/manager.sh")"
+
 # ── Header ────────────────────────────────────────────────────────────────
 printf '%b\n' "${CYN}╭────────────────────────────────────────────────╮${R}"
-printf '%b\n' "${CYN}│${R}     ${BD}✨ Easy Termux Package Manager · v5.0${R}      ${CYN}│${R}"
+printf '%b\n' "${CYN}│${R}   ${BD}✨ Easy Termux Package Manager · v${VERSION:-?}${R}      ${CYN}│${R}"
 printf '%b\n' "${CYN}│${R}     the one-command Termux package manager     ${CYN}│${R}"
 printf '%b\n' "${CYN}╰────────────────────────────────────────────────╯${R}"
 divider
@@ -106,6 +115,14 @@ if ! bash -n "$BIN" 2>/dev/null; then
     warn "It may be a corrupted download; re-run this installer."
     exit 1
 fi
+# Smoke test the CLI surface of the freshly installed copy — a syntax check
+# alone does not prove the binary runs.
+if ! "$BIN" --version >/dev/null 2>&1; then
+    warn "${RED}The installed script failed its smoke test (--version) — aborting.${R}"
+    warn "Re-run this installer; if it keeps failing, report it with your Termux version."
+    exit 1
+fi
+ok "Smoke test passed ($("$BIN" --version 2>/dev/null | head -n1))"
 
 divider
 ok "Installed → ${BD}${BIN}${R}"
@@ -118,12 +135,15 @@ case ":$PATH:" in
 esac
 info "Run it anytime with: ${BD}pkg-manager${R}   ·   quick help: ${BD}pkg-manager --help${R}"
 divider
-info "${BD}AURORA 5.0${R} ${BD}features:${R} 9 truecolor themes (dracula, catppuccin, tokyo-night,"
+info "${BD}v${VERSION:-?} highlights:${R} 9 truecolor themes (dracula, catppuccin, tokyo-night,"
 info "  nord, gruvbox, one-dark, solarized, everforest, rose-pine) · theme hub with live"
-info "  preview + Termux colors.properties export · ${BD}fzf pickers${R} for install/uninstall,"
-info "  search results, the command palette and the text-mode menu · essential toolkit ·"
-info "  system dashboard · undo engine · dep tree · health check · snapshot/diff · auto-mirror"
-info "Extras: ${BD}pkg install curl${R} for auto-mirror · Nerd Font below for the icon glyphs"
+info "  preview + Termux colors.properties export · ${BD}fzf pickers${R} for install/uninstall"
+info "  with live package-info preview panes, search, the command palette and every submenu"
+info "  · apt / pkg / nala backends (auto-falls back to apt) · undo engine · dep tree ·"
+info "  health check · snapshot/diff · auto-mirror · essential toolkit · system dashboard"
+info "  · scriptable CLI: ${BD}--check-updates --quiet --doctor${R}"
+info "Extras: ${BD}pkg install curl${R} for auto-mirror · ${BD}pkg install nala${R} for the"
+info "  prettier package views (optional) · Nerd Font below for the icon glyphs"
 
 # ── Nerd Font install ────────────────────────────────────────────────────
 install_font() {

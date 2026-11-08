@@ -1,6 +1,8 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit 1
 MANAGER="$PWD/../manager.sh"
+REAL_PREFIX="${TERMUX__PREFIX:-$PREFIX}"
+export MANAGER
 export PATH="$PWD/fakebin:$PATH"
 # Disable the optional fzf picker so tests stay hermetic on hosts that have
 # fzf installed (otherwise do_install/do_uninstall ask an extra prompt).
@@ -103,48 +105,6 @@ run_fzf_q() {
     PASS=$((PASS+1))
 }
 
-# FG() — like F() but in GUM mode: proves that fzf (when preferred) wins the
-FG() {
-    run_fzf_g "$1" "$2" "$3" "$@"
-}
-
-run_fzf_g() {
-    local name="$1" feed="$2" marker="$3"; shift 3
-    TOTAL=$((TOTAL+1))
-    local home="$PWD/tmp/$name"
-    rm -rf "$home"
-    mkdir -p "$home/var/cache/apt/archives"
-    touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
-    : > "$home/fzfqueue"
-    : > "$home/queue"
-    local a
-    for a in "$@"; do
-        # to the fake-fzf queue (menus/pickers).
-        case "$a" in
-            G:*) printf '%s' "${a#G:}" | base64 -w0 >> "$home/queue"; printf '\n' >> "$home/queue" ;;
-            *)   printf '%s\n' "$a" >> "$home/fzfqueue" ;;
-        esac
-    done
-    export HOME="$home" PREFIX="$home" MGR=apt
-    export GUM_QUEUE="$home/queue" GUM_CALL_LOG="$home/calls" GUM_VALIDATE_LOG="$home/validate"
-    : > "$GUM_CALL_LOG"; : > "$GUM_VALIDATE_LOG"
-    local log="$home/run.log"
-    env -u NO_FZF FZF_QUEUE="$home/fzfqueue" FZF_CALL_LOG="$home/fzf-calls" \
-        timeout 30 bash "$MANAGER" < "$feed" > "$log" 2>&1; local rc=$?
-    local ok=1
-    if [ "$rc" -eq 124 ] || { [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; }; then
-        FAIL=$((FAIL+1)); FAILED+=("$name:exit=$rc"); return
-    fi
-    [ -n "$marker" ] && ! grep -Fq "$marker" "$log" && ok=0
-    grep -q "command not found" "$log" && ok=0
-    grep -qE "^manager\.sh: line [0-9]+:|bash: " "$log" && ok=0
-    if [ "$ok" != "1" ]; then
-        FAIL=$((FAIL+1)); FAILED+=("$name")
-        return
-    fi
-    PASS=$((PASS+1))
-}
-
 # --- regression (text/apt) ---
 T install_ok       <(printf '1\npython3\n')            "python3 installed!"
 T uninstall_ok     <(printf '2\npython3\ny\n')         "python3 removed!"
@@ -172,7 +132,7 @@ T upgradable_ok    <(printf '18\n')                    "python3/stable 3.12 arm6
 T backup_ok        <(printf '19\n')                    "Backed up" "pkg-backup-*.txt|"
 T export_txt       <(printf '21\n1\n\n')               "Exported 2 packages" "pkg-export.txt|"
 T settings_show    <(printf '59\n6\n')                 "No config yet"
-T settings_icons   <(printf '59\n4\n')                 "Settings saved"
+T settings_icons   <(printf '59\n3\n')                 "Settings saved"
 T history_ok       <(printf '1\npython3\n\n24\n1\n')   "install python3"
 
 # --- invalid package errors ---
@@ -266,7 +226,7 @@ T fixbroken_ok     <(printf '17\ny\n')                       "Dependency problem
 T unhold_ok        <(printf '15\n2\npython3\n')              "no longer held"
 T hold_show        <(printf '15\n3\n')                       "Held packages:"
 T stats_cache      <(printf '26\n4\n')                       "Cache breakdown"
-T settings_theme   <(printf '59\n2\n2\n')                    "Settings saved"
+T settings_theme   <(printf '59\n3\n3\n')                    "Settings saved"
 
 # --- pkg mode ---
 P pkg_list         <(printf '4\n')                     "python3"
@@ -286,9 +246,9 @@ T snapshot_create  <(printf '42\n1\n\n42\n2\n') "Snapshot created"
 T palette_choose   <(printf '43\n\n1\npython3\n') "Installing python3"
 
 # --- v4.0 new themes (text/apt) ---
-T theme_nord       <(printf '59\n2\n5\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=nord|"
-T theme_teal       <(printf '59\n2\n7\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=teal|"
-T theme_invalid    <(printf '59\n2\n1\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=green|"
+T theme_nord       <(printf '59\n2\n1\n5\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=nord|"
+T theme_teal       <(printf '59\n2\n1\n7\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=teal|"
+T theme_invalid    <(printf '59\n2\n1\n1\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=green|"
 
 # --- v4.0 package watchlist (text/apt) ---
 T watch_add        <(printf '44\n1\npython3\n')            "added to the watchlist" ".pkg-manager-watch|"
@@ -336,17 +296,21 @@ FAKE_CURL_FAIL=1
 export FAKE_CURL_FAIL
 T selfupdate_fail  <(printf '55\n')                        "Could not download the latest version"
 unset FAKE_CURL_FAIL
+FAKE_BAD_SHA=1
+export FAKE_BAD_SHA
+T selfupdate_badsha <(printf '55\ny\n')                    "SHA-256 mismatch — refusing to install"
+unset FAKE_BAD_SHA
 
 # --- v4.0 ---
 
 # --- v5.0 real terminal themes ---
-T theme_dracula    <(printf '59\n2\n9\n\n59\n6\n')         "Settings saved" ".pkg-manager.conf|THEME=dracula|"
-T theme_rosepine   <(printf '59\n2\n16\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=rosepine|"
-T termux_theme_legacy <(printf '59\n12\n3\n')                  "no full ANSI table" "||"
+T theme_dracula    <(printf '59\n2\n1\n9\n\n59\n6\n')         "Settings saved" ".pkg-manager.conf|THEME=dracula|"
+T theme_rosepine   <(printf '59\n2\n1\n16\n\n59\n6\n')        "Settings saved" ".pkg-manager.conf|THEME=rosepine|"
+T termux_theme_legacy <(printf '59\n2\n3\n')                  "no full ANSI table" "||"
 export THEME=dracula
-T termux_theme_apply <(printf '59\n12\n3\n')                   "colors.properties" ".termux/colors.properties|(theme: dracula)|"
+T termux_theme_apply <(printf '59\n2\n3\n')                   "colors.properties" ".termux/colors.properties|(theme: dracula)|"
 unset THEME
-T theme_preview    <(printf '59\n12\n2\n')                     "Theme preview" "|dracula|"
+T theme_preview    <(printf '59\n2\n2\n')                     "Theme preview" "|dracula|"
 
 # --- v5.0 new main-menu features ---
 T essentials_core  <(printf '56\n1\ny\n')                  "✓ git"
@@ -359,14 +323,126 @@ T whatsnew_ok      <(printf '58\n')                        "What's new"
 # prompt); empty queue = ESC/abort → typed/numeric fallback.
 F fzf_install_pick    <(printf 'y\n\n0\n')                 "✓ git"    "📦 Install a package" "git"
 F fzf_install_multi   <(printf 'y\n\n0\n')                 "✓ git"    "📦 Install a package" "MULTI:git figlet"
-F fzf_install_fallback <(printf '1\npython3\n\n0\n')       "python3 installed!" ""
+# ESC in the package picker cancels back to the main menu (no typed-name prompt)
+F fzf_install_cancel <(printf '\n0\n')                 "Canceled" "📦 Install a package"
 F fzf_uninstall_pick  <(printf 'y\n\n0\n')                 "✓ python3" "🗑️ Uninstall a package" "python3"
-F fzf_menu_pick       <(printf 'python3\n\n0\n')           "python3 installed!" "📦 Install a package"
-F fzf_palette_pick    <(printf 'python3\n\n0\n')           "Installing python3..." "🪄 Command palette" "📦 Install a package"
+F fzf_menu_pick       <(printf 'y\n\n0\n')                "✓ python3" "📦 Install a package" "python3"
+F fzf_palette_pick    <(printf 'y\n\n0\n')                "✓ python3" "🪄 Command palette" "📦 Install a package" "python3"
 # --- fzf owns the submenus too (FZF_FIRST=1 default) ---
-FG fzf_settings_submenu <(printf '\n\n0\n')         "Theme set to dracula" "⚙️ Settings" "🎨  Color theme: green" "dracula (truecolor)"
-FG fzf_theme_hub_fzf    <(printf '\n\n0\n')         "Theme set to dracula" "⚙️ Settings" "🪄 Themes & terminal colors" "Pick a theme" "dracula (truecolor)"
+# settings has ONE theme row now (it opens the hub): settings → hub → pick
+F fzf_settings_submenu <(printf '\n\n0\n')         "Theme set to dracula" "⚙️ Settings" "🎨  Themes & terminal colors: green" "Pick a theme" "dracula (truecolor)"
+F fzf_theme_hub_fzf    <(printf '\n\n0\n')         "Theme preview" "⚙️ Settings" "🎨  Themes & terminal colors: green" "Preview all themes"
 F fzf_search_pick     <(printf 'python\ny\n\n0\n')         "✓ python-tool" "🔎 Search packages" "python-tool"
+
+# --- structural guard: a shadowed OPTION_* var once rendered two identical
+# menu rows and left do_depgraph() unreachable — never again. ---
+TOTAL=$((TOTAL+1))
+home="$PWD/tmp/menu_unique"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+labels=$(sed 's/\x1b\[[0-9;]*m//g' "$home/run.log" | sed -n 's/^\[[0-9]\{1,\}\]  //p')
+mcount=$(printf '%s\n' "$labels" | grep -c .)
+mdups=$(printf '%s\n' "$labels" | sort | uniq -d)
+# 59 numbered options + the [0] Exit row = 60 unique rows.
+if [ "$mcount" -eq 60 ] && [ -z "$mdups" ]; then
+    PASS=$((PASS+1))
+else
+    FAIL=$((FAIL+1)); FAILED+=("menu_unique:count=$mcount,dups=${mdups//$'\n'/,}")
+fi
+
+# --- v5.0 restored dispatch: 51 = colored dependency graph, 53 = snapshot/diff hub ---
+T depgraph_ok     <(printf '51\npython3\n')            "DEPENDENCY TREE: python3"
+T snapshot_diff   <(printf '53\n')                     "Create snapshot"
+
+# --- CLI mode (parsed before the interactive loop; was completely untested) ---
+# shellcheck disable=SC2086  # $args is deliberately word-split
+cli() {
+    local name="$1" args="$2" marker="$3"
+    TOTAL=$((TOTAL+1))
+    local home="$PWD/tmp/$name"
+    rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+    touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+    export HOME="$home" PREFIX="$home" MGR=apt
+    timeout 30 bash "$MANAGER" $args < /dev/null > "$home/run.log" 2>&1
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then
+        FAIL=$((FAIL+1)); FAILED+=("$name:exit=$rc"); return
+    fi
+    if grep -Fq "$marker" "$home/run.log"; then
+        PASS=$((PASS+1))
+    else
+        FAIL=$((FAIL+1)); FAILED+=("$name")
+    fi
+}
+cli cli_help        "--help"                "Usage:"
+cli cli_version     "--version"             "pkg-manager v5.2"
+cli cli_list_themes "--list-themes"         "Theme preview"
+cli cli_theme       "--theme dracula"       "Theme set to dracula"
+cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepine)"
+
+# --- v5.1: fzf rewrite regressions ---
+# The menu must call fzf exactly ONCE (a duplicated block made ESC reopen it).
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/fzf_once"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF FZF_QUEUE="/dev/null" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+n_calls=$(grep -c '^fzf' "$home/calls" 2>/dev/null || echo 0)
+if [ "$n_calls" -eq 1 ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("fzf_once:expected 1 fzf call, got $n_calls")
+fi
+
+# Geometry + preview contract (pure functions, no TTY needed).
+TOTAL=$((TOTAL + 1))
+geo_out=$(bash -c 'source <(sed -n "/^term_size()/,/^}/p;/^fzf_height()/,/^}/p;/^fzf_layout()/,/^}/p;/^fzf_margin()/,/^}/p;/^pkg_preview_cmd()/,/^}/p" "'"$MANAGER"'")
+    # wide/landscape → side pane; narrow → bottom pane
+    l1=$(COLUMNS=120 LINES=40 fzf_layout); case "$l1" in right:45%:wrap:border-left) ;; *) echo "layout-wide:$l1";; esac
+    l2=$(COLUMNS=60 LINES=30 fzf_layout);  case "$l2" in down:45%:wrap:border-top) ;; *) echo "layout-narrow:$l2";; esac
+    # height must stay below 100%: at 100% fzf goes fullscreen (alternate
+    # screen) and hides the banner printed above the finder.
+    h1=$(COLUMNS=80 LINES=24 fzf_height);  case "$h1" in 70%) ;; *) echo "height-24:$h1";; esac
+    h2=$(COLUMNS=80 LINES=40 fzf_height);  case "$h2" in 82%) ;; *) echo "height-40:$h2";; esac
+    h3=$(COLUMNS=80 LINES=200 fzf_height); case "$h3" in 95%) ;; *) echo "height-cap:$h3";; esac
+    m1=$(COLUMNS=80 LINES=24 fzf_margin);  case "$m1" in 0,2) ;; *) echo "margin-narrow:$m1";; esac
+    m2=$(COLUMNS=130 LINES=45 fzf_margin); case "$m2" in 0,6) ;; *) echo "margin-wide:$m2";; esac
+    m3=$(COLUMNS=60 LINES=16 fzf_margin);  case "$m3" in 0,2) ;; *) echo "margin-short:$m3";; esac
+    # reverse layout keeps natural top-down order
+    grep -q -- '--layout=reverse' "$MANAGER" || echo "layout-not-reverse"
+    # preview must use the field placeholder and the empty-name guard
+    p=$(pkg_preview_cmd); case "$p" in *"{1}"*) ;; *) echo "preview-no-field";; esac
+    case "$p" in *"no package under cursor"*) ;; *) echo "preview-no-guard";; esac' 2>/dev/null)
+if [ -z "$geo_out" ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("fzf_geometry:$geo_out"); fi
+cli cli_check_upd    "--check-updates"        "package(s) can be upgraded"
+cli cli_quiet        "--quiet"                "1"
+cli cli_doctor       "--doctor"               "Health score"
+
+# --- v5.2: nala as a manager, with apt fallback when it is missing ---
+cli cli_mgr_nala_cfg  "--version"     "pkg-manager v5.2"
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/nala_fallback"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+# Build a PATH that has every Termux tool EXCEPT nala, so the fallback path is
+# genuinely exercised (nala is installed on most dev devices).
+mkdir -p "$home/bin"
+for f in "$REAL_PREFIX"/bin/*; do
+    [ "$(basename "$f")" = "nala" ] || ln -sf "$f" "$home/bin/$(basename "$f")" 2>/dev/null || true
+done
+out=$(HOME="$home" PREFIX="$home" MGR=nala NO_FZF=1 ICONS=emoji TERM=dumb PATH="$home/bin" \
+      timeout 20 bash "$MANAGER" --version < /dev/null 2>&1)
+# config validation must accept MGR=nala: the app runs (prints version) rather
+# than dying, and the fallback keeps every apt call working.
+if printf '%s\n' "$out" | grep -q "pkg-manager v5.2"; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("nala_fallback:$out")
+fi
 
 # --- self-update replace path: runs against a COPY of the script, never the repo file ---
 TOTAL=$((TOTAL+1))

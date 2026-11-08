@@ -28,7 +28,15 @@ if [ "$wt" = "1" ]; then
 fi
 if [ -n "$out" ] && [ -n "$url" ] && [ "$out" != "/dev/null" ]; then
     # self-update download path
-    printf '#!/bin/bash\nset -o pipefail\necho "fake pkg-manager 9.9"\n' > "$out"
+    case "$url" in
+        *.sha256)
+            if [ -n "$FAKE_BAD_SHA" ]; then
+                printf '%064d\n' 0 > "$out"
+            else
+                printf '#!/bin/bash\nset -o pipefail\necho "fake pkg-manager 9.9"\n' | sha256sum | cut -d' ' -f1 > "$out"
+            fi ;;
+        *) printf '#!/bin/bash\nset -o pipefail\necho "fake pkg-manager 9.9"\n' > "$out" ;;
+    esac
     exit 0
 fi
 exit 0

@@ -14,7 +14,7 @@ set -o pipefail
 [ -v RECYCLE ] && RECYCLE_ENV=$RECYCLE || RECYCLE_ENV=""
 [ -v FZF_ENABLED ] && FZF_ENABLED_ENV=$FZF_ENABLED || FZF_ENABLED_ENV=""
 
-VERSION="5.0"
+VERSION="5.2"
 MGR="apt"
 THEME="green"
 CONFIRM=1
@@ -106,6 +106,8 @@ export PREFIX
 
 # validate both the config file and any env override with the same guards
 case "$MGR" in apt|pkg) ;; *) MGR="apt" ;; esac
+# APT_BIN is re-evaluated per use so a mid-session MGR change (settings menu)
+# takes effect immediately.
 case "$THEME" in green|blue|purple|red|nord|amber|teal|mono|dracula|catppuccin|tokyo|gruvbox|onedark|solarized|everforest|rosepine) ;; *) THEME="green" ;; esac
 case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
@@ -151,13 +153,18 @@ paint() {
 
 set_theme() {
     case "$THEME" in
-        blue)       CYAN=33;        PINK=208;       GREEN=76;   YELLOW=214;    RED=196;      DIM=245 ;;
-        purple)     CYAN=99;        PINK=212;       GREEN=48;   YELLOW=220;    RED=196;      DIM=245 ;;
-        red)        CYAN=203;       PINK=229;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
+        # Legacy 256-color themes: both dominant roles (CYAN accents/headers,
+        # PINK cursor/selection) stay in the color family the title names —
+        # "blue" used to select in ORANGE, "green" was teal+hot-pink, and "mono"
+        # made errors darker than normal text. Values verified against the
+        # xterm-256 chart (jonasjacek.github.io/colors).
+        blue)       CYAN=33;        PINK=81;        GREEN=76;   YELLOW=117;    RED=69;       DIM=245 ;;
+        purple)     CYAN=99;        PINK=141;       GREEN=48;   YELLOW=220;    RED=196;      DIM=245 ;;
+        red)        CYAN=203;       PINK=211;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
         nord)       CYAN="#88C0D0"; PINK="#B48EAD"; GREEN="#A3BE8C"; YELLOW="#EBCB8B"; RED="#BF616A"; DIM="#4C566A" ;;
         amber)      CYAN=179;       PINK=216;       GREEN=114;  YELLOW=214;    RED=203;      DIM=245 ;;
-        teal)       CYAN=80;        PINK=121;       GREEN=79;   YELLOW=191;    RED=203;      DIM=245 ;;
-        mono)       CYAN=252;       PINK=250;       GREEN=255;  YELLOW=253;    RED=247;      DIM=240 ;;
+        teal)       CYAN=80;        PINK=116;       GREEN=79;   YELLOW=191;    RED=203;      DIM=245 ;;
+        mono)       CYAN=248;       PINK=246;       GREEN=252;  YELLOW=250;    RED=255;      DIM=240 ;;
         dracula)    CYAN="#8BE9FD"; PINK="#FF79C6"; GREEN="#50FA7B"; YELLOW="#F1FA8C"; RED="#FF5555"; DIM="#6272A4" ;;
         catppuccin) CYAN="#94E2D5"; PINK="#CBA6F7"; GREEN="#A6E3A1"; YELLOW="#F9E2AF"; RED="#F38BA8"; DIM="#6C7086" ;;
         tokyo)      CYAN="#7DCFFF"; PINK="#BB9AF7"; GREEN="#9ECE6A"; YELLOW="#E0AF68"; RED="#F7768E"; DIM="#565F89" ;;
@@ -166,7 +173,7 @@ set_theme() {
         solarized)  CYAN="#2AA198"; PINK="#D33682"; GREEN="#859900"; YELLOW="#B58900"; RED="#DC322F"; DIM="#586E75" ;;
         everforest) CYAN="#83C092"; PINK="#D699B6"; GREEN="#A7C080"; YELLOW="#DBBC7F"; RED="#E67E80"; DIM="#859289" ;;
         rosepine)   CYAN="#9CCFD8"; PINK="#C4A7E7"; GREEN="#31748F"; YELLOW="#F6C177"; RED="#EB6F92"; DIM="#6E6A86" ;;
-        *)          CYAN=45;        PINK=212;       GREEN=46;   YELLOW=220;    RED=196;      DIM=240 ;;
+        green|*)    CYAN=40;        PINK=119;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
     esac
 }
 set_theme
@@ -178,11 +185,11 @@ theme_ansi() {
     case "$1" in
         dracula)    printf '%s\n' 282A36 F8F8F2 21222C FF5555 50FA7B F1FA8C BD93F9 FF79C6 8BE9FD F8F8F2 6272A4 FF6E6E 69FF94 FFFFA5 D6ACFF FF92DF A4FFFF FFFFFF ;;
         catppuccin) printf '%s\n' 1E1E2E CDD6F4 45475A F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 BAC2DE 585B70 F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 A6ADC8 ;;
-        tokyo)      printf '%s\n' 1A1B26 C0CAF5 15161E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5 ;;
+        tokyo)      printf '%s\n' 1A1B26 C0CAF5 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 545C7E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5 ;;
         nord)       printf '%s\n' 2E3440 D8DEE9 3B4252 BF616A A3BE8C EBCB8B 5E81AC B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4 ;;
         gruvbox)    printf '%s\n' 282828 EBDBB2 282828 CC241D 98971A D79921 458588 B16286 689D6A A89984 928374 FB4934 B8BB26 FABD2F 83A598 D3869B 8EC07C EBDBB2 ;;
         onedark)    printf '%s\n' 282C34 ABB2BF 1E2127 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 ABB2BF 5C6370 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 FFFFFF ;;
-        solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 002B36 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
+        solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 073642 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
         everforest) printf '%s\n' 2D353B D3C6AA 475258 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 D3C6AA 7A8478 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 9DA9A0 ;;
         rosepine)   printf '%s\n' 191724 E0DEF4 26233A EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 6E6A86 EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 ;;
         *) return 1 ;;
@@ -276,7 +283,16 @@ fzf_label() {
 # have_fzf — fzf is optional but first-class: it powers the package picker, the
 # command palette and the menu. FZF_ENABLED=0 (or NO_FZF=1) disables it.
 # The test harness uses NO_FZF=1 for hermetic runs.
+# Two first-class UI modes: "fzf" (fuzzy picker, default) and "text" (numbered
+# lists). They are separate code paths, not one UI with a degraded fallback:
+# every picker has a complete text branch. If fzf itself breaks mid-session
+# (bad flag, crash, terminal too small) the app says so ONCE and completes the
+# session in text mode instead of silently misbehaving.
+UI_MODE="fzf"          # fzf | text — text is a full mode, not an error state
+FZF_BROKEN=0           # set when fzf exits abnormally; forces text mode
+
 have_fzf() {
+    [ "$UI_MODE" = "fzf" ] || return 1
     [ "$FZF_ENABLED" = "1" ] || return 1
     [ "${NO_FZF:-0}" = "1" ] && return 1
     command -v fzf >/dev/null 2>&1
@@ -290,6 +306,9 @@ case "${1:-}" in
     --list-themes)            CLI_MODE="list-themes" ;;
     --theme)                  CLI_MODE="set-theme" ;;
     --export-theme)           CLI_MODE="export-theme" ;;
+    --check-updates)          CLI_MODE="check-updates" ;;
+    --quiet)                  CLI_MODE="check-updates-quiet" ;;
+    --doctor)                 CLI_MODE="doctor" ;;
     "")                       CLI_MODE="" ;;
     *)                        CLI_MODE="unknown:$1" ;;
 esac
@@ -316,7 +335,7 @@ section() {
     printf '%s\n' "$(paint "$PINK" "── $1 ──")"
 }
 
-BANNER_B64="H4sIAAAAAAACA21PMQoCMRDs84ppbW5t7OQ6S8HKaiEEkSsECwVB2MJH+Bd7n+JLbnYT5RSzm53NzCRskOvCFIC2WR1z1GStseAqQAkqgDGYyhBIwoeJWwGz0Cm/FcWWp4k3Hnegy3UvzYseS+D73epWn6GZLChBRza8PqXVv0WvWStl6pxIFucSXvfbT2JVzldsyu5Qhj3W5Ug44fnAZdHN//lHpoxgYkwBAAA="
+BANNER_B64="H4sIAAAAAAACA12MwQ0AIAgD/0xxG3QhExZxeKX1JYQCVwJAfzHEtK4p2zKYmSXYt1Qx5SNnW7dbGcyjmP6CslLqB14RzXgAFZPjhpUAAAA="
 
 banner() {
     local art n favs
@@ -401,9 +420,9 @@ build_menu() {
     OPTION_RECYCLE="$ICON_TRASH Recycle bin"
     OPTION_REPOS="$ICON_FOLDER Optional repositories"
     OPTION_UNDO="$ICON_HISTORY Undo last batch"
-    OPTION_DEPTREE="$ICON_DEPENDS Dependency tree"
+    OPTION_DEPTREE_GRAPH="$ICON_DEPENDS Dependency tree"
     OPTION_HEALTH="$ICON_SHIELD Health dashboard"
-    OPTION_SNAPSHOT="$ICON_BACKUP Snapshot / Diff"
+    OPTION_SNAPSHOT_DIFF="$ICON_BACKUP Snapshot / Diff"
     OPTION_AUTO_MIRROR="$ICON_PLAY Auto-mirror"
     OPTION_THEME="$ICON_WAND Themes & terminal colors"
     OPTION_SELFUPDATE="$ICON_UP Update pkg-manager"
@@ -411,6 +430,72 @@ build_menu() {
     OPTION_SYSINFO="$ICON_GLOBE System & network info"
     OPTION_WHATSNEW="$ICON_ROCKET What's new in v$VERSION"
     OPTION_EXIT="$ICON_EXIT Exit"
+
+    # One-line descriptions for the fzf preview panel, keyed by the final label
+    # so they survive nerd/emoji icon switches.
+    declare -gA MENU_DESC=()
+    _menu_desc() { MENU_DESC["$1"]="$2"; }
+    _menu_desc "$OPTION_INSTALL"       "Install one or more packages (fzf multi-select with a live apt-cache info preview)"
+    _menu_desc "$OPTION_UNINSTALL"     "Remove installed packages, keeping .deb copies in the recycle bin first"
+    _menu_desc "$OPTION_SEARCH"        "Fuzzy-search the repositories and pick from the matches"
+    _menu_desc "$OPTION_LIST"          "Show every installed package, or filter by a substring"
+    _menu_desc "$OPTION_REINSTALL"     "Re-download and reinstall a package to repair a broken one"
+    _menu_desc "$OPTION_UPDATE"        "Upgrade center: refresh lists, preview, then upgrade all or selected"
+    _menu_desc "$OPTION_CLEAN"         "Delete cached .deb archives to free storage"
+    _menu_desc "$OPTION_INFO"          "Full apt-cache record for a package: version, size, dependencies, description"
+    _menu_desc "$OPTION_AUTOREMOVE"    "Remove orphaned dependencies nothing needs any more"
+    _menu_desc "$OPTION_DEPENDS"       "List what a package needs (direct dependencies)"
+    _menu_desc "$OPTION_RDEPENDS"      "List which installed packages need this one"
+    _menu_desc "$OPTION_SIZE"          "Download size and installed size of a package"
+    _menu_desc "$OPTION_FILES"         "Every file a package installed on disk"
+    _menu_desc "$OPTION_OWNER"         "Find which package owns a given file path"
+    _menu_desc "$OPTION_HOLD"          "Hold/unhold packages so upgrades skip them"
+    _menu_desc "$OPTION_PURGE"         "Remove a package together with its configuration files"
+    _menu_desc "$OPTION_FIXBROKEN"     "Repair an interrupted dpkg state (apt install -f)"
+    _menu_desc "$OPTION_UPGRADABLE"    "List packages that have a newer version available"
+    _menu_desc "$OPTION_BACKUP"        "Save the installed package list to a timestamped file"
+    _menu_desc "$OPTION_RESTORE"       "Reinstall everything from a backup list"
+    _menu_desc "$OPTION_EXPORT"        "Write the package list as text or JSON"
+    _menu_desc "$OPTION_IMPORT"        "Read a package list file and install what it names"
+    _menu_desc "$OPTION_DOCTOR"        "Diagnose missing dependencies and broken packages"
+    _menu_desc "$OPTION_SETTINGS"      "Manager, theme, icons, confirmations, fzf toggle, theme hub"
+    _menu_desc "$OPTION_HISTORY"       "Browse and chart the action log (installs, removes, failures)"
+    _menu_desc "$OPTION_SIMULATE"      "Dry-run an install/remove/upgrade without touching the system"
+    _menu_desc "$OPTION_STATS"         "Storage totals, largest files and cache breakdown"
+    _menu_desc "$OPTION_CACHE"         "Clean all or only outdated cached packages, or list them"
+    _menu_desc "$OPTION_DEPTREE"       "Recursive dependency tree (depth-capped) plus orphan finder"
+    _menu_desc "$OPTION_BULK"          "Install, remove or upgrade many packages in one batch"
+    _menu_desc "$OPTION_FAVS"          "Curated favorites: add, remove, install all, pin to the menu"
+    _menu_desc "$OPTION_INSPECT"       "One-screen overview: version, status, size, deps, files summary"
+    _menu_desc "$OPTION_MAINT"         "Maintenance wizard: update, autoremove, clean, health checks"
+    _menu_desc "$OPTION_GROUPS"        "Named package bundles you can create, install and delete"
+    _menu_desc "$OPTION_LOCALDEB"      "Install a .deb file straight from storage"
+    _menu_desc "$OPTION_DOWNGRADE"     "Install an older version of a package from the cache"
+    _menu_desc "$OPTION_DLONLY"        "Download a package without installing it"
+    _menu_desc "$OPTION_HOLDVER"       "Pin a package to its exact current version"
+    _menu_desc "$OPTION_FILESEARCH"    "Find which package provides a file before you install"
+    _menu_desc "$OPTION_CHANGELOG"     "Show the upstream changelog of a package"
+    _menu_desc "$OPTION_WHY"           "Explain why a package is installed (manual or pulled in)"
+    _menu_desc "$OPTION_NOTES"         "Attach personal notes to packages"
+    _menu_desc "$OPTION_SNAPSHOT"      "Full snapshot of packages, favorites, groups, notes as a tar.gz"
+    _menu_desc "$OPTION_PALETTE"       "Command palette: fuzzy-filter all 59 menu entries"
+    _menu_desc "$OPTION_WATCH"         "Watchlist: get told when watched packages change version"
+    _menu_desc "$OPTION_MIRROR"         "Time every mirror and switch to the fastest one"
+    _menu_desc "$OPTION_AUDIT"         "System audit with a health score and repair suggestions"
+    _menu_desc "$OPTION_MARKS"         "Mark packages as manually or automatically installed"
+    _menu_desc "$OPTION_RECYCLE"       "Browse and restore .deb files kept from earlier removals"
+    _menu_desc "$OPTION_REPOS"         "Enable/disable the root and x11 optional repositories"
+    _menu_desc "$OPTION_UNDO"          "Reverse the last recorded install/remove batch"
+    _menu_desc "$OPTION_DEPTREE_GRAPH" "Colored forward/reverse dependency graph for one package"
+    _menu_desc "$OPTION_HEALTH"        "Dashboard: upgradables, orphans, disk headroom, locks, dpkg state"
+    _menu_desc "$OPTION_SNAPSHOT_DIFF" "Create, list, diff, restore or delete full snapshots"
+    _menu_desc "$OPTION_AUTO_MIRROR"   "Time the mirrors, switch to the fastest, then apt update"
+    _menu_desc "$OPTION_THEME"         "Theme hub: preview every theme, export the palette to Termux"
+    _menu_desc "$OPTION_SELFUPDATE"    "Update pkg-manager itself (SHA-256 verified download)"
+    _menu_desc "$OPTION_ESSENTIALS"    "One-tap curated bundles of everyday tools"
+    _menu_desc "$OPTION_SYSINFO"       "Kernel, CPU, RAM, storage, battery, DNS and public IP"
+    _menu_desc "$OPTION_WHATSNEW"      "The changelog screen for this release"
+    _menu_desc "$OPTION_EXIT"          "Leave pkg-manager"
 
     MENU_ITEMS=(
         "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL"
@@ -425,7 +510,7 @@ build_menu() {
         "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
         "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
         "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_REPOS"
-        "$OPTION_UNDO" "$OPTION_DEPTREE" "$OPTION_HEALTH" "$OPTION_SNAPSHOT" "$OPTION_AUTO_MIRROR" "$OPTION_SELFUPDATE"
+        "$OPTION_UNDO" "$OPTION_DEPTREE_GRAPH" "$OPTION_HEALTH" "$OPTION_SNAPSHOT_DIFF" "$OPTION_AUTO_MIRROR" "$OPTION_SELFUPDATE"
         "$OPTION_ESSENTIALS" "$OPTION_SYSINFO" "$OPTION_WHATSNEW" "$OPTION_SETTINGS"
     )
 
@@ -451,24 +536,32 @@ main_menu() {
     for p in "${FAVPIN[@]}"; do
         opts+=( "$ICON_PIN Pinned: $p" )
     done
-    # fzf-first: fuzzy menu whenever fzf is available and preferred (default),
-    # ESC falls through to the numbered list below.
+    # fzf-first: fuzzy menu whenever fzf is available and preferred (default).
+    # Rows are "label|description": fzf filters and shows the description in a
+    # preview pane while the picker hands back the bare label.
     if have_fzf; then
+        local -a rows=()
+        local o d
+        for o in "${opts[@]}" "$OPTION_EXIT"; do
+            d="${MENU_DESC[$o]:-}"
+            [ -n "$d" ] && rows+=("$o|$o — $d") || rows+=("$o|$o")
+        done
+        FZF_PREVIEW='line={}; printf "%s\n" "${line#*|}"'
+        FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
         local sel
-        sel=$(printf '%s\n' "${opts[@]}" "$OPTION_EXIT" | fzf_select "pkg-manager v$VERSION — filter & pick (ESC for the numbered list)" "> " 0) || sel=""
+        sel=$(printf '%s\n' "${rows[@]}" | fzf_select \
+            "pkg-manager v$VERSION — filter & pick (ESC to exit)" "❯ " 0 \
+            --header="? preview · / search · ESC exit" \
+            --footer="${#opts[@]} entries + Exit │ ? toggles the info pane" \
+            --marker="▶" --gutter=" " --no-separator) || sel=""
+        FZF_PREVIEW=""; FZF_NTH=""
         if [ -n "$sel" ]; then
-            printf '%s\n' "$sel"
+            printf '%s\n' "${sel%%|*}"
             return
         fi
-    fi
-    # Text mode with fzf available but lower priority: still prefer fzf over
-    # typing numbers.
-    if have_fzf; then
-        sel=$(printf '%s\n' "${opts[@]}" "$OPTION_EXIT" | fzf_select "pkg-manager v$VERSION — filter & pick (ESC for the numbered list)" "> " 0) || sel=""
-        if [ -n "$sel" ]; then
-            printf '%s\n' "$sel"
-            return
-        fi
+        # ESC with a healthy fzf cancels (the REPL loop treats it as Exit).
+        # Only fall through to the numbered list when fzf actually broke.
+        [ "$FZF_BROKEN" = "1" ] || return 1
     fi
     printf '\n' >&2
         printf '%s\n' "$(paint "$PINK" "  ═══ MAIN MENU ═══")" >&2
@@ -621,9 +714,12 @@ set_mgr() {
 
 set_theme_pick() {
     local t i
+    # Parenthetical = the two dominant roles (accent/headers · cursor/selection),
+    # described with colors the themes ACTUALLY use now — the old labels
+    # ("blue (blue/orange)", "green (cyan/pink)") described pre-retune pairs.
     local labels=(
-        "green (cyan/pink)" "blue (blue/orange)" "purple (purple/pink)" "red (red/yellow)"
-        "nord (icy/rose · truecolor)" "amber (orange/rose)" "teal (cyan/mint)" "mono (grayscale)"
+        "green (green/lime)" "blue (blue/sky)" "purple (violet/orchid)" "red (coral/salmon)"
+        "nord (icy/rose · truecolor)" "amber (gold/peach)" "teal (teal/aqua)" "mono (grayscale)"
         "dracula (truecolor)" "catppuccin (truecolor)" "tokyo-night (truecolor)" "gruvbox (truecolor)"
         "one-dark (truecolor)" "solarized (truecolor)" "everforest (truecolor)" "rose-pine (truecolor)"
     )
@@ -689,7 +785,7 @@ apply_termux_theme() {
     local vals
     vals=$(theme_ansi "$t") || {
         warn "Theme '$t' is a legacy 256-color theme with no full ANSI table."
-        say "Pick a truecolor theme first: nord, dracula, catppuccin, tokyo, gruvbox, onedark, solarized, everforest, rose-pine."
+        say "Pick a truecolor theme first: nord, dracula, catppuccin, tokyo, gruvbox, onedark, solarized, everforest, rosepine."
         return 1
     }
     mkdir -p "$dir" || { err "Cannot create $dir"; return 1; }
@@ -847,11 +943,7 @@ do_install() {
     if have_fzf; then
         use_fzf_for_op install
         local rc=$?
-        if [ "$FZF_ABORTED" = "1" ]; then
-            dim "  fzf picker canceled — type a package name instead."
-        else
-            return $rc
-        fi
+        return $rc   # ESC (FZF_ABORTED=1) cancels back to the main menu
     fi
     ask_name "Package name to install"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
@@ -882,11 +974,7 @@ do_uninstall() {
     if have_fzf; then
         use_fzf_for_op remove
         local rc=$?
-        if [ "$FZF_ABORTED" = "1" ]; then
-            dim "  fzf picker canceled — type a package name instead."
-        else
-            return $rc
-        fi
+        return $rc   # ESC (FZF_ABORTED=1) cancels back to the main menu
     fi
     ask_name "Package name to uninstall"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
@@ -1983,7 +2071,7 @@ do_settings() {
     local choice
     local settings_items=(
         "$ICON_SLIDERS  Package manager: $MGR"
-        "$ICON_THEME  Color theme: $THEME"
+        "$ICON_THEME  Themes & terminal colors: $THEME"
         "$ICON_PAINT  Icons: $ICONS"
         "$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")"
         "$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")"
@@ -1993,17 +2081,16 @@ do_settings() {
         "$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")"
         "$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")"
         "$ICON_SEARCH  fzf picker: $(fzf_label)"
-        "$OPTION_THEME"
         "$ICON_BACK  Back")
     if have_fzf; then
         choice=$(pick_menu "$ICON_SETTINGS  Settings" "${settings_items[@]}")
     else
-        printf '1) Package manager: %s\n2) Color theme: %s\n3) Icons: %s\n4) Safety confirms: %s\n5) History log: %s\n6) Show config file\n7) Quiet mode (skip confirms): %s\n8) Safety lock: %s\n9) Maintenance on launch: %s\n10) Recycle bin (archive on remove): %s\n11) fzf picker: %s\n12) %s\n13) Back\n> ' \
-            "$MGR" "$THEME" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" "$(onoff "$RECYCLE")" "$(fzf_label)" "$OPTION_THEME" >&2
+        printf '1) Package manager: %s\n2) Themes & terminal colors: %s\n3) Icons: %s\n4) Safety confirms: %s\n5) History log: %s\n6) Show config file\n7) Quiet mode (skip confirms): %s\n8) Safety lock: %s\n9) Maintenance on launch: %s\n10) Recycle bin (archive on remove): %s\n11) fzf picker: %s\n12) Back\n> ' \
+            "$MGR" "$THEME" "$ICONS" "$(onoff "$CONFIRM")" "$(onoff "$LOG_ENABLED")" "$(onoff "$QUIET")" "$(onoff "$LOCK")" "$(onoff "$STARTUP_CHECK")" "$(onoff "$RECYCLE")" "$(fzf_label)" >&2
         read -r choice
         case "$choice" in
              1) choice="$ICON_SLIDERS  Package manager: $MGR" ;;
-             2) choice="$ICON_THEME  Color theme: $THEME" ;;
+             2) choice="$ICON_THEME  Themes & terminal colors: $THEME" ;;
              3) choice="$ICON_PAINT  Icons: $ICONS" ;;
              4) choice="$ICON_SHIELD  Safety confirms: $(onoff "$CONFIRM")" ;;
              5) choice="$ICON_MEMO  History log: $(onoff "$LOG_ENABLED")" ;;
@@ -2013,15 +2100,14 @@ do_settings() {
              9) choice="$ICON_MAINT  Maintenance on launch: $(onoff "$STARTUP_CHECK")" ;;
              10) choice="$ICON_TRASH  Recycle bin (archive on remove): $(onoff "$RECYCLE")" ;;
              11) choice="$ICON_SEARCH  fzf picker: $(fzf_label)" ;;
-             12) choice="$OPTION_THEME" ;;
-             13) choice="$ICON_BACK  Back" ;;
+             12) choice="$ICON_BACK  Back" ;;
              *) return ;;
         esac
     fi
     [ -n "$choice" ] || return
     case "$choice" in
         *"Package manager"*) set_mgr ;;
-        *"Color theme"*)     set_theme_pick ;;
+        *"Themes & terminal colors"*) do_theme ;;
         *"Icons"*)           if [ "$ICONS" = "nerd" ]; then ICONS="emoji"; else ICONS="nerd"; fi; init_icons; build_menu; save_config ;;
         *"Safety confirms"*) CONFIRM=$((1-CONFIRM)); save_config ;;
         *"History log"*)     LOG_ENABLED=$((1-LOG_ENABLED)); save_config ;;
@@ -2039,7 +2125,6 @@ do_settings() {
             fi
             say "$ICON_SEARCH fzf: $(fzf_label)"
             save_config ;;
-        *"Themes & terminal colors"*) do_theme ;;
         *) return ;;
     esac
 }
@@ -3408,6 +3493,34 @@ do_selfupdate() {
         rm -f "$new_tmp"
         return 1
     fi
+    # Integrity gate: when the release publishes a companion SHA-256 file,
+    # verify the download before replacing the installed binary. A missing
+    # checksum endpoint (older releases) skips verification but keeps every
+    # check above.
+    if ! checksum_tmp=$(scratch_new); then
+        err "Could not create a temp file for checksum verification."
+        rm -f "$new_tmp"
+        return 1
+    fi
+    if curl -fsSL "$UPDATE_URL.sha256" -o "$checksum_tmp" 2>/dev/null; then
+        local want got
+        want=$(grep -m1 -oE '\b[0-9a-fA-F]{64}\b' "$checksum_tmp" 2>/dev/null | tr 'A-F' 'a-f')
+        got=$(sha256sum "$new_tmp" 2>/dev/null | cut -d' ' -f1)
+        if [ -z "$want" ]; then
+            say "Published checksum was unreadable — skipping SHA-256 verification."
+            log_err "self-update: checksum file unreadable"
+        elif [ -z "$got" ]; then
+            say "sha256sum unavailable — skipping SHA-256 verification."
+        elif [ "$want" != "$got" ]; then
+            err "SHA-256 mismatch — refusing to install (expected $want, got $got)."
+            log_err "self-update: sha256 mismatch"
+            rm -f "$new_tmp" "$checksum_tmp"
+            return 1
+        fi
+    else
+        say "No checksum published for this release — skipping SHA-256 verification."
+    fi
+    rm -f "$checksum_tmp"
     if cmp -s "$new_tmp" "$self"; then
         ok "pkg-manager is already up to date."
         rm -f "$new_tmp"
@@ -3436,14 +3549,25 @@ do_selfupdate() {
 }
 
 do_palette() {
-    local all
-    all=$(printf '%s\n' "${MENU_ITEMS[@]}")
-    local picked
+    local all picked
+    local -a prows=()
+    local i d
+    for i in "${MENU_ITEMS[@]}"; do
+        d="${MENU_DESC[$i]:-}"
+        [ -n "$d" ] && prows+=("$i|$i — $d") || prows+=("$i|$i")
+    done
     if have_fzf; then
-        picked=$(printf '%s\n' "$all" | fzf_select "Command palette — type to filter" "palette> " 0) || picked=""
+        FZF_PREVIEW='line={}; printf "%s\n" "${line#*|}"'
+        FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
+        picked=$(printf '%s\n' "${prows[@]}" | fzf_select "Command palette — type to filter" "❯ " 0 \
+            --header="? preview · / search · ESC cancel" --marker="▶" --gutter=" " --no-separator) || picked=""
+        FZF_PREVIEW=""; FZF_NTH=""
+        [ -n "$picked" ] && picked="${picked%%|*}"
     else
         printf 'Palette — type substring to filter (empty for all): ' >&2
         read -r picked
+        local all
+        all=$(printf '%s\n' "${MENU_ITEMS[@]}")
         if [ -n "$picked" ]; then all=$(printf '%s\n' "$all" | grep -i -- "$picked" || printf '%s\n' "$all"); fi
         if ! tmp=$(scratch_new); then return; fi
         printf '%s\n' "$all" > "$tmp"
@@ -3508,7 +3632,7 @@ do_palette() {
         "$OPTION_SELFUPDATE") do_selfupdate ;;
         "$OPTION_REPOS") do_repos ;;
         "$OPTION_HEALTH") do_health ;;
-        "$OPTION_DEPTREE") do_depgraph ;;
+        "$OPTION_DEPTREE_GRAPH") do_depgraph ;;
         "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
         "$OPTION_THEME") do_theme ;;
         "$OPTION_ESSENTIALS") do_essentials ;;
@@ -3652,7 +3776,7 @@ do_whatsnew() {
     section "What's new in pkg-manager v$VERSION"
     say "  9 real terminal themes with official truecolor palettes:"
     dim "  dracula · catppuccin · tokyo-night · nord · gruvbox · one-dark ·"
-    dim "  solarized · everforest · rose-pine (plus the 8 legacy 256-color ones)"
+    dim "  solarized · everforest · rosepine (plus the 8 legacy 256-color ones)"
     say "  Theme hub: preview every theme, and export the palette to"
     dim "  ~/.termux/colors.properties so the whole terminal matches the app"
     say "  Truecolor in plain text mode too — menus, ok/warn/err all themed"
@@ -3660,6 +3784,18 @@ do_whatsnew() {
     say "  $ICON_BOLT Essential toolkit — one-tap curated package bundles"
     say "  $ICON_GLOBE System & network dashboard (CPU, RAM, storage, battery, DNS)"
     say "  Command palette now covers every menu entry"
+    say "  NEW in v5.1:"
+    dim "  --check-updates lists upgradable packages without opening the app"
+    dim "  --quiet prints just the count (machine-readable, for cron)"
+    dim "  --doctor runs the full system audit and exits"
+    say "  NEW in v5.2:"
+    dim "  apt / pkg backends — every operation goes through the real apt"
+    dim "  package pickers show a live info preview (dpkg status + apt-cache)"
+    dim "  the install list offers only not-installed packages; uninstall gets"
+    dim "    its own finder with removal-flavoured previews"
+    dim "  the banner always stays visible: pickers size below 100% so fzf"
+    dim "    never switches to the alternate screen that hides it"
+    dim "  if fzf itself fails, the app says so and finishes in text mode"
     dim "  Themes → Settings → Color theme, or the theme hub in the main menu."
 }
 
@@ -3680,11 +3816,20 @@ refresh_fzf_cache() {
         last=$(stat -c %Y "$FZF_CACHE" 2>/dev/null || echo 0)
     fi
     if [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
+        # INSTALL list: only packages that are NOT installed yet — already
+        # installed names had to be filtered out of hundreds of rows every time.
+        # Rows are "name|display": fzf shows the pretty column while the picker
+        # hands back the bare name, so descriptions can never leak into the
+        # package name again (that used to break every fzf install).
         {
-            dpkg-query -W -f '${Package}\n' 2>/dev/null | awk '{print "[✓] " $0}'
-            apt list 2>/dev/null | awk -F/ 'NF>=2 && $1 !~ /^Listing/ {print "[ ] " $1}' | sort -u | head -n 1000
-        } | awk '!seen[$0]++' > "${FZF_CACHE}.tmp" 2>/dev/null || true
-        mv "${FZF_CACHE}.tmp" "$FZF_CACHE" 2>/dev/null || true
+            dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > "${FZF_CACHE}.inst" 2>/dev/null || : > "${FZF_CACHE}.inst"
+            apt-cache search ".*" 2>/dev/null | sed -E 's/^([^ ]+) - (.*)$/\1|[ ] \1 · \2/' \
+                | awk -F'|' 'NR == FNR { installed[$1] = 1; next }
+                    $1 != "" && !($1 in installed) && !seen[$1]++' "${FZF_CACHE}.inst" - \
+                > "${FZF_CACHE}.tmp" 2>/dev/null || true
+            mv "${FZF_CACHE}.tmp" "$FZF_CACHE" 2>/dev/null || true
+            rm -f "${FZF_CACHE}.inst" 2>/dev/null || true
+        }
     fi
 }
 
@@ -3695,15 +3840,109 @@ fzf_theme() {
         "$CYAN" "$GREEN" "$YELLOW" "$CYAN" "$PINK" "$PINK" "$GREEN" "$CYAN" "$DIM" "$CYAN"
 }
 
-# fzf_select <header> <prompt> <multi:0|1> — generic themed fzf picker. Choices
-# arrive on stdin (one per line); selection goes to stdout. Returns 1 on abort.
+# Screen-adaptive fzf geometry. A wide terminal gets a side preview pane, a
+# narrow/tall one gets a bottom pane, and everything uses the full height so
+# the picker gets as much room as the screen allows (pattern borrowed from
+# ~/../bin/pkgs).
+# term_size <cols|lines> — real terminal size when attached to a tty, else the
+# shell's COLUMNS/LINES (zsh updates them on resize; tests set them), else 80/24.
+# NB: a non-tty `tput cols` still succeeds with the terminfo default (80), so it
+# cannot be trusted as a fallback — test for the tty instead.
+term_size() {
+    local sz=0
+    if [ -t 1 ]; then
+        if [ "$1" = "cols" ]; then sz=$(tput cols 2>/dev/null || echo 0)
+        else sz=$(tput lines 2>/dev/null || echo 0); fi
+    fi
+    case "$sz" in ''|*[!0-9]*|0)
+        if [ "$1" = "cols" ]; then sz="${COLUMNS:-0}"; else sz="${LINES:-0}"; fi
+        ;; esac
+    case "$sz" in ''|*[!0-9]*|0) sz=$( [ "$1" = "cols" ] && echo 80 || echo 24 ) ;; esac
+    echo "$sz"
+}
+
+fzf_layout() {
+    local cols lines
+    cols=$(term_size cols)
+    lines=$(term_size lines)
+    [ "$cols" -lt 20 ] && cols=80
+    [ "$lines" -lt 10 ] && lines=24
+    if [ "$cols" -gt 110 ] || [ "$cols" -gt $((lines * 3)) ]; then
+        printf 'right:45%%:wrap:border-left'
+    else
+        printf 'down:45%%:wrap:border-top'
+    fi
+}
+
+# Finder height as a percentage of the terminal, ALWAYS below 100%: at 100%
+# fzf enters fullscreen and switches to the alternate screen, which hides
+# everything printed above it (the banner). Below 100% fzf renders in place
+# and the banner stays on screen. ~7 rows are the banner + status strip.
+fzf_height() {
+    local lines pct
+    lines=$(term_size lines)
+    pct=$(( (lines - 7) * 100 / lines ))
+    [ "$pct" -gt 95 ] && pct=95
+    [ "$pct" -lt 50 ] && pct=50
+    echo "${pct}%"
+}
+
+# --margin=<top rows>,<side cols>. Top stays 0; side margins grow on roomy
+# terminals for breathing room.
+fzf_margin() {
+    local cols
+    cols=$(term_size cols)
+    [ "$cols" -lt 20 ] && cols=80
+    local side=2
+    if [ "$cols" -ge 120 ]; then side=6; elif [ "$cols" -ge 90 ]; then side=4; fi
+    echo "0,$side"
+}
+
+
+# Optional preview wiring for fzf_select callers (globals, since bash cannot
+# return arrays): FZF_PREVIEW holds the preview shell command, FZF_NTH holds
+# extra field args such as --nth/--with-nth/--delimiter.
+FZF_PREVIEW=""
+FZF_NTH=""
+
+# fzf_select <header> <prompt> <multi:0|1> [extra fzf args...] — generic themed
+# fzf picker. Choices arrive on stdin (one per line); selection goes to stdout.
+# Returns 1 on abort. When FZF_PREVIEW is set, the preview pane is laid out
+# from the terminal geometry and '?' toggles it.
 fzf_select() {
-    local header="$1" prompt="$2" multi="$3" colors
+    local header="$1" prompt="$2" multi="$3"; shift 3
+    local colors
     colors=$(fzf_theme)
-    local args=(--layout=reverse --cycle --info=inline --height=40% --border=rounded
-        --header="$header" --prompt="$prompt" "$colors")
+    local args=(--layout=reverse --cycle --info=inline-right --header-first --height="$(fzf_height)" --border=rounded
+        --header="$header" --prompt="$prompt" "$colors"
+        --margin="$(fzf_margin)" --padding="1,1")
     [ "$multi" = "1" ] && args+=(-m)
     args+=(--bind='ctrl-a:select-all' --bind='ctrl-d:deselect-all')
+    if [ -n "$FZF_PREVIEW" ]; then
+        args+=(--preview="$FZF_PREVIEW"
+               --preview-window="$(fzf_layout)"
+               --bind='?:toggle-preview')
+        # shellcheck disable=SC2206  # FZF_NTH intentionally holds several flags
+        [ -n "$FZF_NTH" ] && args+=($FZF_NTH)
+    fi
+    args+=("$@")
+    local rc errfile errline
+    errfile=$(mktemp "${TMPDIR:-/tmp}/pkgmgr-fzf-err.XXXXXX" 2>/dev/null) || errfile=""
+    if [ -n "$errfile" ]; then
+        fzf "${args[@]}" 2>"$errfile"
+        rc=$?
+        if [ "$rc" -ge 2 ]; then
+            # rc 0 = picked, 1 = ESC. Anything else is a real fzf failure.
+            errline=$(head -n 1 "$errfile" 2>/dev/null)
+            rm -f "$errfile"
+            warn "fzf failed (exit $rc)${errline:+ — $errline}"
+            say "Switching to text mode for this session (NO_FZF=1 to force it)."
+            UI_MODE="text"; FZF_BROKEN=1
+            return 1
+        fi
+        rm -f "$errfile"
+        return "$rc"
+    fi
     fzf "${args[@]}" 2>/dev/null
 }
 
@@ -3714,7 +3953,7 @@ fzf_select() {
 pick_menu() {
     local header="$1"; shift
     if have_fzf; then
-        printf '%s\n' "$@" | fzf_select "$header" "> " 0
+        printf '%s\n' "$@" | fzf_select "$header" "❯ " 0
         return $?
     fi
     local i=1 o pick
@@ -3735,8 +3974,10 @@ pick_menu() {
 pick_multi() {
     local header="$1"; shift
     if have_fzf; then
-        printf '%s\n' "$@" | fzf_select "$header" "> " 1
-        return $?
+        local sel
+        sel=$(printf '%s\n' "$@" | fzf_select "$header" "❯ " 1) || sel=""
+        if [ -n "$sel" ]; then printf '%s\n' "$sel"; return 0; fi
+        [ "$FZF_BROKEN" = "1" ] || return 1   # ESC vs fzf failure
     fi
     local prompt="${PICK_MULTI_PROMPT:-Pick (space-separated numbers, or n): }"
     printf '%s' "$prompt" >&2
@@ -3755,11 +3996,12 @@ pick_multi() {
 # pick_one <header> — single-select from a stdin list (package names, version
 # lists). fzf first → numbered text prompt.
 pick_one() {
-    local header="$1" prompt="${2:-> }" list pick
+    local header="$1" prompt="${2:-> }" list sel
     list=$(cat)
     if have_fzf; then
-        printf '%s\n' "$list" | fzf_select "$header" "$prompt" 0
-        return $?
+        sel=$(printf '%s\n' "$list" | fzf_select "$header" "$prompt" 0) || sel=""
+        if [ -n "$sel" ]; then printf '%s\n' "$sel"; return 0; fi
+        [ "$FZF_BROKEN" = "1" ] || return 1   # ESC vs fzf failure
     fi
     printf '%s\n' "$list" | nl -w2 -s') ' >&2
     printf '%s' "$prompt" >&2
@@ -3770,35 +4012,85 @@ pick_one() {
     esac
 }
 
+# pkg_preview_cmd [install|remove] — fzf --preview command for a package row.
+# {1} is fzf's field placeholder for the first column of a "name|display" row
+# (substituted before the command runs), so no shell parsing of the row is
+# needed. Sizes are humanized and bat colors the record when available.
+pkg_preview_cmd() {
+    local mode="${1:-install}" pager="cat" action="candidate"
+    command -v bat >/dev/null 2>&1 && pager="bat"
+    [ "$mode" = "remove" ] && action="WILL BE REMOVED"
+    printf '%s' "name={1}; [ -z \"\$name\" ] && { printf '(no package under cursor)\n'; exit 0; }; "
+    printf '%s' "printf '=== %s ===\n' \"\$name\"; "
+    printf '%s' "dpkg-query -W -f='\${Status} \${Version}\n' \"\$name\" 2>/dev/null | head -n1; "
+    if [ "$mode" = "remove" ]; then
+        printf '%s' "printf 'status: $action\n'; du -sh \"\$PREFIX/var/lib/dpkg/info/\$name\" 2>/dev/null | head -n1; "
+    else
+        printf '%s' "apt-cache policy \"\$name\" 2>/dev/null | sed -n 's/^  Candidate: /candidate: /p' | head -n1; "
+    fi
+    printf '%s' "apt-cache show -- \"\$name\" 2>/dev/null | "
+    printf '%s' "awk 'BEGIN{split(\"B KB MB GB TB\",u,\" \")} /^Size:/||/^Installed-Size:/{s=\$2;i=1;while(s>=1024&&i<5){s/=1024;i++}\$2=sprintf(\"%.2f %s\",s,u[i])} {print}' | "
+    if [ "$pager" = "bat" ]; then
+        printf '%s' "bat --color=always --style=plain --language=yaml --paging=never 2>/dev/null || cat"
+    else
+        printf '%s' "cat"
+    fi
+}
+
 fzf_pick_pkgs() {
     local prompt="${1:-Select packages}" mode="${2:-install}" input selected
     if ! have_fzf; then
         echo "fzf not installed. Install with: $MGR install fzf" >&2
         return 1
     fi
+    local pickprompt pickheader pickfooter
     if [ "$mode" = "remove" ]; then
-        input=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | awk '{print "[✓] " $0}' | sort)
+        # Uninstall gets its own finder: installed-only rows, its own prompt,
+        # header and preview emphasis ("will be removed").
+        input=$(while IFS= read -r p; do
+                    [ -n "$p" ] && printf '%s|✓ %s · installed\n' "$p" "$p"
+                done < <(dpkg-query -W -f='${Package}\n' 2>/dev/null | sort))
+        pickprompt="remove ❯ "
+        pickheader="✗ remove · ✓ select · ? preview · / search · Tab multi"
+        pickfooter="installed packages only │ ESC aborts"
     else
         refresh_fzf_cache
         input=$(cat "$FZF_CACHE" 2>/dev/null)
+        pickprompt="install ❯ "
+        pickheader="＋ install · ? preview · / search · Tab multi"
+        pickfooter="not-installed packages only │ ESC aborts"
     fi
     if [ -z "$input" ]; then
         echo "Package list empty. Try apt update first." >&2
         return 1
     fi
-    selected=$(printf '%s\n' "$input" | fzf -m \
-        --layout=reverse --cycle --info=inline --height=40% --border=rounded \
-        --header="$prompt" \
-        --prompt="packages> " \
-        --preview='line={}; pkg=$(printf "%s" "$line" | sed "s/^\[[^]]*\] //"); printf "=== %s ===\n" "$pkg"; apt-cache show "$pkg" 2>/dev/null | head -n 12' \
-        --preview-window='right:45%:wrap' \
-        --bind='ctrl-a:select-all' \
-        --bind='ctrl-d:deselect-all' \
-        "$(fzf_theme)" \
-        2>/dev/null)
+    local inst avail
+    inst=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -c . || true)
+    avail=$(printf '%s\n' "$input" | grep -c . || true)
+    FZF_PREVIEW=$(pkg_preview_cmd "$mode")
+    FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
+    selected=$(printf '%s\n' "$input" | fzf_select \
+        "$prompt — Tab/Space multi-select, ESC to abort" "$pickprompt" 1 \
+        --header="$pickheader" \
+        --footer="${inst:-?} installed · ${avail:-?} in list │ ? toggles preview · ESC aborts" \
+        --marker="✓ " --pointer="▶" --gutter=" " --no-separator) || selected=""
+    FZF_PREVIEW=""; FZF_NTH=""
     if [ $? -ne 0 ]; then return 1; fi
     [ -z "$selected" ] && return 1
-    printf '%s\n' "$selected" | sed -E 's/^\[[^]]*\] //' | sed '/^$/d' | sort -u
+    # Field 1 of "name|display" rows is the bare name; a plain name (text-mode
+    # style input, or a test feeding one line) passes through unchanged.
+    printf '%s\n' "$selected" | cut -d'|' -f1 | sed '/^$/d' | sort -u
+}
+
+# human_size <kb> — "1.2 MB" / "834 KB" for apt's Installed-Size in KB.
+human_size() {
+    local kb="$1"
+    case "$kb" in ''|*[!0-9]*) return 0 ;; esac
+    if [ "$kb" -ge 1024 ]; then
+        awk -v k="$kb" 'BEGIN{printf "%.1f MB", k/1024}'
+    else
+        printf '%s KB' "$kb"
+    fi
 }
 
 batch_preview() {
@@ -3806,16 +4098,35 @@ batch_preview() {
     local pkgs=("$@")
     local total=${#pkgs[@]}
     [ "$total" -eq 0 ] && return 0
-    echo "=== BATCH PREVIEW ($op) ==="
-    printf 'Packages: %s\n' "${pkgs[*]}"
-    echo "Total: $total"
-    if [ "$op" = "install" ]; then
-        for p in "${pkgs[@]}"; do
-            local ver; ver=$(apt-cache policy "$p" 2>/dev/null | grep 'Candidate:' | awk '{print $2}')
-            printf '  %s (candidate: %s)\n' "$p" "${ver:-unknown}"
-        done
-    fi
-    echo "============================="
+    section "Batch preview — $op $total package(s)"
+    local p ver size_kb inst_total=0 have_inst=0 unknown=0 width=0
+    local -a rows=()
+    # gather first so the version column aligns regardless of name lengths
+    for p in "${pkgs[@]}"; do
+        ver=$(apt-cache policy "$p" 2>/dev/null | awk '/Candidate:/{print $2; exit}')
+        size_kb=$(apt-cache show "$p" 2>/dev/null | awk -F': ' '/^Installed-Size:/{print $2; exit}')
+        [ -z "$ver" ] && { ver="not in repositories"; unknown=$((unknown+1)); }
+        [ -n "$size_kb" ] && case "$size_kb" in *[!0-9]*) size_kb="" ;; esac
+        [ -n "$size_kb" ] && inst_total=$((inst_total + size_kb))
+        local tag=""
+        if dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then
+            tag="  $ICON_ERROR already installed"
+            have_inst=$((have_inst+1))
+        fi
+        rows+=("$p|$ver$tag")
+        [ ${#p} -gt "$width" ] && width=${#p}
+    done
+    local row
+    for row in "${rows[@]}"; do
+        say "$(printf '  %-*s  %s' "$width" "${row%%|*}" "${row#*|}")"
+    done
+    local summary="  $ICON_SIZE $total package(s)"
+    [ "$inst_total" -gt 0 ] && summary="$summary · $(human_size "$inst_total") installed size"
+    [ "$have_inst" -gt 0 ] && summary="$summary · $have_inst already present"
+    [ "$unknown" -gt 0 ] && summary="$summary · $unknown not found"
+    dim "$summary"
+    [ "$unknown" -gt 0 ] && warn "  Unresolvable packages are skipped, not installed."
+    hr
 }
 
 audit_log() {
@@ -3888,7 +4199,11 @@ use_fzf_for_op() {
         return 1
     fi
     local selected
-    selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC to abort" "$op") || { FZF_ABORTED=1; return 1; }
+    selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC cancels" "$op") || {
+        FZF_ABORTED=1
+        dim "  Canceled."
+        return 1
+    }
     local -a pkgs=()
     while IFS= read -r line; do
         [ -n "$line" ] && pkgs+=("$line")
@@ -4066,6 +4381,11 @@ Usage:
                                   ~/.termux/colors.properties (truecolor
                                   themes only; run termux-reload-settings
                                   afterwards to apply it)
+  pkg-manager --check-updates    list packages with available upgrades
+                                  (scriptable: prints the count and list)
+  pkg-manager --quiet            print only the upgradable count (machine
+                                  readable, for cron / status lines)
+  pkg-manager --doctor           run the full system audit and exit
 
 Interactive extras (inside the app):
   Settings → Command palette      filter all commands with fzf
@@ -4096,6 +4416,29 @@ USAGE
     export-theme)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
         apply_termux_theme "$2" || exit 1
+        exit 0
+        ;;
+    check-updates|check-updates-quiet)
+        # v5.1: scriptable upgrade check (cron / status scripts).
+        # --check-updates prints a human list; --quiet prints just the count.
+        local_up=$(list_upgradable 2>/dev/null)
+        local_n=$(printf '%s\n' "$local_up" | grep -c . || true)
+        if [ "$CLI_MODE" = "check-updates-quiet" ]; then
+            printf '%s\n' "$local_n"
+            exit 0
+        fi
+        if [ -z "$local_up" ]; then
+            printf 'All packages are up to date.\n'
+            exit 0
+        fi
+        printf '%s package(s) can be upgraded:\n' "$local_n"
+        printf '%s\n' "$local_up"
+        printf '\nUpgrade with: pkg-manager → Upgrade center (or: pkg upgrade)\n'
+        exit 0
+        ;;
+    doctor)
+        # v5.1: the full system audit without the menu.
+        do_audit
         exit 0
         ;;
     "unknown:"*)
@@ -4168,9 +4511,9 @@ while true; do
         "$OPTION_RECYCLE")     do_recycle ;;
         "$OPTION_REPOS")       do_repos ;;
         "$OPTION_UNDO")        do_undo ;;
-        "$OPTION_DEPTREE")     do_depgraph ;;
+        "$OPTION_DEPTREE_GRAPH") do_depgraph ;;
         "$OPTION_HEALTH")      do_health ;;
-        "$OPTION_SNAPSHOT")    do_snapshot ;;
+        "$OPTION_SNAPSHOT_DIFF") do_snapshot ;;
         "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
         "$OPTION_THEME")       do_theme ;;
         "$OPTION_SELFUPDATE")  do_selfupdate ;;
@@ -4180,7 +4523,7 @@ while true; do
         *"Pinned:"*)           pin_install "${choice##*Pinned: }" ;;
         "$OPTION_EXIT")       say "Catch ya later! $ICON_WAVE"; break ;;
         "__INVALID__")        err "Invalid option, try again." ;;
-        "")                   break ;;
+        "")                   say "Catch ya later! $ICON_WAVE"; break ;;
         *)                    err "Invalid option, try again." ;;
     esac
     pause || break

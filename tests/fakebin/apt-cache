@@ -63,9 +63,14 @@ case "$sub" in
         exit 0
         ;;
     search)
+        # install candidates must NOT be in the fake dpkg installed set
+        # (python3/git are installed there, so they no longer belong in the
+        # install list — installed packages are filtered out now).
         case "$pkg" in
-            *python*) echo "python3 - interpreter for Python 3" ;;
+            *python*) echo "python-tool - extra python tooling" ;;
         esac
+        echo "figlet - display large characters made of ordinary screen characters"
+        echo "bat - a cat clone with wings"
         exit 0
         ;;
     *)

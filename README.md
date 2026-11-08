@@ -1,14 +1,14 @@
 > This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.0-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.2-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-159%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-175%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E3.5k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E4.2k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -24,13 +24,11 @@ Wait that's boring, let's try again.
 An **fzf-powered, interactive package manager** for [Termux](https://termux.dev) wrapped in one Bash script. Fuzzy-filter through a gorgeous menu, and let the script handle all the scary apt/pkg syntax for you.
 
 ```
- _______ ______ _____  __  __ _    ___   __
-|__   __|  ____|  __ \|  \/  | |  | \ \ / /
-   | |  | |__  | |__) | \  / | |  | |\ V /
-   | |  |  __| |  _  /| |\/| | |  | | > <
-   | |  | |____| | \ \| |  | | |__| |/ . \
-    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v5.0 ────── 
+    ________________  __  ___
+   / ____/_  __/ __ \/  |/  /
+  / __/   / / / /_/ / /|_/ / 
+ / /___  / / / ____/ /  / /  
+/_____/ /_/ /_/   /_/  /_/   
 ```
 
 > The banner art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
@@ -82,11 +80,16 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
 | 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
-| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **17 themes** (9 truecolor) + Nerd Font or emoji icons |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **16 themes** (9 truecolor) + Nerd Font or emoji icons |
 | 🛟 **Plain-text fallback** — works without `fzf` | 📋 **Timestamped history** of every action |
 | 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test**, **watchlist**, **history charts** | 45–49 |
 | 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 43, 55–58, 59 |
-| 🔍 **fzf integration** | fzf is a first-class picker: multi-select install/uninstall with live `apt-cache` previews, search-result multi-pick, command-palette filter, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 44 |
+| ⌨️ **Consistent ESC** | ESC cancels everywhere — submenus go back a level, the top menu exits with a goodbye, and the package pickers say `Canceled.` and return (no more typed-name detours). If fzf itself ever breaks, the app explains why and finishes the session in numbered text mode | all views |
+| 🖥️ **New 5.1** | **Scriptable CLI**: `--check-updates` lists upgradable packages, `--quiet` prints just the count (for cron/status lines), `--doctor` runs the full system audit and exits — no menu needed | CLI |
+| 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (pickers stay below 100% height), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
+| 🔍 **fzf integration** | fzf is a first-class picker: multi-select install/uninstall with a **live package-info preview pane** (dpkg status + size-humanized `apt-cache show`, `bat`-colored), an **info pane on the main menu and command palette** describing every entry, search-result multi-pick, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 44 |
+| 📐 **Screen-adaptive** | every picker sizes itself below 100% of the terminal so the banner and status strip stay visible above it (fullscreen fzf switches to the alternate screen and hides them), lists entries top-down in natural order, and moves the preview pane to the side on wide/landscape terminals or below on narrow ones | all fzf views |
+| 🧹 **Clean install picker** | only packages you have **not** installed are offered (no more scrolling past 500 installed names); uninstall gets its own finder with installed-only rows and a removal-flavoured preview | 1, 2 |
 
 ## 🚀 Features
 
@@ -170,8 +173,8 @@ pkg-manager      # installed via install.sh / manual method
 
 ```bash
 pkg-manager --help             # full help text
-pkg-manager --version          # v5.0
-pkg-manager --list-themes      # palette preview of all 17 themes
+pkg-manager --version          # v5.2
+pkg-manager --list-themes      # palette preview of all 16 themes
 pkg-manager --theme dracula    # set the app theme (writes ~/.pkg-manager.conf)
 pkg-manager --export-theme tokyo
                                 # write that palette to ~/.termux/colors.properties,
@@ -203,7 +206,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 > **fzf** (installed by default) *is* the UI: type to filter, Enter to run. With neither fzf nor a TTY, just type the number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v5.0
+ ✨ Easy Termux Package Manager · v5.2
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
@@ -317,7 +320,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 |:-:|--------|--------------|
 | 49 | 📂 Optional repositories | add/remove `root` and `x11` snippet files under `sources.list.d/` (files are kept as `disabled.bak` before removal), peek the main line |
 | 50 | 📋 Undo last batch | audit-logged replay/reverse of the last install/remove/purge batch — pick the entry to invert |
-| 51 | 🔗 Dependency tree | resolve and print `Depends`/`Provides` as an indented tree (depth-capped so cycles and huge graphs stay readable) |
+| 51 | 🔗 Dependency tree | colored dependency graph for one package: forward `Depends`/`Recommends`/`Suggests` tree, reverse dependents, and whether it was installed manually or pulled in as a dependency |
 | 52 | 🛡️ Health dashboard | combined check: upgradables, broken deps, disk headroom, cache weight, stale locks, dpkg state — with repair suggestions |
 | 53 | 💾 Snapshot / Diff | shortcut to the full snapshot hub (same as 42) |
 | 54 | ▶️ Auto-mirror | time the mirrors from 45 and switch to the fastest one automatically (then `apt update`) |
@@ -329,7 +332,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 | 55 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
 | 56 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
 | 57 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
-| 58 | 🚀 What's new in v5.0 | the changelog screen for this release |
+| 58 | 🚀 What's new in v5.2 | the changelog screen for this release |
 
 > Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
 
@@ -337,7 +340,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 59 | ⚙️  Settings | backend, theme, quick theme picker, **Themes & terminal colors** (theme hub: preview all / export palette), toggles, quiet mode, safety lock |
+| 59 | ⚙️  Settings | backend, **Themes & terminal colors** (theme hub: pick / preview / export palette / restore), icons, toggles, quiet mode, safety lock |
 | 60+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
@@ -365,7 +368,7 @@ tr ' ' '\n' < ~/pkg-backup-*.txt | xargs apt install -y
 
 ### ⚙️ Settings & config
 
-Inside **⚙️ Settings** (main menu 59, last item) you get: package manager, color theme, icons, safety confirms, history log, show config file, quiet mode, safety lock, maintenance on launch, recycle bin, **fzf picker** (on/off), **Themes & terminal colors** (theme hub: preview all / apply / export palette / restore), and Back.
+Inside **⚙️ Settings** (main menu 59, last item) you get: package manager, **Themes & terminal colors** (the single theme entry — opens the theme hub: pick / preview all / apply to Termux / export palette / restore), icons, safety confirms, history log, show config file, quiet mode, safety lock, maintenance on launch, recycle bin, **fzf picker** (on/off), and Back.
 
 Settings are persisted to `~/.pkg-manager.conf`:
 
@@ -379,7 +382,6 @@ THEME=green       # legacy 256-color: green, blue, purple, red, amber, teal, mon
                   # whole Termux terminal matches
 CONFIRM=1         # ask before destructive actions
 LOG_ENABLED=1     # write action history
-GUM_ENABLED=1     # use the fancy UI
 ICONS=nerd        # nerd (font glyphs) or emoji
 QUIET=0           # 1 = skip all confirmation prompts
 LOCK=0            # 1 = always confirm destructive ops (blocks quiet mode)
@@ -404,7 +406,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~4.2k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 159 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 175 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -435,9 +437,14 @@ A few ground rules to keep the docs in sync:
 
 - **Menu labels** in the README menu-map tables must keep the same text as the `OPTION_*` definitions in `manager.sh` (icons are swapped via the `ICONS` setting).
 - **Icons:** new emoji → pick a Nerd Fonts v3 glyph, verify its codepoint against a patched font (all glyphs must exist in `fonts/`), and add it to both branches of `init_icons()` in `manager.sh`. Bash escapes: `$'\uXXXX'` accepts **4** hex digits only — use `$'\U000XXXXX'` (8 digits, zero-padded) for codepoints above U+FFFF, e.g. `md-hand_wave` is `$'\U000F1821'`.
-- **Bumping the version** means updating every place the name appears: the badge, both ASCII art lines, the menu snapshot, the installer banner (`install.sh`), and the fallback string in `manager.sh` — then regenerate the compressed banner blob.
+- **Bumping the version** means updating every place the name appears: the badge, the menu snapshot, the installer banner (`install.sh`), the `VERSION` string in `manager.sh`, and the two README banner blocks. The banner art itself carries no version (the status strip prints it) — regenerate it only when the wordmark changes:
+  ```bash
+  art=$(figlet -f slant "ETPM" | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}')
+  b64=$(printf '%s' "$art" | gzip -9 | base64 -w0)
+  # then replace BANNER_B64="..." in manager.sh with $b64
+  ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 160 scenario tests).
+- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 171 scenario tests).
 
 ### 🛠️ Make targets (developers)
 
@@ -446,8 +453,8 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 | Command | What it does |
 |---------|--------------|
 | `make` / `make help` | list targets |
-| `make run` | launch the app (`GUM_ENABLED=0 make run` for text mode) |
-| `make test` | full 159-test suite (~3 min, fakebin — no real apt) |
+| `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
+| `make test` | full 175-test suite (~3 min, fakebin — no real apt) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
@@ -463,16 +470,14 @@ Distributed under the [MIT License](LICENSE).
 <div align="center">
 
 ```
- _______ ______ _____  __  __ _    ___   __
-|__   __|  ____|  __ \|  \/  | |  | \ \ / /
-   | |  | |__  | |__) | \  / | |  | |\ V /
-   | |  |  __| |  _  /| |\/| | |  | | > <
-   | |  | |____| | \ \| |  | | |__| |/ . \
-    |_|  |______|_|  \_\_|  |_|\____//_/ \_\
-  ────── Easy Package Manager · v5.0 ────── 
+    ________________  __  ___
+   / ____/_  __/ __ \/  |/  /
+  / __/   / / / /_/ / /|_/ / 
+ / /___  / / / ____/ /  / /  
+/_____/ /_/ /_/   /_/  /_/   
 ```
 
-**Easy Termux Package Manager** · v5.0 · MIT
+**Easy Termux Package Manager** · v5.2 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 
