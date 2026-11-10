@@ -14,7 +14,7 @@ set -o pipefail
 [ -v RECYCLE ] && RECYCLE_ENV=$RECYCLE || RECYCLE_ENV=""
 [ -v FZF_ENABLED ] && FZF_ENABLED_ENV=$FZF_ENABLED || FZF_ENABLED_ENV=""
 
-VERSION="5.2"
+VERSION="5.3.1"
 MGR="apt"
 THEME="green"
 CONFIRM=1
@@ -44,7 +44,19 @@ cleanup_tmp() {
         [ -n "$f" ] && rm -rf -- "$f" 2>/dev/null
     done
     _SCRATCH=()
+    # An exit request must never outlive the session that made it.
+    rm -f -- "${APP_EXIT_FLAG:-}" 2>/dev/null
 }
+
+trap cleanup_tmp EXIT
+
+# request_app_exit / app_exit_wanted — the "quit the app from a submenu"
+# request. It MUST travel through a flag file: picker code always runs inside
+# a command substitution, where a shell variable would die with the subshell.
+request_app_exit() { : > "${APP_EXIT_FLAG:-/dev/null}" 2>/dev/null || true; }
+app_exit_wanted() { [ -f "${APP_EXIT_FLAG:-}" ]; }
+APP_EXIT_FLAG="$HOME/.pkg-manager-exit"
+
 trap cleanup_tmp EXIT
 
 # Load .pkg-manager.conf as plain KEY=VALUE data, never `source`d: the file
@@ -298,6 +310,29 @@ have_fzf() {
     command -v fzf >/dev/null 2>&1
 }
 
+# fzf_supports_ghost — 1 when the installed fzf understands --ghost (0.61+).
+# An unknown flag makes fzf exit 2, which the app reads as "fzf broke" and
+# answers by dropping to text mode — so the ghost is opt-in per version.
+FZF_GHOST_OK=""
+fzf_supports_ghost() {
+    if [ -z "$FZF_GHOST_OK" ]; then
+        local v major minor
+        # The probe runs with the harness queue/log neutralized: the stubbed
+        # fzf of the test suite would otherwise pop a test's answer — although
+        # --version/--help probes are now answered without popping, the
+        # real-fzf call still must not touch them.
+        v=$(FZF_QUEUE='' FZF_CALL_LOG=/dev/null fzf --version 2>/dev/null | head -n1)
+        v="${v%%[^0-9.]*}"
+        major="${v%%.*}"
+        minor="${v#*.}"; minor="${minor%%.*}"
+        case "${major}${minor}" in
+            ''|*[!0-9]*) FZF_GHOST_OK=0 ;;
+            *) if [ "$major" -gt 0 ] || [ "$minor" -ge 61 ]; then FZF_GHOST_OK=1; else FZF_GHOST_OK=0; fi ;;
+        esac
+    fi
+    [ "$FZF_GHOST_OK" = "1" ]
+}
+
 # CLI mode — non-interactive flags (--help --version --theme --export-theme
 # --list-themes) are detected here and handled after all functions are defined (before FIRST_LOOP).
 case "${1:-}" in
@@ -337,17 +372,51 @@ section() {
 
 BANNER_B64="H4sIAAAAAAACA12MwQ0AIAgD/0xxG3QhExZxeKX1JYQCVwJAfzHEtK4p2zKYmSXYt1Qx5SNnW7dbGcyjmP6CslLqB14RzXgAFZPjhpUAAAA="
 
-banner() {
+# banner_text — the banner block (art + status strip) as plain text. Split
+# out of banner() because the same text is embedded in the fzf header: text
+# printed ABOVE an fzf window is static, and a terminal resize makes fzf
+# re-anchor its window, so whatever was above it is wiped and never
+# repainted. Inside the window, fzf owns it and redraws it every time.
+banner_text() {
     local art n favs
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
         art="TERMUX Pkg Manager v$VERSION"
     fi
     printf '%s\n' "$(paint "$CYAN" "$art")"
     # status strip: manager · theme · installed count · version
-    n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
+    n="${1:-}"
+    [ -n "$n" ] || n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
     favs=0
     [ -s "$FAVS_FILE" ] && favs=$(grep -c . "$FAVS_FILE" 2>/dev/null || echo 0)
     dim "  pkg-manager v$VERSION · manager: $MGR · theme: $THEME · installed: ${n:-?} · favorites: $favs"
+}
+
+# BANNER_BLOCK — cached banner text. Refreshed once per menu iteration so
+# the dpkg-query behind the status strip runs once, not once per picker.
+BANNER_BLOCK=""
+
+banner_refresh() {
+    local n
+    n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
+    BANNER_BLOCK="$(banner_text "$n")"
+}
+
+# banner — print the banner above the menu. Text mode only: in fzf mode the
+# banner rides inside the picker window (see banner_header).
+banner() {
+    [ -n "$BANNER_BLOCK" ] || banner_refresh
+    printf '%s\n' "$BANNER_BLOCK"
+}
+
+# banner_header — the banner block for an fzf header. On short terminals the
+# 5-line art is dropped so the picker keeps its rows for the list.
+banner_header() {
+    [ -n "$BANNER_BLOCK" ] || banner_refresh
+    if [ "$(term_size lines)" -lt 20 ]; then
+        printf '%s\n' "$BANNER_BLOCK" | tail -n 1
+    else
+        printf '%s\n' "$BANNER_BLOCK"
+    fi
 }
 
 # valid_pkg_name — 1 if "$1" is a safe package token for apt/dpkg: starts with
@@ -431,6 +500,16 @@ build_menu() {
     OPTION_WHATSNEW="$ICON_ROCKET What's new in v$VERSION"
     OPTION_EXIT="$ICON_EXIT Exit"
 
+    # Submenu pickers append an explicit Exit row, so the app can be left from
+    # any depth without walking back level by level with ESC. Every picker
+    # code path runs inside a command substitution (its stdout is captured),
+    # so a shell variable set there cannot carry the request out — a flag FILE
+    # is the one thing that survives the subshell. The main loop reads it
+    # after each action, prints the farewell and breaks; every do_* level
+    # unwinds normally in the meantime.
+    OPTION_SUB_EXIT="$ICON_BACK Back to main menu"
+    OPTION_APP_EXIT="$ICON_EXIT Exit pkg-manager"
+
     # One-line descriptions for the fzf preview panel, keyed by the final label
     # so they survive nerd/emoji icon switches.
     declare -gA MENU_DESC=()
@@ -497,6 +576,73 @@ build_menu() {
     _menu_desc "$OPTION_WHATSNEW"      "The changelog screen for this release"
     _menu_desc "$OPTION_EXIT"          "Leave pkg-manager"
 
+    # Second line of the preview panel: what the action actually runs or
+    # touches. Verified against each do_* implementation (grep the command),
+    # never invented — this is the "more info" the preview panel exists for.
+    declare -gA MENU_DETAIL=()
+    _menu_detail() { MENU_DETAIL["$1"]="$2"; }
+    _menu_detail "$OPTION_INSTALL"      "runs: apt install <pkgs> — one batch call"
+    _menu_detail "$OPTION_UNINSTALL"    "runs: apt remove <pkgs> (archives the .deb first if RECYCLE=1)"
+    _menu_detail "$OPTION_SEARCH"       "runs: apt search <term>, then an fzf picker of the matches"
+    _menu_detail "$OPTION_LIST"         "runs: apt list --installed / dpkg-query, optional substring filter"
+    _menu_detail "$OPTION_REINSTALL"    "runs: apt install --reinstall <pkg>"
+    _menu_detail "$OPTION_UPDATE"       "runs: apt update, then apt upgrade (all or picked)"
+    _menu_detail "$OPTION_CLEAN"        "runs: apt clean — frees the archive cache"
+    _menu_detail "$OPTION_INFO"         "runs: apt-cache show <pkg>"
+    _menu_detail "$OPTION_AUTOREMOVE"   "runs: apt autoremove -y (orphaned dependencies)"
+    _menu_detail "$OPTION_DEPENDS"      "runs: apt depends <pkg>"
+    _menu_detail "$OPTION_RDEPENDS"     "runs: apt rdepends <pkg>"
+    _menu_detail "$OPTION_SIZE"         "runs: apt-cache show <pkg> (download + installed size)"
+    _menu_detail "$OPTION_FILES"        "runs: dpkg -L <pkg>"
+    _menu_detail "$OPTION_OWNER"        "runs: dpkg -S <file>"
+    _menu_detail "$OPTION_HOLD"         "runs: apt-mark hold / unhold"
+    _menu_detail "$OPTION_PURGE"        "runs: apt purge <pkg> (removes config files too)"
+    _menu_detail "$OPTION_FIXBROKEN"    "runs: apt --fix-broken install"
+    _menu_detail "$OPTION_UPGRADABLE"   "runs: apt list --upgradable"
+    _menu_detail "$OPTION_BACKUP"       "writes ~/pkg-backup-<date>.txt (installed list)"
+    _menu_detail "$OPTION_RESTORE"      "runs: apt install for every name in a backup file"
+    _menu_detail "$OPTION_EXPORT"       "writes ~/pkg-export.txt or ~/pkg-export.json"
+    _menu_detail "$OPTION_IMPORT"       "runs: apt install for every name in a list file"
+    _menu_detail "$OPTION_DOCTOR"       "runs: apt-cache depends/rdepends against the installed set"
+    _menu_detail "$OPTION_SETTINGS"     "reads/writes ~/.pkg-manager.conf (KEY=VALUE, never sourced)"
+    _menu_detail "$OPTION_HISTORY"      "reads ~/.pkg-manager.log and charts it"
+    _menu_detail "$OPTION_SIMULATE"     "dry run only — nothing is installed or removed"
+    _menu_detail "$OPTION_STATS"        "runs: dpkg-query sizes + du of $PREFIX/var/cache/apt/archives"
+    _menu_detail "$OPTION_CACHE"        "runs: apt clean / autoclean, or lists the cached .deb files"
+    _menu_detail "$OPTION_DEPTREE"      "runs: apt-cache depends/rdepends, depth capped at 4"
+    _menu_detail "$OPTION_BULK"         "runs: one apt call for a whole list of names"
+    _menu_detail "$OPTION_FAVS"         "reads/writes ~/.pkg-manager-favs (one package per line)"
+    _menu_detail "$OPTION_INSPECT"      "runs: apt-cache + dpkg-query for a one-screen overview"
+    _menu_detail "$OPTION_MAINT"        "runs: apt update, autoremove, clean + health checks"
+    _menu_detail "$OPTION_GROUPS"       "reads/writes ~/.pkg-manager-groups (name::pkg1 pkg2)"
+    _menu_detail "$OPTION_LOCALDEB"     "runs: dpkg -i <file.deb>, then apt --fix-broken install"
+    _menu_detail "$OPTION_DOWNGRADE"    "runs: apt-cache madison/policy, then apt install <pkg>=<version>"
+    _menu_detail "$OPTION_DLONLY"       "runs: apt download <pkg> (installs nothing)"
+    _menu_detail "$OPTION_HOLDVER"      "runs: apt-mark hold <pkg> on the version you picked"
+    _menu_detail "$OPTION_FILESEARCH"   "runs: apt-file search <file> (needs the apt-file package)"
+    _menu_detail "$OPTION_CHANGELOG"    "runs: apt changelog / apt-get changelog <pkg>"
+    _menu_detail "$OPTION_WHY"          "runs: apt rdepends + apt-mark showmanual/showauto"
+    _menu_detail "$OPTION_NOTES"        "reads/writes ~/.pkg-manager-notes (pkg::note)"
+    _menu_detail "$OPTION_SNAPSHOT"     "runs: tar -czf ~/pkg-snapshot-<date>.tar.gz (all app state)"
+    _menu_detail "$OPTION_PALETTE"      "fuzzy-filters every menu entry"
+    _menu_detail "$OPTION_WATCH"        "reads/writes ~/.pkg-manager-watch, compares versions"
+    _menu_detail "$OPTION_MIRROR"       "times every mirror with curl and offers the fastest"
+    _menu_detail "$OPTION_AUDIT"        "runs: dpkg -l + apt checks, prints a health score"
+    _menu_detail "$OPTION_MARKS"        "runs: apt-mark manual / auto"
+    _menu_detail "$OPTION_RECYCLE"      "browses and restores ~/pkg-trash/*.deb from earlier removals"
+    _menu_detail "$OPTION_REPOS"        "runs: apt install root-repo / x11-repo + apt update"
+    _menu_detail "$OPTION_UNDO"         "reads the batch_start log lines and reverses the last batch"
+    _menu_detail "$OPTION_DEPTREE_GRAPH" "runs: apt-cache depends/rdepends + apt-mark, colored graph"
+    _menu_detail "$OPTION_HEALTH"       "runs: apt list --upgradable, apt-mark showauto, dpkg-query + du"
+    _menu_detail "$OPTION_SNAPSHOT_DIFF" "runs: tar snapshots, then diffs or restores them"
+    _menu_detail "$OPTION_AUTO_MIRROR"  "times the mirrors, picks the fastest, then apt update"
+    _menu_detail "$OPTION_THEME"        "writes ~/.termux/colors.properties (backup kept)"
+    _menu_detail "$OPTION_SELFUPDATE"   "downloads the release, checks SHA-256, replaces the script"
+    _menu_detail "$OPTION_ESSENTIALS"   "insts curated bundles of everyday tools"
+    _menu_detail "$OPTION_SYSINFO"      "reads /proc, battery, DNS and the public IP"
+    _menu_detail "$OPTION_WHATSNEW"     "the changelog screen for this release"
+    _menu_detail "$OPTION_EXIT"         "leaves pkg-manager"
+
     MENU_ITEMS=(
         "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL"
         "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE"
@@ -537,26 +683,52 @@ main_menu() {
         opts+=( "$ICON_PIN Pinned: $p" )
     done
     # fzf-first: fuzzy menu whenever fzf is available and preferred (default).
-    # Rows are "label|description": fzf filters and shows the description in a
-    # preview pane while the picker hands back the bare label.
+    # Rows are "label\x1fdescription\x1frow\x1fdetail": the LIST shows the
+    # bare action label only, the search still covers label + description,
+    # and the preview pane carries the description, what the action runs and
+    # the row number (so the text-mode number is one glance away). \x1f is an
+    # invisible separator: fzf's --with-nth leaves a delimiter marker for the
+    # hidden fields, and a visible one would print it at the end of every row.
     if have_fzf; then
+        local us=$'\x1f'
         local -a rows=()
-        local o d
-        for o in "${opts[@]}" "$OPTION_EXIT"; do
+        local o d det i=0
+        for o in "${opts[@]}"; do
+            i=$((i + 1))
             d="${MENU_DESC[$o]:-}"
-            [ -n "$d" ] && rows+=("$o|$o — $d") || rows+=("$o|$o")
+            det="${MENU_DETAIL[$o]:-}"
+            case "$o" in
+                "$ICON_PIN"*)
+                    d="Pinned favourite — opens straight to it."
+                    det="stored in ~/.pkg-manager-favs"
+                    ;;
+            esac
+            [ -n "$d" ] || d="Open this action."
+            [ -n "$det" ] || det="menu action"
+            rows+=("$o$us$d$us$i$us$det")
         done
-        FZF_PREVIEW='line={}; printf "%s\n" "${line#*|}"'
-        FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
+        # Exit is row 0 in text mode. Braces around $us matter: "$us0" would
+        # parse as the (undefined) variable us0, not separator + "0".
+        rows+=("$OPTION_EXIT${us}${MENU_DESC[$OPTION_EXIT]}${us}0${us}${MENU_DETAIL[$OPTION_EXIT]}")
+        # Bold label, dim context. The ESC bytes live INSIDE the single-quoted
+        # format string: as unquoted arguments they would be glob-parsed by
+        # whatever shell fzf runs the preview with (zsh rejects them outright).
+        local e_bold e_dim e_off
+        e_bold=$'\033[1m'; e_dim=$'\033[2m'; e_off=$'\033[0m'
+        FZF_PREVIEW="printf '\n  ${e_bold}%s${e_off}\n  ───────────────────────────────\n\n  %s\n\n  ${e_dim}%s${e_off}\n  ${e_dim}row %s${e_off}\n' {1} {2} {4} {3}"
+        FZF_NTH="--delimiter=\x1f --nth=1,2 --with-nth=1"
+        FZF_GHOST="type to filter the actions"
         local sel
         sel=$(printf '%s\n' "${rows[@]}" | fzf_select \
             "pkg-manager v$VERSION — filter & pick (ESC to exit)" "❯ " 0 \
             --header="? preview · / search · ESC exit" \
-            --footer="${#opts[@]} entries + Exit │ ? toggles the info pane" \
+            --footer="${#opts[@]} entries + Exit │ ? preview · Y copy · ESC exit · ^Q quit" \
             --marker="▶" --gutter=" " --no-separator) || sel=""
-        FZF_PREVIEW=""; FZF_NTH=""
+        FZF_PREVIEW=""; FZF_NTH=""; FZF_GHOST=""
         if [ -n "$sel" ]; then
-            printf '%s\n' "${sel%%|*}"
+            # fzf hands back the ORIGINAL row, separator and all — split at
+            # the US separator to recover the bare label.
+            printf '%s\n' "${sel%%$'\x1f'*}"
             return
         fi
         # ESC with a healthy fzf cancels (the REPL loop treats it as Exit).
@@ -565,14 +737,14 @@ main_menu() {
     fi
     printf '\n' >&2
         printf '%s\n' "$(paint "$PINK" "  ═══ MAIN MENU ═══")" >&2
-        i=1
-        for o in "${opts[@]}"; do
-            printf '%s  %s\n' "$(paint "$CYAN" "[$i]")" "$o" >&2
-            i=$((i+1))
-        done
-        printf '%s  %s\n' "$(paint "$CYAN" "[0]")" "$OPTION_EXIT" >&2
+        # Same list style as the submenu pickers: right-aligned numbers, a
+        # separator after the number, and the ❯ prompt. Exit stays row 0.
+        local _n=${#opts[@]}
+        local w=${#_n}
+        list_numbered 1 "${opts[@]}"
+        printf "%${LIST_NUM_W}d) %s\n" 0 "$OPTION_EXIT" >&2
         printf '%s\n' "$(paint "$DIM" "  ───────────────")" >&2
-        printf 'Choose an option: ' >&2
+        printf '❯ ' >&2
         if ! read -r n; then
             echo "$OPTION_EXIT"
             return
@@ -596,7 +768,7 @@ main_menu() {
 ask_name() {
     local prompt="$1" mode="${2:-pkg}"
     PKG_NAME=""
-    printf '%s: ' "$prompt" >&2
+    printf '❯ %s: ' "$prompt" >&2
     read -r PKG_NAME
     # normalize: trim surrounding whitespace and CR
     PKG_NAME=$(printf '%s\n' "$PKG_NAME" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
@@ -695,7 +867,7 @@ set_mgr() {
     if have_fzf; then
         m=$(pick_menu "$ICON_SLIDERS  Select package manager" "apt (default, recommended)" "pkg (Termux wrapper)")
     else
-        printf '1) apt\n2) pkg\n> ' >&2
+        printf '1) apt\n2) pkg\n❯ ' >&2
         read -r m
         case "$m" in
             1) m="apt (default, recommended)" ;;
@@ -726,12 +898,8 @@ set_theme_pick() {
     if have_fzf; then
         t=$(pick_menu "$ICON_THEME  Select theme (current: $THEME)" "${labels[@]}")
     else
-        i=1
-        for l in "${labels[@]}"; do
-            printf '%d) %s\n' "$i" "$l" >&2
-            i=$((i+1))
-        done
-        printf '> ' >&2
+        list_numbered 0 "${labels[@]}"
+        printf '❯ ' >&2
         read -r t
         case "$t" in
             [1-9]|1[0-6]) t="${labels[$((t-1))]}" ;;
@@ -825,7 +993,7 @@ restore_termux_theme() {
 }
 
 pause() {
-    printf '\n%s' "Press Enter to continue... "
+    printf '\n%s' "$(paint "$DIM" "Press Enter to continue… ")"
     if ! read -r _; then
         return 1
     fi
@@ -1039,8 +1207,15 @@ do_search() {
     say "$ICON_INSTALL Found installable packages:"
     printf '%s\n' "$cands"
     if have_fzf; then
-        sel=$(printf '%s\n' "$cands" | fzf_select "Install from results — Tab/Space multi-select, ESC for none" "install> " 1) || sel=""
-        [ -n "$sel" ] || { say "Nothing selected."; return; }
+        # Search results are bare names, so the preview's {1} placeholder is
+        # the whole line — no --delimiter/--nth needed (a --with-nth=2 here
+        # would show an empty column). The preview is the same rich apt-cache
+        # record the install and uninstall pickers show.
+        FZF_PREVIEW=$(pkg_preview_cmd install)
+        FZF_GHOST="type to narrow the matches"
+        sel=$(printf '%s\n' "$cands" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "Install from results — Tab/Space multi-select, ESC for none" "install> " 1) || sel=""
+        FZF_PREVIEW=""; FZF_GHOST=""
+        [ -n "$sel" ] || { app_exit_wanted || say "Nothing selected."; return; }
     else
         printf '\nInstall from these results? (space-separated names, or n): ' >&2
         read -r sel
@@ -1048,7 +1223,7 @@ do_search() {
             ""|n|N|no) return ;;
         esac
     fi
-    [ -n "$sel" ] || { say "Nothing selected."; return; }
+    [ -n "$sel" ] || { app_exit_wanted || say "Nothing selected."; return; }
     sel=$(printf '%s\n' "$sel" | tr ' ' '\n' | filter_pkgs)
     [ -n "$sel" ] || { warn "No valid package names."; return; }
     if confirm_danger "$ICON_INSTALL Install $(printf '%s\n' "$sel" | awk 'NF' | wc -l) package(s) from the results?"; then
@@ -1061,14 +1236,16 @@ do_search() {
 
 do_list() {
     log "list installed packages"
-    say "$ICON_LIST Installed packages:"
-    local out
+    local out n
     if [ "$MGR" = "pkg" ]; then
         out=$(pkg list-installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
     else
         out=$(apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
     fi
     if [ -n "$out" ]; then
+        n=$(printf '%s\n' "$out" | grep -c .)
+        say "$ICON_LIST Installed packages ($n):"
+        dim "  ────────────────────────────"
         printf '%s\n' "$out"
     else
         err "Could not list installed packages"
@@ -1153,7 +1330,7 @@ do_upgrade_center() {
         fi
     else
         sel=$(printf '%s\n' "$choice" | filter_pkgs)
-        [ -n "$sel" ] || { say "Nothing selected."; return; }
+        [ -n "$sel" ] || { app_exit_wanted || say "Nothing selected."; return; }
         say "$ICON_UP  Upgrading selected packages..."
         local -a _pkgs=()
         mapfile -t _pkgs <<< "$sel"
@@ -1274,10 +1451,25 @@ do_size() {
     say "$ICON_SIZE  Sizes for $PKG_NAME:"
     local out hint
     out=$(apt-cache show "$PKG_NAME" 2>&1 \
-        | grep -E '^(Package|Version|Size|Installed-Size):' \
-        | sed 's/^Size:/Download size (bytes):/; s/^Installed-Size:/Installed size (KiB):/')
+        | grep -E '^(Package|Version|Size|Installed-Size):')
     if [ -n "$out" ]; then
-        printf '%s\n' "$out"
+        # Bytes and KiB become human sizes; the aligned columns keep the
+        # record readable on a phone (Size is bytes, Installed-Size is KiB).
+        printf '%s\n' "$out" | awk -v pkg="$PKG_NAME" '
+            function human(b,   u, i, v) {
+                split("B KB MB GB TB", u, " "); v=b+0; i=1
+                while (v >= 1024 && i < 5) { v /= 1024; i++ }
+                return sprintf("%.1f %s", v, u[i])
+            }
+            /^Package:/     { sub(/^Package:[[:space:]]*/, ""); pkg=$0
+                               printf "  %-18s %s\n", "Package", $0; next }
+            /^Version:/     { sub(/^Version:[[:space:]]*/, "")
+                               printf "  %-18s %s\n", "Version", $0; next }
+            /^Size:/        { sub(/^Size:[[:space:]]*/, "")
+                               printf "  %-18s %s\n", "Download size", human($0); next }
+            /^Installed-Size:/ { sub(/^Installed-Size:[[:space:]]*/, "")
+                               printf "  %-18s %s\n", "Installed size", human($0*1024); next }
+            { print }'
     else
         hint=$(apt_hint "$out")
         err "${hint:-Package not in cache — run $ICON_UPDATE Upgrade center first?}"
@@ -1423,13 +1615,15 @@ do_fixbroken() {
 
 do_upgradable() {
     log "upgradable list"
-    say "$ICON_UPGRADABLE Packages with available updates:"
-    local out
+    local out n
     if ! out=$(list_upgradable); then
         err "Could not read the upgradable list — run $ICON_UPDATE Upgrade center first?"
         return
     fi
     if [ -n "$out" ]; then
+        n=$(printf '%s\n' "$out" | grep -cv '^$')
+        say "$ICON_UPGRADABLE Packages with available updates ($n):"
+        dim "  ────────────────────────────"
         printf '%s\n' "$out"
     else
         ok "All packages are up to date!"
@@ -1672,7 +1866,7 @@ do_bulk() {
     [ -n "$a" ] || return
     case "$a" in
         Install*)
-            printf 'Packages (space-separated): ' >&2
+            printf '❯ Packages (space-separated): ' >&2
             read -r names
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
@@ -1687,7 +1881,7 @@ do_bulk() {
             fi
             ;;
         Remove*multiple*)
-            printf 'Packages (space-separated): ' >&2
+            printf '❯ Packages (space-separated): ' >&2
             read -r names
             names=$(printf '%s\n' "$names" | tr ' ' '\n' | filter_pkgs)
             n=$(printf '%s\n' "$names" | awk 'NF' | wc -l)
@@ -1742,7 +1936,7 @@ pick_names() {
         n=$(wc -l < "$tmp")
         [ "$n" -gt 0 ] || { rm -f "$tmp"; warn "No packages to pick from."; return 1; }
         nl -w2 -s') ' "$tmp" >&2
-        printf 'Numbers (space-separated): ' >&2
+        printf '❯ Numbers (space-separated): ' >&2
         read -r sel
         for i in $sel; do
             case "$i" in ''|*[!0-9]*) continue ;; esac
@@ -1773,7 +1967,7 @@ pick_upgradable() {
         printf '%s\n' "$list" > "$tmp"
         n=$(wc -l < "$tmp")
         nl -w2 -s') ' "$tmp" >&2
-        printf 'Numbers (space-separated): ' >&2
+        printf '❯ Numbers (space-separated): ' >&2
         read -r sel
         for i in $sel; do
             case "$i" in ''|*[!0-9]*) continue ;; esac
@@ -1828,7 +2022,7 @@ do_favs() {
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
-                printf 'Pick number (0 = cancel): ' >&2
+                printf '❯ Pick number (0 = cancel): ' >&2
                 read -r a
                 case "$a" in
                     [1-9]|[1-9][0-9]) name=$(sed -n "${a}p" "$FAVS_FILE") ;;
@@ -1897,7 +2091,7 @@ do_favs() {
             else
                 printf 'Favorites:\n' >&2
                 nl -w2 -s') ' "$FAVS_FILE" >&2
-                printf 'Pick number (0 = cancel): ' >&2
+                printf '❯ Pick number (0 = cancel): ' >&2
                 read -r a
                 case "$a" in
                     [1-9]|[1-9][0-9]) name=$(sed -n "${a}p" "$FAVS_FILE") ;;
@@ -2196,8 +2390,11 @@ do_history() {
     [ -n "$a" ] || return
     case "$a" in
         *"all history"*)
-            say "$ICON_HISTORY Action history ($LOG_FILE)"
-            cat "$LOG_FILE"
+            local lines
+            lines=$(grep -c . "$LOG_FILE" 2>/dev/null || echo 0)
+            say "$ICON_HISTORY Action history — $lines entr$( [ "$lines" = "1" ] && echo y || echo ies) ($LOG_FILE)"
+            dim "  ────────────────────────────"
+            grep -n . "$LOG_FILE" | tail -n 60
             ;;
         *errors*)
             say "$ICON_ERROR Errors & failures in the log:"
@@ -2518,7 +2715,7 @@ do_groups() {
             else
                 printf 'Custom groups:\n' >&2
                 nl -w2 -s') ' "$GROUPS_FILE" | sed 's/::/ /' >&2
-                printf 'Pick number (0 = cancel): ' >&2
+                printf '❯ Pick number (0 = cancel): ' >&2
                 read -r a
                 case "$a" in
                     [1-9]|[1-9][0-9]) gname=$(sed -n "${a}p" "$GROUPS_FILE" | sed 's/::.*//') ;;
@@ -2553,12 +2750,10 @@ pick_group() {
         printf '%s\n' "${gnames[@]}" | pick_one "$header"
     else
         printf 'Groups:\n' >&2
-        local i=1 n
-        while IFS= read -r n; do
-            printf '%d) %s\n' "$i" "$n" >&2
-            i=$((i+1))
-        done < <(group_names)
-        printf 'Pick number (0 = cancel): ' >&2
+        local n
+        mapfile -t _gnames < <(group_names)
+        list_numbered 0 "${_gnames[@]}"
+        printf '❯ Pick number (0 = cancel): ' >&2
         read -r a
         case "$a" in
             [1-9]|[1-9][0-9]) group_names | sed -n "${a}p" ;;
@@ -2612,7 +2807,7 @@ do_downgrade() {
         if ! tmp=$(scratch_new); then warn "Could not create temp file."; return; fi
         printf '%s\n' "$vers" > "$tmp"
         nl -w2 -s') ' "$tmp" >&2
-        printf 'Pick number (0 = cancel): ' >&2
+        printf '❯ Pick number (0 = cancel): ' >&2
         read -r picked
         case "$picked" in [1-9]|[1-9][0-9]) picked=$(sed -n "${picked}p" "$tmp") ;; *) rm -f "$tmp"; return ;; esac
         rm -f "$tmp"
@@ -2688,7 +2883,7 @@ do_holdver() {
             if have_fzf; then
                 picked=$(printf '%s\n' "$vers" | pick_one "Pick version to hold")
             else
-                printf '%s\n' "$vers" >&2; printf 'Version: ' >&2; read -r picked
+                printf '%s\n' "$vers" >&2; printf '❯ Version: ' >&2; read -r picked
             fi
             [ -n "$picked" ] || return
             case "$picked" in -* ) err "Invalid version."; return ;; esac
@@ -2716,7 +2911,7 @@ do_holdver() {
 
 do_filesearch() {
     local pat
-    printf 'File pattern to search (e.g. bin/python): ' >&2
+    printf '❯ File pattern to search (e.g. bin/python): ' >&2
     read -r pat
     pat=$(printf '%s\n' "$pat" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     [ -n "$pat" ] || { warn "No pattern given."; return; }
@@ -2787,7 +2982,7 @@ do_notes() {
             ask_name "Package to annotate"
             [ -n "$PKG_NAME" ] || return
             local note
-            printf 'Note for %s: ' "$PKG_NAME" >&2; read -r note
+            printf '❯ Note for %s: ' "$PKG_NAME" >&2; read -r note
             note=$(printf '%s\n' "$note" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/::/--/g')
             [ -n "$note" ] || { warn "No note given."; return; }
             if [ -f "$NOTES_FILE" ] && awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
@@ -2819,7 +3014,7 @@ do_notes() {
         Search*)
             [ -s "$NOTES_FILE" ] || { warn "No notes yet."; return; }
             local q
-            printf 'Search: ' >&2; read -r q
+            printf '❯ Search: ' >&2; read -r q
             [ -n "$q" ] || return
             grep -i -- "$q" "$NOTES_FILE" || say "No matches."
             ;;
@@ -2888,8 +3083,8 @@ do_snapshot() {
             else
                 printf 'Snapshots:\n' >&2
                 local i=1
-                for _s in "${snap_files[@]}"; do printf '%d) %s\n' "$i" "$_s" >&2; i=$((i+1)); done
-                printf 'Pick 2 (space-separated numbers): ' >&2
+                list_numbered 0 "${snap_files[@]}"
+                printf '❯ Pick 2 (space-separated numbers): ' >&2
                 read -r picked
                 picked=$(printf '%s\n' "$picked" | tr ' ' '\n' | while read -r n; do [ -n "$n" ] && printf '%s\n' "${snap_files[$((n-1))]}"; done | tr '\n' ' ')
                 # shellcheck disable=SC2086
@@ -3176,7 +3371,7 @@ do_watch() {
             else
                 printf 'Watchlist:\n' >&2
                 nl -w2 -s') ' "$WATCH_FILE" >&2
-                printf 'Pick number (0 = cancel): ' >&2
+                printf '❯ Pick number (0 = cancel): ' >&2
                 read -r p
                 case "$p" in
                     [1-9]|[1-9][0-9]) p=$(sed -n "${p}p" "$WATCH_FILE") ;;
@@ -3551,20 +3746,27 @@ do_selfupdate() {
 do_palette() {
     local all picked
     local -a prows=()
-    local i d
+    local i d det n=0 us=$'\x1f'
     for i in "${MENU_ITEMS[@]}"; do
+        n=$((n + 1))
         d="${MENU_DESC[$i]:-}"
-        [ -n "$d" ] && prows+=("$i|$i — $d") || prows+=("$i|$i")
+        [ -n "$d" ] || d="Open this action."
+        det="${MENU_DETAIL[$i]:-}"
+        [ -n "$det" ] || det="menu action"
+        prows+=("$i$us$d$us$n$us$det")
     done
     if have_fzf; then
-        FZF_PREVIEW='line={}; printf "%s\n" "${line#*|}"'
-        FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
+        local e_bold e_dim e_off
+        e_bold=$'\033[1m'; e_dim=$'\033[2m'; e_off=$'\033[0m'
+        FZF_PREVIEW="printf '\n  ${e_bold}%s${e_off}\n  ───────────────────────────────\n\n  %s\n\n  ${e_dim}%s${e_off}\n  ${e_dim}row %s${e_off}\n' {1} {2} {4} {3}"
+        FZF_NTH="--delimiter=\x1f --nth=1,2 --with-nth=1"
+        FZF_GHOST="type to filter the commands"
         picked=$(printf '%s\n' "${prows[@]}" | fzf_select "Command palette — type to filter" "❯ " 0 \
             --header="? preview · / search · ESC cancel" --marker="▶" --gutter=" " --no-separator) || picked=""
-        FZF_PREVIEW=""; FZF_NTH=""
-        [ -n "$picked" ] && picked="${picked%%|*}"
+        FZF_PREVIEW=""; FZF_NTH=""; FZF_GHOST=""
+        [ -n "$picked" ] && picked="${picked%%$'\x1f'*}"
     else
-        printf 'Palette — type substring to filter (empty for all): ' >&2
+        printf '❯ Palette — type substring to filter (empty for all): ' >&2
         read -r picked
         local all
         all=$(printf '%s\n' "${MENU_ITEMS[@]}")
@@ -3706,8 +3908,8 @@ do_essentials() {
         pick=$(pick_menu "$ICON_BOLT  Essential toolkit — pick a bundle" "${bundles[@]}" "$ICON_BACK  Back")
     else
         local i=1
-        for b in "${bundles[@]}"; do printf '%d) %s\n' "$i" "$b" >&2; i=$((i+1)); done
-        printf '6) Back\n> ' >&2
+        list_numbered 0 "${bundles[@]}"
+        printf '❯ 6) Back\n' >&2
         read -r pick
         case "$pick" in
             1|2|3|4|5) pick="${bundles[$((pick-1))]}" ;;
@@ -3793,9 +3995,34 @@ do_whatsnew() {
     dim "  package pickers show a live info preview (dpkg status + apt-cache)"
     dim "  the install list offers only not-installed packages; uninstall gets"
     dim "    its own finder with removal-flavoured previews"
-    dim "  the banner always stays visible: pickers size below 100% so fzf"
-    dim "    never switches to the alternate screen that hides it"
+    dim "  the banner travels INSIDE every picker (it is the header), so a"
+    dim "    terminal resize can no longer wipe it off the screen"
+    dim "  pickers still size below 100% so fzf never switches to the"
+    dim "    alternate screen that hides them"
     dim "  if fzf itself fails, the app says so and finishes in text mode"
+    say "  NEW in v5.3:"
+    dim "  the screen clears before the app starts"
+    dim "  every submenu picker ends with an Exit row, so the app can be left"
+    dim "    from any depth — picking packages and then Exit still installs them"
+    dim "  every fzf picker shows a ghost hint in its input line (type to"
+    dim "    filter …), with the live count where one is meaningful"
+    dim "  the menu LIST shows the bare action label only — the description,"
+    dim "    what the action runs and the row number moved to the preview pane"
+    dim "  the preview panel now explains what each action actually does"
+    dim "    (apt install / apt purge / dpkg -L …), never a repeat of the"
+    dim "    status strip"
+    dim "  search results gained the same package-info preview pane"
+    dim "  install/uninstall rows are capped to the list width, so a long"
+    dim "    description is truncated instead of scrolling sideways into a"
+    dim "    middle slice of itself — the full text stays in the preview"
+    say "  NEW in v5.3.1:"
+    dim "  every submenu now has TWO rows: ⬅️ Back to main menu (back a"
+    dim "    level, like ESC) and 🚪 Exit pkg-manager (leave the app)"
+    dim "  Ctrl-Q quits the app from any fzf picker, one key"
+    dim "  long lists/reports now show their entry counts and rules;"
+    dim "    package sizes print human-readable instead of raw bytes/KiB"
+    dim "  row overflow no longer scrolls sideways (fzf gets --no-hscroll,"
+    dim "    and --tiebreak ranks matches on the name first)"
     dim "  Themes → Settings → Color theme, or the theme hub in the main menu."
 }
 
@@ -3818,12 +4045,12 @@ refresh_fzf_cache() {
     if [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
         # INSTALL list: only packages that are NOT installed yet — already
         # installed names had to be filtered out of hundreds of rows every time.
-        # Rows are "name|display": fzf shows the pretty column while the picker
-        # hands back the bare name, so descriptions can never leak into the
-        # package name again (that used to break every fzf install).
+        # Rows are "name|description" with the FULL description: the display
+        # column is built (and length-capped) when the list is READ, not here,
+        # so a terminal resize no longer invalidates the cache.
         {
             dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > "${FZF_CACHE}.inst" 2>/dev/null || : > "${FZF_CACHE}.inst"
-            apt-cache search ".*" 2>/dev/null | sed -E 's/^([^ ]+) - (.*)$/\1|[ ] \1 · \2/' \
+            apt-cache search ".*" 2>/dev/null | sed -E 's/^([^ ]+) - (.*)$/\1|\2/' \
                 | awk -F'|' 'NR == FNR { installed[$1] = 1; next }
                     $1 != "" && !($1 in installed) && !seen[$1]++' "${FZF_CACHE}.inst" - \
                 > "${FZF_CACHE}.tmp" 2>/dev/null || true
@@ -3838,6 +4065,27 @@ refresh_fzf_cache() {
 fzf_theme() {
     printf -- '--color=fg:%s,hl:%s,fg+:%s,info:%s,prompt:%s,pointer:%s,marker:%s,spinner:%s,header:%s,border:%s' \
         "$CYAN" "$GREEN" "$YELLOW" "$CYAN" "$PINK" "$PINK" "$GREEN" "$CYAN" "$DIM" "$CYAN"
+}
+
+# Widest display column a picker may use: rows longer than this make fzf
+# scroll the list horizontally, and a scrolled row shows a useless MIDDLE
+# slice of its text ("·nes for reading and writing data files in FITS (Fle…")
+# instead of the name it starts with. The preview pane takes ~45% on the side
+# on wide/landscape screens, and sits below (full width) otherwise.
+fzf_disp_max() {
+    local cols lines n
+    cols=$(term_size cols)
+    lines=$(term_size lines)
+    [ "$cols" -lt 20 ] && cols=80
+    [ "$lines" -lt 10 ] && lines=24
+    if [ "$cols" -gt 110 ] || [ "$cols" -gt $((lines * 3)) ]; then
+        n=$(( cols * 55 / 100 ))
+    else
+        n=$cols
+    fi
+    n=$(( n - 8 ))          # borders, padding, gutter, pointer marker
+    [ "$n" -lt 24 ] && n=24
+    echo "$n"
 }
 
 # Screen-adaptive fzf geometry. A wide terminal gets a side preview pane, a
@@ -3876,12 +4124,13 @@ fzf_layout() {
 
 # Finder height as a percentage of the terminal, ALWAYS below 100%: at 100%
 # fzf enters fullscreen and switches to the alternate screen, which hides
-# everything printed above it (the banner). Below 100% fzf renders in place
-# and the banner stays on screen. ~7 rows are the banner + status strip.
+# everything around the picker. The banner rides inside the window (it is
+# the header), so the window may use nearly the whole screen — fzf shrinks
+# the list to fit the header rows.
 fzf_height() {
     local lines pct
     lines=$(term_size lines)
-    pct=$(( (lines - 7) * 100 / lines ))
+    pct=$(( (lines - 1) * 100 / lines ))
     [ "$pct" -gt 95 ] && pct=95
     [ "$pct" -lt 50 ] && pct=50
     echo "${pct}%"
@@ -3901,9 +4150,11 @@ fzf_margin() {
 
 # Optional preview wiring for fzf_select callers (globals, since bash cannot
 # return arrays): FZF_PREVIEW holds the preview shell command, FZF_NTH holds
-# extra field args such as --nth/--with-nth/--delimiter.
+# extra field args such as --nth/--with-nth/--delimiter, FZF_GHOST holds the
+# hint text fzf shows in the input line while it is empty.
 FZF_PREVIEW=""
 FZF_NTH=""
+FZF_GHOST=""
 
 # fzf_select <header> <prompt> <multi:0|1> [extra fzf args...] — generic themed
 # fzf picker. Choices arrive on stdin (one per line); selection goes to stdout.
@@ -3913,8 +4164,25 @@ fzf_select() {
     local header="$1" prompt="$2" multi="$3"; shift 3
     local colors
     colors=$(fzf_theme)
+    # A caller may pass its own --header=...; merge it with the banner block
+    # instead of letting it replace the whole header.
+    local extra_header="" a
+    local -a extra=()
+    for a in "$@"; do
+        case "$a" in
+            --header=*) extra_header="${a#--header=}" ;;
+            *) extra+=("$a") ;;
+        esac
+    done
+    [ -n "$extra_header" ] && header="$extra_header"
+    # The banner travels INSIDE the window, as header lines. Text printed
+    # above an fzf window is static: on resize fzf re-anchors its window and
+    # the static text above it is wiped for good (fzf cannot repaint it).
+    header="$(banner_header)"$'\n'"$header"
     local args=(--layout=reverse --cycle --info=inline-right --header-first --height="$(fzf_height)" --border=rounded
         --header="$header" --prompt="$prompt" "$colors"
+        --no-hscroll --ellipsis="…"
+        '--tiebreak=begin,length,index'
         --margin="$(fzf_margin)" --padding="1,1")
     [ "$multi" = "1" ] && args+=(-m)
     args+=(--bind='ctrl-a:select-all' --bind='ctrl-d:deselect-all')
@@ -3925,11 +4193,42 @@ fzf_select() {
         # shellcheck disable=SC2206  # FZF_NTH intentionally holds several flags
         [ -n "$FZF_NTH" ] && args+=($FZF_NTH)
     fi
-    args+=("$@")
-    local rc errfile errline
-    errfile=$(mktemp "${TMPDIR:-/tmp}/pkgmgr-fzf-err.XXXXXX" 2>/dev/null) || errfile=""
+    # Ghost hint in the input line (fzf >= 0.61 only).
+    [ -n "$FZF_GHOST" ] && fzf_supports_ghost && args+=(--ghost="$FZF_GHOST")
+    # Whole-row highlight + slim scrollbar when this fzf understands the
+    # flags. The caps string is probed ONCE at startup (exported
+    # APP_INIT_CAPS) so no picker pays forks for it. The probe neutralizes
+    # the queue/log: the test-suite fake fzf would otherwise pop a queued
+    # answer and pollute the call log.
+    case "${APP_INIT_CAPS:-}" in
+        *'--highlight-line'*) args+=(--highlight-line) ;;
+    esac
+    case "${APP_INIT_CAPS:-}" in
+        *'--scrollbar'*) args+=(--scrollbar='▏') ;;
+    esac
+    # Ctrl-Y copies the highlighted name to the clipboard (Termux:API only —
+    # without termux-clipboard-set the key is simply not bound). {1} is the
+    # bare package/action name, never the display column.
+    if command -v termux-clipboard-set >/dev/null 2>&1; then
+        args+=(--bind="ctrl-y:execute-silent(printf '%s' {1} | termux-clipboard-set 2>/dev/null)+bell")
+    fi
+    # Ctrl-Q (or the "Exit pkg-manager" row): leave the app from any picker.
+    # The command runs in fzf's shell, so the path is expanded here.
+    args+=(--bind="ctrl-q:execute-silent(touch ${APP_EXIT_FLAG:?})+abort")
+    [ "${#extra[@]}" -gt 0 ] && args+=("${extra[@]}")
+    # --no-hscroll + --ellipsis: a row wider than the list pane used to be
+    # H-scrolled so fzf kept the matched substring plus hscroll-off=10
+    # columns visible — the user got a useless middle slice wrapped in the
+    # default ellipsis string '··' (e.g. '··passphrase2pgp · Generate
+    # EdDSA…··'), with the row's leading marker scrolled off the left edge.
+    # --no-hscroll anchors every row at its start and cuts the tail at the
+    # right edge instead; --ellipsis="…" makes a cut read as normal
+    # truncation. Row pre-clipping with fzf_disp_max() stays as the second
+    # belt (the full row text is also always in the preview pane).
+    local rc errfile out
+    errfile=$(mktemp "${TMPDIR:-$HOME}/pkgmgr-fzf-err.XXXXXX" 2>/dev/null) || errfile=""
     if [ -n "$errfile" ]; then
-        fzf "${args[@]}" 2>"$errfile"
+        out=$(fzf "${args[@]}" 2>"$errfile")
         rc=$?
         if [ "$rc" -ge 2 ]; then
             # rc 0 = picked, 1 = ESC. Anything else is a real fzf failure.
@@ -3941,28 +4240,72 @@ fzf_select() {
             return 1
         fi
         rm -f "$errfile"
-        return "$rc"
+    else
+        out=$(fzf "${args[@]}" 2>/dev/null)
+        rc=$?
     fi
-    fzf "${args[@]}" 2>/dev/null
+    # The submenu Exit row is not a pick: strip it from the answer so no caller
+    # can ever install a package called "Exit pkg-manager", and record the
+    # request in the flag file — this runs inside the caller's command
+    # substitution, where a variable would die with the subshell. Anything
+    # ELSE the user selected stays in the answer, so "pick two, then Exit"
+    # still installs the two.
+    if [ -n "$OPTION_SUB_EXIT" ] && printf '%s\n' "$out" | grep -qF "$OPTION_SUB_EXIT"; then
+        out=$(printf '%s\n' "$out" | grep -vF "$OPTION_SUB_EXIT" || true)
+        # "Back to main menu" picked alone == ESC: no answer, so the caller
+        # returns one level. Anything else picked stays in the answer.
+        [ -n "$out" ] || rc=1
+    fi
+    # The explicit app-exit row (or the ctrl-q bind below) asks to LEAVE THE
+    # APP: the request rides in the flag file out of this command
+    # substitution, and the main loop answers it with the farewell.
+    if [ -n "$OPTION_APP_EXIT" ] && printf '%s\n' "$out" | grep -qF "$OPTION_APP_EXIT"; then
+        request_app_exit
+        out=$(printf '%s\n' "$out" | grep -vF "$OPTION_APP_EXIT" || true)
+        [ -n "$out" ] || rc=1
+    fi
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return "$rc"
+}
+
+# list_numbered <extra_rows> <item>... — print an aligned numbered list to
+# stderr. <extra_rows> counts the rows that follow the list (e.g. the Exit
+# row) so the number column is uniform for every row of that list. The width
+# follows the total (9 rows -> "1)", 12 rows -> " 1)") and is left in
+# LIST_NUM_W for a caller that prints the trailing row itself.
+list_numbered() {
+    local extra_rows=$1; shift
+    local n=$(($# + extra_rows))
+    LIST_NUM_W=${#n}
+    local i=1 o
+    for o in "$@"; do printf "%${LIST_NUM_W}d) %s\n" "$i" "$o" >&2; i=$((i+1)); done
 }
 
 # pick_menu <header> <item>... — single-select submenu picker.
 # fzf → numbered text list (blank = cancel).
 # The text branch prints the same 1) item … > list the app used before, so
-# scripted/text-mode behavior is unchanged.
+# scripted/text-mode behavior is unchanged. Both branches append the Exit row.
 pick_menu() {
     local header="$1"; shift
     if have_fzf; then
-        printf '%s\n' "$@" | fzf_select "$header" "❯ " 0
+        printf '%s\n' "$@" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "$header" "❯ " 0
         return $?
     fi
-    local i=1 o pick
-    for o in "$@"; do printf '%d) %s\n' "$i" "$o" >&2; i=$((i+1)); done
-    printf '> ' >&2
+    local pick exit_n app_n
+    exit_n=$(( $# + 1 ))
+    app_n=$(( $# + 2 ))
+    list_numbered 2 "$@"
+    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
+    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
+    printf '❯ ' >&2
     read -r pick
     case "$pick" in
         [1-9]|[1-9][0-9])
-            if [ "$pick" -ge 1 ] && [ "$pick" -le $# ]; then printf '%s\n' "$@" | sed -n "${pick}p"; return 0; fi
+            if [ "$pick" -eq "$app_n" ]; then request_app_exit; return 1; fi
+            if [ "$pick" -eq "$exit_n" ]; then return 1; fi
+            if [ "$pick" -ge 1 ] && [ "$pick" -lt "$exit_n" ]; then
+                printf '%s\n' "$@" | sed -n "${pick}p"; return 0
+            fi
             return 1 ;;
         *) return 1 ;;
     esac
@@ -3971,20 +4314,28 @@ pick_menu() {
 # pick_multi <header> <item>... — multi-select submenu picker (packages,
 # files, snapshots). fzf -m first → space-separated
 # text prompt (an optional trailing prompt string via PICK_MULTI_PROMPT).
+# The Exit row is stripped from the answer before it is returned, so picking
+# packages and then Exit still installs them — and then leaves the app.
 pick_multi() {
     local header="$1"; shift
     if have_fzf; then
-        local sel
-        sel=$(printf '%s\n' "$@" | fzf_select "$header" "❯ " 1) || sel=""
-        if [ -n "$sel" ]; then printf '%s\n' "$sel"; return 0; fi
-        [ "$FZF_BROKEN" = "1" ] || return 1   # ESC vs fzf failure
+        printf '%s\n' "$@" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "$header" "❯ " 1
+        return $?
     fi
     local prompt="${PICK_MULTI_PROMPT:-Pick (space-separated numbers, or n): }"
+    local tok exit_n app_n
+    exit_n=$(( $# + 1 ))
+    app_n=$(( $# + 2 ))
+    list_numbered 2 "$@"
+    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
+    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
     printf '%s' "$prompt" >&2
     read -r _picks
     case "$_picks" in ""|n|N|no) return 1 ;; esac
-    local n out="" tok
+    local n out=""
     for tok in $_picks; do
+        if [ "$tok" -eq "$exit_n" ] 2>/dev/null; then continue; fi
+        if [ "$tok" -eq "$app_n" ] 2>/dev/null; then request_app_exit; continue; fi
         case "$tok" in
             [1-9]|[1-9][0-9]) n=$(printf '%s\n' "$@" | sed -n "${tok}p"); out="$out$n\n" ;;
         esac
@@ -3994,20 +4345,31 @@ pick_multi() {
 }
 
 # pick_one <header> — single-select from a stdin list (package names, version
-# lists). fzf first → numbered text prompt.
+# lists). fzf first → numbered text prompt. Both branches append the Exit row.
 pick_one() {
-    local header="$1" prompt="${2:-> }" list sel
+    local header="$1" prompt="${2:-❯ }" list sel
     list=$(cat)
     if have_fzf; then
-        sel=$(printf '%s\n' "$list" | fzf_select "$header" "$prompt" 0) || sel=""
-        if [ -n "$sel" ]; then printf '%s\n' "$sel"; return 0; fi
-        [ "$FZF_BROKEN" = "1" ] || return 1   # ESC vs fzf failure
+        printf '%s\n' "$list" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "$header" "$prompt" 0
+        return $?
     fi
-    printf '%s\n' "$list" | nl -w2 -s') ' >&2
+    local exit_n app_n pick n i
+    exit_n=$(( $(printf '%s\n' "$list" | grep -c .) + 1 ))
+    app_n=$(( exit_n + 1 ))
+    # Width-aware rows (aligned when a list runs to two digits); matches the
+    # exit row that pick_menu/pick_multi print.
+    n=1
+    mapfile -t _items <<< "$list"
+    list_numbered 2 "${_items[@]}"
+    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
+    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
     printf '%s' "$prompt" >&2
     read -r pick
     case "$pick" in
-        [1-9]|[1-9][0-9]) printf '%s\n' "$list" | sed -n "${pick}p" ;;
+        [1-9]|[1-9][0-9])
+            if [ "$pick" -eq "$app_n" ]; then request_app_exit; return 1; fi
+            if [ "$pick" -eq "$exit_n" ]; then return 1; fi
+            printf '%s\n' "$list" | sed -n "${pick}p" ;;
         *) return 1 ;;
     esac
 }
@@ -4043,19 +4405,28 @@ fzf_pick_pkgs() {
         echo "fzf not installed. Install with: $MGR install fzf" >&2
         return 1
     fi
-    local pickprompt pickheader pickfooter
+    local pickprompt pickheader pickfooter rcap
+    rcap=$(fzf_disp_max)
     if [ "$mode" = "remove" ]; then
         # Uninstall gets its own finder: installed-only rows, its own prompt,
-        # header and preview emphasis ("will be removed").
-        input=$(while IFS= read -r p; do
-                    [ -n "$p" ] && printf '%s|✓ %s · installed\n' "$p" "$p"
-                done < <(dpkg-query -W -f='${Package}\n' 2>/dev/null | sort))
+        # header and preview emphasis ("will be removed"). The display column
+        # is built here and capped at the list-pane width: a longer row makes
+        # fzf scroll the list horizontally and the user sees only a middle
+        # slice of it (the full text stays in the preview pane).
+        input=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | sort | \
+            awk -F'|' -v cap="$rcap" '
+                function clip(s) { return (length(s) > cap) ? substr(s, 1, cap) "…" : s }
+                { print $1 "|" clip("✓ " $1 " · installed") }')
         pickprompt="remove ❯ "
         pickheader="✗ remove · ✓ select · ? preview · / search · Tab multi"
         pickfooter="installed packages only │ ESC aborts"
     else
         refresh_fzf_cache
-        input=$(cat "$FZF_CACHE" 2>/dev/null)
+        # Cache rows are "name|description" — clip into the display column now
+        # so the rows always fit the pane, whatever the terminal is right now.
+        input=$(awk -F'|' -v cap="$rcap" '
+            function clip(s) { return (length(s) > cap) ? substr(s, 1, cap) "…" : s }
+            { print $1 "|" clip("【 】 " $1 " · " $2) }' "$FZF_CACHE" 2>/dev/null)
         pickprompt="install ❯ "
         pickheader="＋ install · ? preview · / search · Tab multi"
         pickfooter="not-installed packages only │ ESC aborts"
@@ -4069,13 +4440,19 @@ fzf_pick_pkgs() {
     avail=$(printf '%s\n' "$input" | grep -c . || true)
     FZF_PREVIEW=$(pkg_preview_cmd "$mode")
     FZF_NTH="--delimiter=| --nth=1,2 --with-nth=2"
-    selected=$(printf '%s\n' "$input" | fzf_select \
+    # The ghost carries a real number, and it is rebuilt every time the picker
+    # opens, so it can never go stale.
+    FZF_GHOST="type to filter ${avail:-?} packages"
+    # The Exit row rides along as a normal row (label in both fields, so the
+    # pretty column and the preview show the same text). fzf_select strips it
+    # from the answer and records the exit request, so picking packages and
+    # then Exit still installs them.
+    selected=$(printf '%s\n' "$input" "$OPTION_SUB_EXIT|$OPTION_SUB_EXIT" "$OPTION_APP_EXIT|$OPTION_APP_EXIT" | fzf_select \
         "$prompt — Tab/Space multi-select, ESC to abort" "$pickprompt" 1 \
         --header="$pickheader" \
-        --footer="${inst:-?} installed · ${avail:-?} in list │ ? toggles preview · ESC aborts" \
+        --footer="${inst:-?} installed · ${avail:-?} in list │ ? preview · Y copy · ESC back · ^Q quit" \
         --marker="✓ " --pointer="▶" --gutter=" " --no-separator) || selected=""
-    FZF_PREVIEW=""; FZF_NTH=""
-    if [ $? -ne 0 ]; then return 1; fi
+    FZF_PREVIEW=""; FZF_NTH=""; FZF_GHOST=""
     [ -z "$selected" ] && return 1
     # Field 1 of "name|display" rows is the bare name; a plain name (text-mode
     # style input, or a test feeding one line) passes through unchanged.
@@ -4201,7 +4578,8 @@ use_fzf_for_op() {
     local selected
     selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC cancels" "$op") || {
         FZF_ABORTED=1
-        dim "  Canceled."
+        # Silence "Canceled." when the user chose Exit — that wasn't a cancel.
+        app_exit_wanted || dim "  Canceled."
         return 1
     }
     local -a pkgs=()
@@ -4452,12 +4830,28 @@ USAGE
 esac
 
 FIRST_LOOP=1
+# Probe fzf capabilities once per session and EXPORT the result: fzf_select
+# always runs inside a command substitution, where a fresh local variable
+# would die with the subshell — so every picker would pay two `fzf --help`
+# forks. The caps check honors the test-harness queue/log like the ghost
+# probe does. APP_INIT_CAPS: ... unless NO_FZF/FZF missing, then never set.
+if have_fzf && [ -z "$APP_INIT_CAPS" ]; then
+    APP_INIT_CAPS=$(FZF_QUEUE='' FZF_CALL_LOG=/dev/null fzf --help 2>/dev/null || :)
+    export APP_INIT_CAPS
+fi
+# Clear the screen before the interactive app starts. tty only: piped runs
+# (scripts, tests) must keep their output clean.
+[ -t 1 ] && printf '\033[2J\033[H'
 while true; do
     if [ "$FIRST_LOOP" = "1" ] && [ "$STARTUP_CHECK" = "1" ]; then
         do_maintenance
     fi
     FIRST_LOOP=0
-    banner
+    banner_refresh
+    # fzf mode: the banner rides inside the picker window (its header), so a
+    # terminal resize cannot wipe it. Printing it here as well would show it
+    # twice. Text mode has no window to carry it and prints it as before.
+    have_fzf || banner
     choice=$(main_menu)
     case "$choice" in
         "$OPTION_INSTALL")    do_install ;;
@@ -4526,5 +4920,11 @@ while true; do
         "")                   say "Catch ya later! $ICON_WAVE"; break ;;
         *)                    err "Invalid option, try again." ;;
     esac
+    # A submenu asked to leave the app (its "Exit pkg-manager" row or Ctrl-Q):
+    # the do_* levels have unwound, so quit with the farewell here.
+    if app_exit_wanted; then
+        say "Catch ya later! $ICON_WAVE"
+        break
+    fi
     pause || break
 done

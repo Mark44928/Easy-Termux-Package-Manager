@@ -1,14 +1,14 @@
 > This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.2-000000?logo=termux" alt="Version">
+  <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-175%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-186%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E4.2k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E4.8k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
@@ -86,9 +86,10 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 43, 55–58, 59 |
 | ⌨️ **Consistent ESC** | ESC cancels everywhere — submenus go back a level, the top menu exits with a goodbye, and the package pickers say `Canceled.` and return (no more typed-name detours). If fzf itself ever breaks, the app explains why and finishes the session in numbered text mode | all views |
 | 🖥️ **New 5.1** | **Scriptable CLI**: `--check-updates` lists upgradable packages, `--quiet` prints just the count (for cron/status lines), `--doctor` runs the full system audit and exits — no menu needed | CLI |
-| 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (pickers stay below 100% height), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
+| 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (it travels inside the picker as its header, so a terminal resize cannot wipe it), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
+| 🆕 **New 5.3/5.3.1** | the **screen clears** at startup · a **ghost hint** in every picker's input line (with live package counts where they matter) · the menu **list shows the bare action label** while the **preview panel** carries the description, **what the action actually runs** (`apt install …`, `apt purge …`, `dpkg -L …`) and its row number · picker rows **never scroll sideways**: overflow is capped to the pane and fzf itself gets `--no-hscroll --ellipsis=…`, so every row stays anchored at its start (name always readable) instead of showing a `···`-wrapped middle slice · **polished pickers**: whole-row highlight, a slim scrollbar, ranking that prefers matches on the *name* over the description, and **Ctrl-Y copies the highlighted package name** · **one list style everywhere**: text mode uses the same right-aligned `N)` numbering and `❯` prompt in the main menu and every submenu · **search results** gained the same package-info preview · every submenu picker ends with **⬅️ Back to main menu** and **🚪 Exit pkg-manager** rows (selecting packages and then Back still installs them), and **Ctrl-Q** quits from any picker · submenus have **Back** and **Exit** rows · **Ctrl-Q** quits from any picker | 1, 2, 3, all pickers |
 | 🔍 **fzf integration** | fzf is a first-class picker: multi-select install/uninstall with a **live package-info preview pane** (dpkg status + size-humanized `apt-cache show`, `bat`-colored), an **info pane on the main menu and command palette** describing every entry, search-result multi-pick, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 44 |
-| 📐 **Screen-adaptive** | every picker sizes itself below 100% of the terminal so the banner and status strip stay visible above it (fullscreen fzf switches to the alternate screen and hides them), lists entries top-down in natural order, and moves the preview pane to the side on wide/landscape terminals or below on narrow ones | all fzf views |
+| 📐 **Screen-adaptive** | the banner and status strip ride inside every picker (they are its header), so they survive a terminal resize; pickers still stay below 100% height (fullscreen fzf switches to the alternate screen and hides them), lists entries top-down in natural order, and moves the preview pane to the side on wide/landscape terminals or below on narrow ones | all fzf views |
 | 🧹 **Clean install picker** | only packages you have **not** installed are offered (no more scrolling past 500 installed names); uninstall gets its own finder with installed-only rows and a removal-flavoured preview | 1, 2 |
 
 ## 🚀 Features
@@ -173,7 +174,7 @@ pkg-manager      # installed via install.sh / manual method
 
 ```bash
 pkg-manager --help             # full help text
-pkg-manager --version          # v5.2
+pkg-manager --version          # v5.3.1
 pkg-manager --list-themes      # palette preview of all 16 themes
 pkg-manager --theme dracula    # set the app theme (writes ~/.pkg-manager.conf)
 pkg-manager --export-theme tokyo
@@ -206,7 +207,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 > **fzf** (installed by default) *is* the UI: type to filter, Enter to run. With neither fzf nor a TTY, just type the number and press Enter.
 
 ```text
- ✨ Easy Termux Package Manager · v5.2
+ ✨ Easy Termux Package Manager · v5.3.1
 
  [1]  📦 Install a package
  [2]  🗑️ Uninstall a package
@@ -332,7 +333,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 | 55 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
 | 56 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
 | 57 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
-| 58 | 🚀 What's new in v5.2 | the changelog screen for this release |
+| 58 | 🚀 What's new in v5.3.1 | the changelog screen for this release |
 
 > Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
 
@@ -404,9 +405,9 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~4.2k lines, single file)
+├── manager.sh      # the entire app (~4.8k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 175 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 186 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -444,7 +445,8 @@ A few ground rules to keep the docs in sync:
   # then replace BANNER_B64="..." in manager.sh with $b64
   ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
-- Run the automated suite with `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 171 scenario tests).
+- Run `make lint` (`bash -n` + shellcheck) after every edit — it takes seconds.
+- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 186 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
 
 ### 🛠️ Make targets (developers)
 
@@ -454,7 +456,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
-| `make test` | full 175-test suite (~3 min, fakebin — no real apt) |
+| `make test` | full 186-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
@@ -477,7 +479,7 @@ Distributed under the [MIT License](LICENSE).
 /_____/ /_/ /_/   /_/  /_/   
 ```
 
-**Easy Termux Package Manager** · v5.2 · MIT
+**Easy Termux Package Manager** · v5.3.1 · MIT
 
 Made with ❤️ for the Termux community — found a bug? [open an issue](https://github.com/Mark44928/Easy-Termux-Package-Manager/issues), have an idea? ship a PR.
 

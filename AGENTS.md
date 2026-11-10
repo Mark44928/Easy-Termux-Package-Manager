@@ -1,34 +1,34 @@
 # AGENTS.md — Easy-Termux-Package-Manager
 
-> **This is Termux, not Linux.** Bionic libc (not glibc), no FHS filesystem, no root. `$PREFIX` = `/data/data/com.termux/files/usr`. All standard Linux assumptions can break here. `manager.sh` is a single-file Bash app (~4.5k lines); `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`/`apt`/`fzf`. CI: `.github/workflows/ci.yml` (lint + tests on ubuntu-latest — the suite is hermetic).
+> **This is Termux, not Linux.** Bionic libc (not glibc), no FHS filesystem, no root. `$PREFIX` = `/data/data/com.termux/files/usr`. All standard Linux assumptions can break here. `manager.sh` is a single-file Bash app (~4.8k lines); `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`/`apt`/`fzf`. CI: `.github/workflows/ci.yml` (lint + tests on ubuntu-latest — the suite is hermetic).
 
 ## Make
 
 | Target | What |
 |--------|------|
 | `make run` | Launch app (text mode: `NO_FZF=1 make run`) |
-| `make test` | Full test suite (175 tests, ~3 min, text + fzf modes) |
+| `make test` | **Full** suite — 186 tests, **~6 min**. NOT a routine check: see [Verification workflow](#verification-workflow--read-first) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` (0 findings; SC2015/SC2119/SC2120 excluded) |
-| `make check` | Lint + test |
+| `make check` | lint **+ full suite** — only at the end of a cross-cutting change |
 | `make install` / `make uninstall` | Via `install.sh` / `rm $PREFIX/bin/pkg-manager` |
 | `make clean` | Delete `tests/tmp/` |
 
 ```bash
 export TMPDIR=/data/data/com.termux/files/usr/tmp
-bash manager.sh
-bash tests/run-tests.sh
+bash manager.sh                # run the app
+make lint                      # after every edit — seconds, not minutes
 ```
 
-Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 175 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
+Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 185 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
 
 ## Hard Rules
 
-- **Config is never `source`d** — `load_config()` parses `~/.pkg-manager.conf` as text KEY=VALUE (`manager.sh:52-93`). Never `source` user files (option injection / RCE risk).
+- **Config is never `source`d** — `load_config()` parses `~/.pkg-manager.conf` as text KEY=VALUE (`manager.sh:64-104`). Never `source` user files (option injection / RCE risk).
 - **Temp files via `scratch_new()` only** — uses `mktemp`, cleaned by EXIT trap. Never `/tmp/foo`.
 - **Package name validation via `valid_pkg_name()`** — rejects leading `-`, spaces, shell metacharacters. Use before ANY user name hits `apt`/`dpkg`.
 - **Always quote `$MGR`** (apt or pkg) — unquoted breaks on word splitting.
 - **fzf or text** — every feature works with fzf (default) or the numbered text lists (when fzf is disabled). Tests check both paths.
-- **Call `apt_hint()` after every apt operation** — translates raw apt/dpkg errors to friendly messages (`manager.sh:836`).
+- **Call `apt_hint()` after every apt operation** — translates raw apt/dpkg errors to friendly messages (`manager.sh:1004`).
 - **Run `filter_pkgs()` before any user input hits apt** — calls `valid_pkg_name()`, strips invalid names. Critical for preventing option injection.
 - **Never `set -e`** — `manager.sh` uses `set -o pipefail` only; `set -e` breaks the menu loop.
 
@@ -36,7 +36,7 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 | File | Role |
 |------|------|
-| `manager.sh` | The entire app (~4.5k lines) |
+| `manager.sh` | The entire app (~4.8k lines) |
 | `install.sh` | Installer (atomic writes, derives VERSION from `manager.sh`, smoke-tests the installed binary), offers Nerd Font |
 | `Makefile` | Dev targets (`run`/`test`/`lint`/`check`/`install`/`uninstall`/`clean`) |
 | `fonts/` | Bundled Nerd Font TTFs (CaskaydiaCove, FiraCode) |
@@ -46,27 +46,33 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 ## Architecture
 
-- **Config precedence:** env overrides → config file → hardcoded defaults (`manager.sh:18-28`, `95-140`), all validated via case statements. Config keys: `MGR THEME CONFIRM LOG_ENABLED ICONS QUIET LOCK STARTUP_CHECK FAVS_PINNED RECYCLE FZF_ENABLED`.
+- **Config precedence:** env overrides → config file → hardcoded defaults (`manager.sh:18-28` (defaults), `64-104` (load_config)), all validated via case statements. Config keys: `MGR THEME CONFIRM LOG_ENABLED ICONS QUIET LOCK STARTUP_CHECK FAVS_PINNED RECYCLE FZF_ENABLED`.
 - **Confirmation (3-layer):** `CONFIRM=1` (normal) → `QUIET=1` (skip all) → `LOCK=1` (force even if QUIET). `confirm_danger()` checks LOCK first.
-- **Main loop** (`manager.sh:4454+`): `while true`; first iteration runs `do_maintenance` if `STARTUP_CHECK=1`; `pause` after each action. Pinned favorites dispatched via `*"Pinned:"*` glob. Menu items 1–59 (Settings last, at 59) + pinned at 60+; the theme hub is the ONE theme row in Settings (`do_theme`, pick/preview/export/restore) — it is not in the main menu.
-- **`run_multi_op()`** (`manager.sh:865`): batch fast path (single `apt install/remove -y`), falls back to per-package retry on failure. `RECYCLE=1` + remove → `archive_pkg()` first.
-- **Logging:** `log()` successes only, `log_err()` failures (`manager.sh:617-630`, both to `~/.pkg-manager.log`). Undo reads log via `grep`.
+- **Main loop** (`manager.sh:4824+`): clears the screen first when stdout is a tty (`printf '\033[2J\033[H'` — piped runs stay clean for tests/scripts), then `while true`; first iteration runs `do_maintenance` if `STARTUP_CHECK=1`; `banner_refresh` per iteration (caches the `BANNER_BLOCK` text, so the dpkg-query behind the status strip runs once, not once per picker), prints the banner only when `have_fzf` is false; `pause` after each action. Pinned favorites dispatched via `*"Pinned:"*` glob. Menu items 1–59 (Settings last, at 59) + pinned at 60+; the theme hub is the ONE theme row in Settings (`do_theme`, pick/preview/export/restore) — it is not in the main menu.
+- **`run_multi_op()`** (`manager.sh:1033`): batch fast path (single `apt install/remove -y`), falls back to per-package retry on failure. `RECYCLE=1` + remove → `archive_pkg()` first.
+- **Logging:** `log()` successes only, `log_err()` failures (`manager.sh:789-798`, both to `~/.pkg-manager.log`). Undo reads log via `grep`.
+- **Text-mode lists share one style:** every numbered list goes through `list_numbered <extra_rows> <item>...`, which right-aligns the number column to the total row count (`9 rows -> "1)"`, `12 rows -> " 1)"`) and leaves the width in `LIST_NUM_W` for the trailing Exit row. Every selection prompt is `❯ ` (the same glyph as the fzf prompt) — `ask_name` prefixes it too, so the whole app asks questions the same way. Confirmations keep their `… [y/N]` form. The main menu uses the same style as the submenus (`0) Exit` stays row 0).
 - **Two UI modes, both first-class:** `UI_MODE` is `fzf` (default) or `text` (numbered lists). They are separate code paths, not one UI with a degraded fallback — every picker has a complete text branch. If fzf itself breaks mid-session (exit ≥ 2), the app says so ONCE, sets `UI_MODE=text`/`FZF_BROKEN=1`, and completes the session in text mode. `term_size()` supplies real terminal geometry to both.
 - **Package manager:** `MGR` ∈ `apt|pkg` only — nala support was removed (it shipped broken in Termux). Mutating operations that bypass `run_multi_op` call `apt` directly; queries use `apt-cache`/`apt-mark`. A mid-session manager change takes effect immediately because `MGR` is read at each call.
-- **fzf layer:** `have_fzf()` checks `FZF_ENABLED=1` + `NO_FZF!=1` + `command -v fzf`. fzf is the sole interactive UI (gum is gone): `main_menu`, `do_palette`, `do_search` result pick, `do_install`/`do_uninstall` (via `use_fzf_for_op`), and every submenu via `pick_menu`/`pick_multi`/`pick_one`. **ESC contract (v5.2):** ESC cancels, everywhere. Top-level menu → exits with the farewell; submenus (`pick_menu`/`pick_multi`/`pick_one`) → return 1 so the `do_*` caller goes back a level; the install/uninstall picker prints `Canceled.` and returns to the menu — there is deliberately NO typed-name detour anymore. The only way to reach the typed name prompt is the text-mode menu (or `NO_FZF=1`). A *fzf failure* (exit ≥ 2) is a different thing: it prints the error, sets `UI_MODE=text`/`FZF_BROKEN=1`, and every picker falls through to its numbered list for the rest of the session. Theme via `fzf_theme()`/`fzf_select()`. Uninstall picks from `dpkg-query` (installed only), install from a cached not-installed-only list at `~/.pkg-manager-fzf-cache` (30 min TTL). Settings row 11 toggles `FZF_ENABLED` (on/off).
-- **v5.1/v5.2 fzf details:**
-  - Rows are `name|display` / `label|description`; `fzf_select` reads the optional globals `FZF_PREVIEW` (preview shell command) and `FZF_NTH` (extra field flags) — callers set both, then reset both to `""` after the call.
-  - Field flags are `--delimiter=| --nth=1,2 --with-nth=2`: search covers both columns, only the pretty column is shown, and callers parse the answer with `${sel%%|*}` / `cut -d'|' -f1`. **Never use `--nth=2` alone** — that combination makes fzf 0.74 match nothing.
-  - Preview placeholders: use fzf's field placeholder `{1}` (the bare name). A literal `{\}` in the preview string is NOT substituted and leaks `=== {} ===` into the pane.
-  - Geometry is screen-adaptive: `fzf_layout()` picks `right:45%:wrap:border-left` on wide/landscape terminals and `down:45%:wrap:border-top` otherwise.
-- **Banner visibility (v5.2):** fzf height must stay **below 100%** (`fzf_height()` = `(lines-7)*100/lines`, capped 50–95). At 100% fzf enters fullscreen and switches to the **alternate screen**, which hides everything printed above it — that is what kept "wiping" the banner. Below 100% fzf renders in place and the banner + status strip stay on screen. `--layout=reverse` keeps natural top-down order (bottom-anchored layout reads like `tac`). fzf also clears its whole managed area, margins included, so never try to preserve content with `--margin`. `term_size()` trusts `tput` only when attached to a tty (a non-tty `tput` happily returns the terminfo default 80), then `COLUMNS`/`LINES`, then 80×24.
+- **fzf layer:** `have_fzf()` checks `FZF_ENABLED=1` + `NO_FZF!=1` + `command -v fzf`. fzf is the sole interactive UI (gum is gone): `main_menu`, `do_palette`, `do_search` result pick, `do_install`/`do_uninstall` (via `use_fzf_for_op`), and every submenu via `pick_menu`/`pick_multi`/`pick_one`. **ESC contract (v5.2):** ESC cancels, everywhere.
+ Top-level menu → exits with the farewell; submenus (`pick_menu`/`pick_multi`/`pick_one`) → return 1 so the `do_*` caller goes back a level; the install/uninstall picker prints `Canceled.` and returns to the menu — there is deliberately NO typed-name detour anymore. The only way to reach the typed name prompt is the text-mode menu (or `NO_FZF=1`). A *fzf failure* (exit ≥ 2) is a different thing: it prints the error, sets `UI_MODE=text`/`FZF_BROKEN=1`, and every picker falls through to its numbered list for the rest of the session. Theme via `fzf_theme()`/`fzf_select()`. Uninstall picks from `dpkg-query` (installed only), install from a cached not-installed-only list at `~/.pkg-manager-fzf-cache` (30 min TTL). Settings row 11 toggles `FZF_ENABLED` (on/off).
+- **v5.1/v5.2/v5.3 fzf details:**
+  - Rows are `name|display` (package pickers) / `label\x1fdescription\x1frow\x1fdetail` (menu + palette). `fzf_select` reads the optional globals `FZF_PREVIEW` (preview shell command), `FZF_NTH` (extra field flags) and `FZF_GHOST` (input-line hint) — callers set what they need, then reset all three to `""` after the call.
+  - Field flags: `--delimiter=| --nth=1,2 --with-nth=2` on 2-field rows (search covers both, the pretty column is shown, answer parsed with `cut -d'|' -f1`). **Never `--nth=2` alone** — fzf 0.74 then matches nothing.
+  - The menu/palette show field **1** of four, and fzf's `--with-nth` leaves a delimiter marker for hidden fields, so their separator must be **invisible**: rows are joined with `$'\x1f'` and `FZF_NTH="--delimiter=\x1f --nth=1,2 --with-nth=1"` (the regex escape works; a literal `|` printed a `|` at the end of every row). fzf returns the ORIGINAL row, so the label is recovered with `${sel%%$'\x1f'*}` — `${sel%%|*}` silently returns the whole row and breaks dispatch.
+  - Preview placeholders: use fzf's field placeholder `{1}` (the bare name). A literal `{\}` in the preview string is NOT substituted and leaks `=== {} ===` into the pane. The menu preview uses `{1} {2} {4} {3}` (label, description, detail, row); search results are single-field so **no** `FZF_NTH` (a `--with-nth=2` there would show an empty column).
+  - **Ghost:** `FZF_GHOST` is only passed after `fzf_supports_ghost()` confirms fzf ≥ 0.61 — an unknown flag makes fzf exit 2, which the app reads as "fzf broke" and drops to text mode. The probe runs with `FZF_QUEUE='' FZF_CALL_LOG=/dev/null`, because the test-suite fake fzf pops a queued answer on every call.
+  - Geometry is screen-adaptive: `fzf_layout()` picks `right:45%:wrap:border-left` on wide/landscape terminals and `down:45%:wrap:border-top` otherwise; `fzf_height()` keeps the window below 100%; `fzf_disp_max()` returns the widest display column a picker may use.
+  - **Picker polish flags (all in `fzf_select()`):** `--no-hscroll --ellipsis="…"` (overflow rows are cut at the right edge, never H-scrolled into a `··…··` middle slice), `--tiebreak=begin,length,index` (a match near the START of the row — the package/action NAME — wins over an equal-scoring match in the description), and, when the installed fzf supports them, `--highlight-line` (whole current row) + `--scrollbar='▏'`. The capability probe runs ONCE per session into the **exported** `APP_INIT_CAPS` (before `FIRST_LOOP=1`): `fzf_select` always runs inside a command substitution, where a local variable would die with the subshell and every picker would pay two `fzf --help` forks.
+  - **Ctrl-Y copies the highlighted name** (`termux-clipboard-set`, Termux:API). The bind is only added when that binary exists, so the key is simply unbound otherwise. `{1}` is the bare name (field 1 of the original row), never the display column.
+- **Banner visibility (v5.2):** the banner + status strip travel **INSIDE the fzf window** — they are its `--header`. Text printed *above* an fzf window is static: on a terminal resize fzf re-anchors its window and the static text above it is wiped for good (fzf cannot repaint it). Inside the window fzf owns the text and redraws it on every resize. `fzf_select()` builds the header as `banner_header` + the caller's own header (a caller `--header=` is **merged**, never replaces the banner), and the main loop prints the banner statically only in text mode (`have_fzf || banner`) — printing it in fzf mode as well would show it twice. `banner_header()` drops the 5-line art below 20 rows so the picker keeps list rows (the strip stays). Height must stay **below 100%** (`fzf_height()` = `(lines-1)*100/lines`, capped 50–95): at 100% fzf enters fullscreen and switches to the **alternate screen**, which hides the picker. `--layout=reverse` keeps natural top-down order (bottom-anchored layout reads like `tac`). fzf also clears its whole managed area, margins included, so never try to preserve content with `--margin`. `term_size()` trusts `tput` only when attached to a tty (a non-tty `tput` happily returns the terminfo default 80), then `COLUMNS`/`LINES`, then 80×24.
   - Package previews (`pkg_preview_cmd <install|remove>`) show the dpkg status line, a mode-specific line (candidate version / "WILL BE REMOVED") plus a size-humanized `apt-cache show` record, colored by `bat` when installed. The install picker lists **not-installed** packages only (filtered against `dpkg-query`); uninstall gets its own prompt/header/footer and installed-only rows.
   - Prompt glyph is `❯ ` everywhere (menus, palette, package pickers).
   - `main_menu` has exactly ONE fzf block — a duplicate call made ESC reopen the menu (fixed in v5.1); the `menu_unique` test guards the row set.
 - **CLI mode:** `--help --version --list-themes --theme <n> --export-theme <n>` are parsed before the main loop. v5.1 adds `--check-updates` (list upgradable), `--quiet` (count only, machine-readable) and `--doctor` (full audit, then exit) — all non-interactive (`CLI_MODE`) and exit before `FIRST_LOOP`. `install.sh --theme <n>` calls `pkg-manager --export-theme <n>` so palettes live in one place.
+- **Two ways out of a submenu (v5.3.1):** every submenu picker appends TWO trailing rows — `OPTION_SUB_EXIT` ("⬅️ Back to main menu") and `OPTION_APP_EXIT` ("🚪 Exit pkg-manager") — plus **Ctrl-Q** in any fzf picker. Back = one level up (rc 1, exactly like ESC; the row is stripped, and other selections still go through). Exit = leave the APP: it sets `~/.pkg-manager-exit` (`request_app_exit()`), the main loop answers it with the farewell and breaks, and the EXIT trap removes the flag. The request MUST travel through that file: picker code always runs inside a command substitution, where a variable would die with the subshell. Back must NEVER quit the app (a v5.3 release made one row do both, which was confusing); the main menu's own `OPTION_EXIT` row and ESC-on-main-menu are the other app exits. `fzf_select` is the single chokepoint that strips both rows and adds the `ctrl-q:execute-silent(touch $APP_EXIT_FLAG)+abort` bind.
 
 ## Data Files (all in `$HOME`)
-
 | File | Format | Source |
 |------|--------|--------|
 | `~/.pkg-manager.conf` | KEY=VALUE | `save_config()` |
@@ -81,6 +87,7 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 | `~/pkg-snapshot-*.tar.gz` | tar of all | Full snapshot |
 | `~/.pkg-manager-fzf-cache` | available-package list | fzf picker cache (30 min TTL) |
 | `~/.pkg-manager-audit.log` | `batch_start/end` lines | Undo engine |
+| `~/.pkg-manager-exit` | presence = "submenu Exit / Ctrl-Q was picked" | `request_app_exit()` / `app_exit_wanted()` (removed by the EXIT trap; the main loop answers it) |
 | `~/.termux/colors.properties` | Termux palette | Theme hub export (`.pkg-manager.bak` = previous) |
 
 ## Key Functions
@@ -95,14 +102,19 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 | `apt_hint()` | Translate apt/dpkg errors to friendly messages |
 | `scratch_new()` | mktemp-based temp file creation (EXIT trap cleanup) |
 | `build_menu()` | Rebuild menu (called after favs change if `FAVS_PINNED=1`) |
- | `dep_tree()` | Dependency resolver, depth capped at 4 (`manager.sh:1603`) |
- | `do_depgraph()` | Colored forward/reverse dependency graph + manual-vs-dependency check (`manager.sh:4273`) — menu row 51, distinct from `do_deptools()` (row 28) |
- | `refresh_fzf_cache()` | Rebuilds the `name|display` picker cache (`manager.sh:3811`) — install rows are NOT-installed packages only |
- | `pkg_preview_cmd()` | fzf preview per mode (`manager.sh:4019`): dpkg status + candidate/removal line + size-humanized `apt-cache show` |
- | `batch_preview()` / `human_size()` | Pre-flight install summary (`manager.sh:4096` / `4086`): aligned version column, total installed size, already-present and not-found flags |
- | `term_size()` / `fzf_layout()` / `fzf_height()` / `fzf_margin()` | screen-adaptive geometry (`manager.sh:3851`-`3900`); height stays below 100% so the banner is never hidden |
-| `have_fzf()` | FZF_ENABLED + NO_FZF + command lookup — gate for every fzf path |
-| `fzf_theme()` / `fzf_select()` | theme-colored picker + generic multi-select |
+| `dep_tree()` | Dependency resolver, depth capped at 4 (`manager.sh:1797`) |
+| `do_depgraph()` | Colored forward/reverse dependency graph + manual-vs-dependency check (`manager.sh:4643`) — menu row 51, distinct from `do_deptools()` (row 28) |
+| `pkg_preview_cmd()` | fzf preview per mode (`manager.sh:4373`): dpkg status + candidate/removal line + size-humanized `apt-cache show` — shared by the install, uninstall AND search pickers |
+| `batch_preview()` / `human_size()` | Pre-flight install summary (`manager.sh:4465` / `4455`): aligned version column, total installed size, already-present and not-found flags |
+| `term_size()` / `fzf_layout()` / `fzf_height()` / `fzf_margin()` / `fzf_disp_max()` | screen-adaptive geometry (`manager.sh:4091`-`4141`, `fzf_disp_max()` at `4067`); height stays below 100% so fzf never switches to the alternate screen, and `fzf_disp_max()` is the widest display column a picker's rows may use |
+| `fzf_supports_ghost()` | 1 when fzf ≥ 0.61 understands `--ghost` (guards the whole ghost feature) |
+| `refresh_fzf_cache()` (`manager.sh:4030`) | Rebuilds the `name\|description` picker cache (installed-only rows removed); the display column is built and capped when the list is READ, so a resize can't invalidate it; install rows are NOT-installed packages only |
+| `banner_text()` / `banner_refresh()` / `banner()` / `banner_header()` | banner art + status strip as text; cached per menu iteration (`BANNER_BLOCK`); `banner()` prints it (text mode), `banner_header()` returns it for the fzf header |
+| `MENU_DESC` / `MENU_DETAIL` | per-action one-liner + what the action actually runs; both keyed by the final label, both asserted complete by a test |
+| `list_numbered()` | one numbered-list renderer for every text-mode list: right-aligned number column + `LIST_NUM_W` for the trailing row |
+| `request_app_exit()` / `app_exit_wanted()` (`manager.sh:56` / `57`) | write / test the submenu-exit flag file; the request must ride a file because pickers run inside command substitutions |
+| `have_fzf()` (`manager.sh:306`) | FZF_ENABLED + NO_FZF + command lookup — gate for every fzf path |
+| `fzf_theme()` / `fzf_select()` (`manager.sh:4057` / `4155`) | theme-colored picker: merges the caller `--header=`, adds the banner/ghost/polish flags, and strips BOTH trailing rows — `Back to main menu` (lone pick returns rc 1 = back one level) and `Exit pkg-manager` (sets the exit flag for the main loop) |
 | `pick_menu()` / `pick_multi()` / `pick_one()` | submenu pickers (fixed items / multi list / stdin list) — fzf first, then the original numbered text list |
 | `fzf_pick_pkgs()` / `use_fzf_for_op()` | package pickers; ESC prints `Canceled.` and returns (no typed-name detour) |
 | `paint()` / `set_theme()` / `theme_ansi()` | color engine: 256-index + `#RRGGBB` truecolor |
@@ -113,13 +125,13 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 ## Gotchas
 
- - Banner art is gzip-compressed, base64 in `BANNER_B64` (`manager.sh:338`). Re-compress after editing.
+ - Banner art is gzip-compressed, base64 in `BANNER_B64` (`manager.sh:373`). Re-compress after editing.
  - **Never reuse an `OPTION_*` variable name** — a shadowed assignment once made two menu rows render identically and left `do_depgraph()` unreachable (bash `case` takes the first match). The `menu_unique` test asserts 60 unique menu rows, so CI catches a repeat instantly.
 - `install.sh` uses atomic writes (`.tmp` → `mv`) — never overwrite in place.
 - `set -o pipefail` active — pipelines fail on first error.
 - `log()` records successes only; `log_err()` for failures.
 - Tests set `ICONS=emoji` via env. Input via stdin (text). `NO_FZF=1` is the default; only the `F()` tests unset it and feed `FZF_QUEUE`.
-- Group delimiter is `::` (`manager.sh:2424-2425`), names sanitized to `[A-Za-z0-9 _-]`.
+- Group delimiter is `::` (`manager.sh:2622`), names sanitized to `[A-Za-z0-9 _-]`.
 - `FAVS_PINNED=1` triggers `build_menu()` after favorites changes.
 - JSON export requires `python3`; falls back to text.
 - Bash functions must be DEFINED before `FIRST_LOOP=1` — the `while true` loop only executes top-level code linearly, so anything defined after it is undefined inside the loop. The MAX-4.1 block (fzf cache, `do_repos`, `do_undo`, `do_health`, `do_auto_mirror`, `do_snapshot`) was moved above the loop in v5.0; keep new handlers there.
@@ -130,9 +142,9 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 ## Version Bump
 
-1. `VERSION="5.3"` in `manager.sh:17` — the single source of truth (`install.sh` derives its banner from it; nothing else hardcodes a version).
+1. `VERSION="5.3.1"` in `manager.sh:17` — the single source of truth (`install.sh` derives its banner from it; nothing else hardcodes a version).
 2. README: version badge, the `vX.Y.Z highlights` line in whatsnew, and the two banner blocks stay version-free (the status strip prints the version).
-3. `BANNER_B64` (`manager.sh:338`) holds the **ETPM** figlet wordmark with no version in it — regenerate only when the wordmark changes:
+3. `BANNER_B64` (`manager.sh:373`) holds the **ETPM** figlet wordmark with no version in it — regenerate only when the wordmark changes:
    ```bash
    art=$(figlet -f slant "ETPM" | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}')
    b64=$(printf '%s' "$art" | gzip -9 | base64 -w0)
@@ -166,13 +178,15 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 - Bash regex = Bionic POSIX (BSD-derived), not GNU: `|` at start/end of alternation is invalid. Use `(a|b)` carefully.
 - `echo` ignores `-e` — use `printf '%b\n'` instead.
 - `read -p` is a bashism — this app uses `printf` + `read -r`.
-- `local` is a bash/zsh extension — works here because shebang is `#!/bin/bash`.
+- `local` is a bash/zsh extension — fine here: the app is invoked as `bash manager.sh`, so the
+  `#!/bin/bash` shebang line is never used. Don't run scripts by direct path (`./manager.sh`)
+  — on Termux `/bin` is Android's toolbox, not a shell directory.
 
 ## fzf CLI Specifics
 
 - `fzf` reads the candidate list on stdin and prints the selection on stdout. Exit codes: **0** = picked, **1** = abort (ESC → cancel), **≥ 2** = fzf itself failed (the app prints the error and switches to text mode). `fzf -m` enables multi-select.
 - `fzf --color=...` accepts the themed palette string built by `fzf_theme()` (works for 256-index and `#RRGGBB`).
-- The fake fzf in `tests/fakebin/fzf` pops one line per call from `FZF_QUEUE` (`MULTI:` prefix = several selections); empty queue → exit 1 (ESC).
+- The fake fzf in `tests/fakebin/fzf` pops one line per call from `FZF_QUEUE` (`MULTI:` prefix = several selections); empty queue → exit 1 (ESC). It answers `--version` (0.61.0) and `--help` (a capability list) **without popping the queue**, so the feature probes in the app behave exactly like they do against the real fzf.
 
 ## Environment & Filesystem
 
@@ -191,12 +205,54 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 - `crond` needs the app open; `nohup` alone is insufficient.
 - `termux-job-scheduler` uses Android's JobScheduler — runs on Android's schedule (battery/charging).
 
+## Verification workflow — READ FIRST
+
+**Do not run the full test suite by default.** It takes ~6 minutes on this device, runs against
+every path, and wastes that time on a one-path change. `make test` / `make check` are END-of-work
+gates for cross-cutting changes, not a routine check.
+
+Default loop:
+
+1. `make lint` — `bash -n` + shellcheck on every script, a few seconds. **After every edit.**
+2. One focused exercise of the path you changed (below) — seconds, not minutes.
+3. Full suite **only** when the change is cross-cutting: the main loop, `fzf_select`, `pick_menu`,
+   `pick_one`/`pick_multi`, `fzf_pick_pkgs`, or anything every picker passes through.
+
+### Fast focused check (~2 s) — fzf mode, no suite needed
+
+`tests/fakebin/fzf` pops one answer per call from a queue file, so a whole menu → picker →
+confirm flow can be driven directly. Set `FZF_CALL_LOG` to a **file** (not /dev/null) to inspect
+exactly what a picker was passed:
+
+```bash
+h="$TMPDIR/pkmgr-probe"; rm -rf "$h"; mkdir -p "$h/var/cache/apt/archives"
+touch "$h/var/cache/apt/archives/python3_3.12_arm64.deb"      # seeds the fake dpkg db
+printf '\xf0\x9f\x93\xa6 Install a package\npython3\ny\n' > "$h/queue"   # one line per fzf call
+FZF_QUEUE="$h/queue" FZF_CALL_LOG="$h/calls" HOME="$h" PREFIX="$h" MGR=apt ICONS=emoji \
+    PATH="$PWD/tests/fakebin:$PATH" env -u NO_FZF bash manager.sh < /dev/null
+```
+
+- The queue is consumed in call order; once it runs dry the fake fzf exits 1 (= ESC), which is how
+  abort paths get exercised.
+- `ICONS=emoji` matters: menu labels embed the icon, so queued answers must match it.
+- `HOME`/`PREFIX` point at a temp dir — nothing real is installed or configured.
+- Text mode: `printf '59\n2\n' | NO_FZF=1 TERM=dumb bash manager.sh` (numbered menus, same `do_*` bodies).
+- One function in isolation: `bash -c 'source <(sed -n "/^fzf_select()/,/^}/p" manager.sh); ...'`.
+
+### When the full suite is actually required
+
+Cross-cutting changes (shared chokepoints), before declaring work finished, or when a test you
+added is the point: `make test`. Then run `make check` (lint + suite) once at the very end.
+
+The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs all 186 tests.
+
 ## Debugging Workflow
 
-1. **Verify targeted, not globally.** For a change to one path, run the repo's own fast gates — `make lint` — plus ONE direct exercise of the changed path (text mode: `printf '59\n2\n' | NO_FZF=1 bash manager.sh`, or a piped fzf-mode run). The full 175-test suite costs ~3–4 minutes and runs against everything; reserve it for session end or when a cross-cutting change lands.
+1. Verify targeted, not globally (see above): lint + one direct exercise of the changed path.
 2. Reproduce in the harness: add a `T`/`F` case, or inspect `tests/tmp/<name>/run.log` + `fzf-calls` for picker errors.
 3. Interactive check last: `bash manager.sh` manually.
 4. Never test destructive paths (purge, autoremove) on a real device — extend the fakebin stubs instead.
+5. When you report back, say which gates you ran: "lint OK + the two focused tests" is a better answer than silently paying 4 minutes.
 
 ## Locale / Timezone / DNS
 
@@ -219,9 +275,9 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 - `run_multi_op` batches to single `apt` call (fast path). Per-package retry only on failure.
 - `apt_hint()` = O(n) case statement on output; instant for <100 lines.
-- Dep tree depth capped at 4 (`dep_tree()`, `manager.sh:1603`).
+- Dep tree depth capped at 4 (`dep_tree()`, `manager.sh:1797`).
 - `list_upgradable()` propagates apt exit code.
-- Menu rebuild on favs change is O(35) — instant.
+- Menu rebuild on favs change is O(59 items) with no external calls — instant.
 
 ## User-Facing Support Playbook
 
@@ -235,7 +291,8 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 | Upgrade breaks mid-way | Do NOT abort; finish, then `pkg upgrade` again + `dpkg --configure -a` |
 | ESC opens a numbered list instead of cancelling | Old build — ESC now cancels everywhere; the extended list means fzf exited ≥ 2 and the app fell back to text mode (the reason is printed) |
 | Picker shows installed packages when installing | Stale `~/.pkg-manager-fzf-cache` (30 min TTL) — delete it or wait for the refresh |
-| Banner disappears in the picker | Terminal forced fullscreen (some wrappers ignore `--height`) — the app already stays below 100%; nothing to fix |
+| Banner disappears in the picker | Old build: the banner was static text above the window and a resize wiped it. It now rides inside the picker (its header), so fzf redraws it — upgrade and make sure the header still carries the banner |
+| A picker row shows a `··…··`-wrapped middle slice | Old build: rows wider than the pane were H-scrolled to keep fzf's match + hscroll-off visible. Now the row is capped to the pane (`fzf_disp_max()`) — and the picker itself passes `--no-hscroll --ellipsis="…"`, so an overflow cuts the TAIL at the right edge instead of scrolling. The full text is also always in the preview pane |
 | "possible misspelling: ICON_XXX" from shellcheck | The icon does not exist in `init_icons()` (both branches) — use a real one or add it to both 
 
 ## Termux Ecosystem

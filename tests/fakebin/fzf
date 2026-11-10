@@ -5,6 +5,18 @@
 # after popping) it aborts like a real fzf user pressing ESC, which makes the
 # app fall back to the typed/numeric prompts.
 LOG="${FZF_CALL_LOG:-/dev/null}"
+
+# Real-fzf parity for feature probes: --version (ghost probe) and --help
+# (flag-capability probe in fzf_select) must neither pop the queue nor need
+# one, or the probed features would stay disabled for the whole suite.
+case "$1" in
+    --version) printf '0.61.0 (Go)\n' ;; # keep >= the ghost floor (0.61)
+    --help) printf '%s\n' '--highlight-line   Highlight the whole current line' \
+                     '--scrollbar[=C1[C2]] Scrollbar character(s)' ;;
+    *) ;;
+esac
+case "$1" in --version|--help) exit 0 ;; esac
+
 printf 'fzf %s\n' "$*" >> "$LOG"
 
 Q="${FZF_QUEUE:-}"

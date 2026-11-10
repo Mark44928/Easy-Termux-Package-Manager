@@ -342,7 +342,10 @@ rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
 touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
 export HOME="$home" PREFIX="$home" MGR=apt
 timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
-labels=$(sed 's/\x1b\[[0-9;]*m//g' "$home/run.log" | sed -n 's/^\[[0-9]\{1,\}\]  //p')
+# The row style may change ("[1]  label" or " 1) label"), so the extraction
+# accepts both — what matters is that the main menu prints every option and
+# the Exit row exactly once, with no duplicates.
+labels=$(sed 's/\x1b\[[0-9;]*m//g' "$home/run.log" | sed -n 's/^\[[0-9]\{1,\}\]  //p; s/^ *[0-9]\{1,\}) //p')
 mcount=$(printf '%s\n' "$labels" | grep -c .)
 mdups=$(printf '%s\n' "$labels" | sort | uniq -d)
 # 59 numbered options + the [0] Exit row = 60 unique rows.
@@ -377,7 +380,7 @@ cli() {
     fi
 }
 cli cli_help        "--help"                "Usage:"
-cli cli_version     "--version"             "pkg-manager v5.2"
+cli cli_version     "--version"             "pkg-manager v5.3.1"
 cli cli_list_themes "--list-themes"         "Theme preview"
 cli cli_theme       "--theme dracula"       "Theme set to dracula"
 cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepine)"
@@ -398,6 +401,270 @@ else
     FAIL=$((FAIL + 1)); FAILED+=("fzf_once:expected 1 fzf call, got $n_calls")
 fi
 
+# --- v5.2: the banner must ride INSIDE the fzf window ---
+# Text printed above an fzf window is static: on a terminal resize fzf
+# re-anchors its window and the static banner above it is wiped for good
+# (fzf cannot repaint it). The banner is therefore the picker's header, so
+# fzf redraws it on every resize.
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/fzf_banner_header"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF FZF_QUEUE="/dev/null" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+calls_flat=$(tr '\n' ' ' < "$home/calls" 2>/dev/null)
+bok=1
+case "$calls_flat" in *"--header="*"____"*"pkg-manager v"*) ;; *) bok=0 ;; esac
+# and it must NOT also be printed above the picker (that would show it twice)
+grep -q '____' "$home/run.log" 2>/dev/null && bok=0
+if [ "$bok" -eq 1 ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("fzf_banner_header")
+fi
+
+# Short terminal: the 5-line art is dropped so the picker keeps list rows,
+# but the status strip stays in the header (it is what survives a resize).
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/fzf_banner_short"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF FZF_QUEUE="/dev/null" FZF_CALL_LOG="$home/calls" LINES=10 COLUMNS=80 \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+calls_flat=$(tr '\n' ' ' < "$home/calls" 2>/dev/null)
+bok=1
+case "$calls_flat" in *"--header="*"pkg-manager v"*) ;; *) bok=0 ;; esac
+case "$calls_flat" in *"--header="*"____"*) bok=0 ;; esac
+if [ "$bok" -eq 1 ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("fzf_banner_short")
+fi
+
+# ---- v5.2 menu picking: invisible delimiter, detail coverage, ghost, clear ----
+# The fzf list shows the bare action label only, so the extra preview columns
+# must sit behind an INVISIBLE separator: fzf's --with-nth leaves a delimiter
+# marker for hidden fields, and a visible one prints it at the end of every
+# row (that is exactly what shipped in 5.2 and looked broken).
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/menu_delim"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF FZF_QUEUE="/dev/null" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+args=$(tr '\n' ' ' < "$home/calls" 2>/dev/null)
+dok=1
+case "$args" in
+    *"--with-nth=1"*) ;;
+    *) dok=0 ; echo "no with-nth=1 (list must show the label only)" ;;
+esac
+case "$args" in
+    *"--nth=1,2"*) ;;
+    *) dok=0 ; echo "no nth=1,2 (search must cover label + description)" ;;
+esac
+# the separator fzf is told about must be invisible: 0x1f, NOT '|'
+case "$args" in
+    *'--delimiter=\x1f'*) ;;
+    *) dok=0 ; echo "delimiter is not the invisible US char" ;;
+esac
+case "$args" in
+    *'--delimiter=|'*) dok=0 ; echo "delimiter is the visible pipe" ;;
+esac
+# the preview must carry a FOURTH column (the action detail) — a two-column
+# preview would leave the detail line missing.
+case "$args" in
+    *"--preview="*"{4}"*) ;;
+    *) dok=0 ; echo "preview does not use the detail field {4}" ;;
+esac
+if [ "$dok" -eq 1 ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("menu_delim"); fi
+
+# Every menu row must have a detail line — a missing one leaves a blank line
+# in the preview panel, which is the exact regression this guards.
+TOTAL=$((TOTAL + 1))
+detail_head="$PWD/tmp/detail_head.sh"
+mkdir -p "$PWD/tmp"
+awk '/^FIRST_LOOP=1$/{exit} {print}' "$MANAGER" > "$detail_head" 2>/dev/null
+detail_out=$(HOME="$PWD/tmp/detail_cov" PREFIX="$PWD/tmp/detail_cov" bash -c '
+    f="$1"; shift          # our own argument must not reach the CLI-mode case
+    source "$f"
+    missing=0
+    for i in "${MENU_ITEMS[@]}" "$OPTION_EXIT"; do
+        d="${MENU_DETAIL[$i]:-}"
+        [ -n "$d" ] || { echo "no detail: $i"; missing=1; }
+    done
+    exit $missing
+' bash "$detail_head" 2>&1)
+rm -f "$detail_head"
+if [ -z "$detail_out" ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("menu_detail_cov:$detail_out"); fi
+
+# The ghost hint is passed only when the installed fzf understands --ghost
+# (>= 0.61); an unknown flag makes fzf exit 2 and the app drops to text mode.
+TOTAL=$((TOTAL + 1))
+ghost_out=$(bash -c 'source <(sed -n "/^have_fzf()/,/^}/p;/^FZF_GHOST_OK=/p;/^fzf_supports_ghost()/,/^}/p" "'"$MANAGER"'")
+    fzf() { echo "$1"; }        # pretend an old fzf
+    FZF_GHOST_OK=""
+    fzf_supports_ghost && echo "old fzf accepted"
+    case "0.58" in 0.*) ;; esac
+    FZF_GHOST_OK=""
+    v=$(fzf --version)
+    fzf() { echo "0.74 (devel)"; }
+    FZF_GHOST_OK=""
+    fzf_supports_ghost || echo "0.74 rejected"
+    fzf() { echo ""; }
+    FZF_GHOST_OK=""
+    fzf_supports_ghost && echo "empty accepted"
+    fzf() { echo "1.2.3"; }
+    FZF_GHOST_OK=""
+    fzf_supports_ghost || echo "1.2.3 rejected"' 2>&1)
+# supporting 0.74+ and 1.x, rejecting <0.61 and unreadable versions
+if [ -z "$ghost_out" ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("fzf_supports_ghost:$ghost_out")
+fi
+
+# ---- v5.2 install list: rows must FIT the list pane ----
+# A row longer than the pane makes fzf scroll the list horizontally, and the
+# user then sees a useless middle slice of the description ("·nes for reading
+# and writing data files in FITS (Fle…") instead of the package name. The
+# display column is capped with fzf_disp_max, so cap it and measure the rows.
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/row_cap"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+cap_out=$(HOME="$home" PREFIX="$home" MGR=apt COLUMNS=100 LINES=24 bash -c '
+    source <(sed -n "/^term_size()/,/^}/p;/^fzf_disp_max()/,/^}/p" "'"$MANAGER"'" 2>/dev/null)
+    fzf_disp_max' 2>/dev/null)
+long_rows=$(printf '%s\n' \
+    "cfitsio|a library of C and Fortran subroutines for reading and writing data files in FITS (Flexible Image Transport System) data format" \
+    "git|fast, scalable, distributed revision control system" | \
+    awk -v cap="$cap_out" '{ d="【 】 " $1 " · " $2; if (length(d) > cap) d=substr(d,1,cap) "…"; print length(d) "\t" d }' | awk -v cap="$cap_out" '$1 > cap {print}')
+# every rendered display column must fit inside the cap
+if [ -z "$long_rows" ] && [ -n "$cap_out" ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("row_cap:cap=$cap_out,overflow=${long_rows//$'\n'/,}")
+fi
+
+# The checkbox must be the fancy bracket pair, and the cap must track the
+# screen: a wider screen keeps a wider list (the preview pane takes ~45% on
+# wide/landscape screens, and sits below on narrow ones, so the cap follows
+# the LAYOUT — 60 cols and 140 cols are both side panes).
+TOTAL=$((TOTAL + 1))
+cap_wide=$(HOME="$PWD/tmp/row_cap" MGR=apt COLUMNS=200 LINES=60 bash -c '
+    source <(sed -n "/^term_size()/,/^}/p;/^fzf_disp_max()/,/^}/p" "'"$MANAGER"'" 2>/dev/null)
+    fzf_disp_max' 2>/dev/null)
+cap_narrow=$(HOME="$PWD/tmp/row_cap" MGR=apt COLUMNS=140 LINES=60 bash -c '
+    source <(sed -n "/^term_size()/,/^}/p;/^fzf_disp_max()/,/^}/p" "'"$MANAGER"'" 2>/dev/null)
+    fzf_disp_max' 2>/dev/null)
+cap_floor=$(HOME="$PWD/tmp/row_cap" MGR=apt COLUMNS=30 LINES=24 bash -c '
+    source <(sed -n "/^term_size()/,/^}/p;/^fzf_disp_max()/,/^}/p" "'"$MANAGER"'" 2>/dev/null)
+    fzf_disp_max' 2>/dev/null)
+cok=1
+[ "$cap_wide" -gt "$cap_narrow" ] 2>/dev/null || cok=0   # wider screen, wider list
+[ "$cap_floor" -ge 24 ] 2>/dev/null || cok=0             # floor holds
+grep -q '【 】' "$MANAGER" || cok=0                       # the fancy bracket pair
+! grep -qF '[ ] ' "$MANAGER" || cok=0                    # old plain checkbox gone
+if [ "$cok" -eq 1 ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("row_cap_adaptive:cap=$cap_wide/$cap_narrow/$cap_floor"); fi
+
+# ---- v5.3: overflowing rows are cut at the right edge, never H-scrolled ----
+# fzf's default --ellipsis is the string '··' and a row wider than the list
+# pane gets horizontally scrolled so the matched substring plus hscroll-off
+# stays visible: the user saw a useless middle slice wrapped in '··'s with
+# the row's leading marker scrolled off ('··passphrase2pgp · Generate
+# EdDSA...··'). --no-hscroll anchors every row at its start and cuts the
+# tail instead (the same pattern the pkgs tool uses), and --ellipsis='…'
+# makes a cut read as normal truncation. Both flags come from fzf_select,
+# the one chokepoint every picker passes through.
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/no_hscroll"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+: > "$home/fzfqueue"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF FZF_QUEUE="$home/fzfqueue" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+calls_flat=$(tr '\n' ' ' < "$home/calls" 2>/dev/null)
+nok=1
+case "$calls_flat" in *"--no-hscroll"*) ;; *) nok=0 ;; esac
+case "$calls_flat" in *"--ellipsis=…"*) ;; *) nok=0 ;; esac
+# Probed whole-row polish (the fake fzf now answers --help like the real one)
+case "$calls_flat" in *"--highlight-line"*) ;; *) nok=0 ;; esac
+case "$calls_flat" in *"--scrollbar=▏"*) ;; *) nok=0 ;; esac
+# One-key app exit from any picker, plus better ranking
+case "$calls_flat" in *"ctrl-q:execute-silent"*) ;; *) nok=0 ;; esac
+case "$calls_flat" in *"--tiebreak=begin,length,index"*) ;; *) nok=0 ;; esac
+if [ "$nok" -eq 1 ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("fzf_no_hscroll"); fi
+
+# ---- Submenu Exit row ----
+# Every submenu picker appends a "Back to main menu" row: one tap leaves the
+# menu, exactly like ESC. The row is stripped from the answer INSIDE
+# fzf_select (the one chokepoint every picker passes through), so no caller
+# can ever install a package called "Back to main menu". Picked alone it is a
+# plain cancel (rc 1) — it must NOT quit the app: only the main menu's own
+# Exit row does that.
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/sub_exit_plain"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+: > "$home/fzfqueue"
+printf '%s\n' "📦 Install a package" "⬅️ Back to main menu" >> "$home/fzfqueue"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF ICONS=emoji FZF_QUEUE="$home/fzfqueue" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+eok=1
+grep -Fq "Canceled." "$home/run.log" || eok=0               # picker went back a level
+[ "$(grep -c '^fzf' "$home/calls")" -eq 2 ] || eok=0        # menu → picker → menu again
+[ -f "$home/.pkg-manager-exit" ] && eok=0                    # Back is not an app exit
+if [ "$eok" -eq 1 ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("sub_exit_plain"); fi
+
+# ...but the explicit "Exit pkg-manager" row (or Ctrl-Q) DOES leave the app,
+# from any depth: it sets the flag the main loop answers with the farewell.
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/sub_exit_app"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+: > "$home/fzfqueue"
+printf '%s\n' "📦 Install a package" "🚪 Exit pkg-manager" >> "$home/fzfqueue"
+export HOME="$home" PREFIX="$home" MGR=apt
+env -u NO_FZF ICONS=emoji FZF_QUEUE="$home/fzfqueue" FZF_CALL_LOG="$home/calls" \
+    timeout 30 bash "$MANAGER" < /dev/null > "$home/run.log" 2>&1
+xok=1
+grep -Fq "Catch ya later" "$home/run.log" || xok=0           # farewell = app left
+grep -Fq "Canceled." "$home/run.log" && xok=0                # not a cancel message
+grep -Fq "python3 installed" "$home/run.log" && xok=0        # nothing was installed
+if [ "$xok" -eq 1 ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=("sub_exit_app"); fi
+
+# Picking a package AND then "Back" must keep the package in the answer: the
+# row is stripped in fzf_select and the rest of the selection survives.
+TOTAL=$((TOTAL + 1))
+shome="$PWD/tmp/sub_exit_strip"
+rm -rf "$shome"; mkdir -p "$shome/bin" "$shome/var/cache/apt/archives"
+cat > "$shome/bin/fzf" <<'STUB'
+#!/usr/bin/env bash
+printf 'git|【 】 git · distributed vcs\n\xe2\xac\x85\xef\xb8\x8f Back to main menu|\xe2\xac\x85\xef\xb8\x8f Back to main menu\n'
+exit 0
+STUB
+chmod +x "$shome/bin/fzf"
+shead="$PWD/tmp/sub_exit_head.sh"
+awk '/^FIRST_LOOP=1$/{exit} {print}' "$MANAGER" > "$shead" 2>/dev/null
+strip_out=$(HOME="$shome" PREFIX="$shome" MGR=apt ICONS=emoji COLUMNS=100 LINES=24 \
+    PATH="$shome/bin:$PATH" bash -c '
+    f="$1"; shift
+    source "$f"
+    sel=$(printf "%s\n" "git|【 】 git · distributed vcs" \
+        "\xe2\xac\x85\xef\xb8\x8f Back to main menu|\xe2\xac\x85\xef\xb8\x8f Back to main menu" | fzf_select "h" "p " 1)
+    printf "RETURN<%s>ANSWER<%s>" "$?" "$sel"
+' bash "$shead" 2>/dev/null)
+rm -f "$shead"
+case "$strip_out" in
+    *"RETURN<0>ANSWER<git|【 】 git · distributed vcs>"*) PASS=$((PASS + 1)) ;;
+    *) FAIL=$((FAIL + 1)); FAILED+=("sub_exit_strip:$strip_out") ;;
+esac
+
 # Geometry + preview contract (pure functions, no TTY needed).
 TOTAL=$((TOTAL + 1))
 geo_out=$(bash -c 'source <(sed -n "/^term_size()/,/^}/p;/^fzf_height()/,/^}/p;/^fzf_layout()/,/^}/p;/^fzf_margin()/,/^}/p;/^pkg_preview_cmd()/,/^}/p" "'"$MANAGER"'")
@@ -405,10 +672,12 @@ geo_out=$(bash -c 'source <(sed -n "/^term_size()/,/^}/p;/^fzf_height()/,/^}/p;/
     l1=$(COLUMNS=120 LINES=40 fzf_layout); case "$l1" in right:45%:wrap:border-left) ;; *) echo "layout-wide:$l1";; esac
     l2=$(COLUMNS=60 LINES=30 fzf_layout);  case "$l2" in down:45%:wrap:border-top) ;; *) echo "layout-narrow:$l2";; esac
     # height must stay below 100%: at 100% fzf goes fullscreen (alternate
-    # screen) and hides the banner printed above the finder.
-    h1=$(COLUMNS=80 LINES=24 fzf_height);  case "$h1" in 70%) ;; *) echo "height-24:$h1";; esac
-    h2=$(COLUMNS=80 LINES=40 fzf_height);  case "$h2" in 82%) ;; *) echo "height-40:$h2";; esac
+    # screen) and hides the picker. The banner is the window header, so
+    # the window may use the whole screen minus one row.
+    h1=$(COLUMNS=80 LINES=24 fzf_height);  case "$h1" in 95%) ;; *) echo "height-24:$h1";; esac
+    h2=$(COLUMNS=80 LINES=40 fzf_height);  case "$h2" in 95%) ;; *) echo "height-40:$h2";; esac
     h3=$(COLUMNS=80 LINES=200 fzf_height); case "$h3" in 95%) ;; *) echo "height-cap:$h3";; esac
+    h4=$(COLUMNS=80 LINES=8 fzf_height);   case "$h4" in 87%) ;; *) echo "height-short:$h4";; esac
     m1=$(COLUMNS=80 LINES=24 fzf_margin);  case "$m1" in 0,2) ;; *) echo "margin-narrow:$m1";; esac
     m2=$(COLUMNS=130 LINES=45 fzf_margin); case "$m2" in 0,6) ;; *) echo "margin-wide:$m2";; esac
     m3=$(COLUMNS=60 LINES=16 fzf_margin);  case "$m3" in 0,2) ;; *) echo "margin-short:$m3";; esac
@@ -423,7 +692,7 @@ cli cli_quiet        "--quiet"                "1"
 cli cli_doctor       "--doctor"               "Health score"
 
 # --- v5.2: nala as a manager, with apt fallback when it is missing ---
-cli cli_mgr_nala_cfg  "--version"     "pkg-manager v5.2"
+cli cli_mgr_nala_cfg  "--version"     "pkg-manager v5.3.1"
 TOTAL=$((TOTAL + 1))
 home="$PWD/tmp/nala_fallback"
 rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
@@ -438,7 +707,7 @@ out=$(HOME="$home" PREFIX="$home" MGR=nala NO_FZF=1 ICONS=emoji TERM=dumb PATH="
       timeout 20 bash "$MANAGER" --version < /dev/null 2>&1)
 # config validation must accept MGR=nala: the app runs (prints version) rather
 # than dying, and the fallback keeps every apt call working.
-if printf '%s\n' "$out" | grep -q "pkg-manager v5.2"; then
+if printf '%s\n' "$out" | grep -q "pkg-manager v5.3.1"; then
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1)); FAILED+=("nala_fallback:$out")
