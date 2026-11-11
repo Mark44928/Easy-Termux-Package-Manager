@@ -137,15 +137,13 @@ case ":$PATH:" in
 esac
 info "Run it anytime with: ${BD}pkg-manager${R}   ·   quick help: ${BD}pkg-manager --help${R}"
 divider
-info "${BD}v${VERSION:-?} highlights:${R} 9 truecolor themes (dracula, catppuccin, tokyo-night,"
-info "  nord, gruvbox, one-dark, solarized, everforest, rose-pine) · theme hub with live"
+info "${BD}v${VERSION:-?} highlights:${R} 16 truecolor themes (dracula, catppuccin, tokyo-night, nord,"
+info "  gruvbox, one-dark, solarized, everforest, rose-pine …) · theme hub with live"
 info "  preview + Termux colors.properties export · ${BD}fzf pickers${R} for install/uninstall"
-info "  with live package-info preview panes, search, the command palette and every submenu"
-info "  · apt / pkg / nala backends (auto-falls back to apt) · undo engine · dep tree ·"
-info "  health check · snapshot/diff · auto-mirror · essential toolkit · system dashboard"
-info "  · scriptable CLI: ${BD}--check-updates --quiet --doctor${R}"
-info "Extras: ${BD}pkg install curl${R} for auto-mirror · ${BD}pkg install nala${R} for the"
-info "  prettier package views (optional) · Nerd Font below for the icon glyphs"
+info "  with live package-info preview panes and the command palette ·"
+info "  apt / pkg backends · undo engine · dep tree · system audit / doctor ·"
+info "  snapshot/diff · essential toolkit · --check-updates --quiet --doctor"
+info "Nerd Font below for the icon glyphs"
 
 # ── Nerd Font install ────────────────────────────────────────────────────
 install_font() {

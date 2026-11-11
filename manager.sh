@@ -4387,7 +4387,8 @@ do_whatsnew() {
 # downloads, mirror optimization, undo, progress), jpikl/pm (POSIX unified CLI, fzf preview)
 # ============================================================================
 
-FZF_CACHE="$HOME/.pkg-manager-fzf-cache"
+FZF_CACHE_VER=2
+FZF_CACHE="$HOME/.pkg-manager-fzf-cache.v$FZF_CACHE_VER"
 
 refresh_fzf_cache() {
     local now last
@@ -4396,6 +4397,8 @@ refresh_fzf_cache() {
     if [ -f "$FZF_CACHE" ]; then
         last=$(stat -c %Y "$FZF_CACHE" 2>/dev/null || echo 0)
     fi
+    # drop the pre-format-flip v1 cache so it is never mistaken for current
+    [ -e "$HOME/.pkg-manager-fzf-cache" ] && rm -f "$HOME/.pkg-manager-fzf-cache" 2>/dev/null
     if [ "$now" -eq 0 ] || [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
         # INSTALL list: only packages that are NOT installed yet — already
         # installed names had to be filtered out of hundreds of rows every time.
