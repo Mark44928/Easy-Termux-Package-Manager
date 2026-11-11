@@ -55,7 +55,8 @@ done
 BIN_TMP=$(mktemp "$PREFIX/bin/.pkg-manager.XXXXXX" 2>/dev/null) || BIN_TMP=$(mktemp "$HOME/.pkg-manager-install.XXXXXX") || { warn "Cannot create a temp file"; exit 1; }
 FONT_TMP=$(mktemp "$HOME/.termux/.font.ttf.XXXXXX" 2>/dev/null) || FONT_TMP=$(mktemp "$HOME/.pkg-manager-font.XXXXXX")
 
-trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT INT TERM
+trap 'rm -f "$BIN_TMP" "$FONT_TMP"; exit 130' INT TERM
+trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT
 
 # ── Helper tools: fzf is the interactive UI ─────────────────────────────
 declare -a MISSING=()
@@ -102,26 +103,27 @@ else
 fi
 
 mkdir -p "$(dirname "$BIN")" || { warn "Failed to create $(dirname "$BIN")"; exit 1; }
-mv -f "$BIN_TMP" "$BIN" || { warn "Failed to move $BIN_TMP to $BIN"; exit 1; }
-chmod +x "$BIN" || { warn "Failed to chmod $BIN"; exit 1; }
-bash_path=$(command -v bash)
+# Syntax-check and smoke-test the candidate BEFORE it replaces any
+# already-working install — never leave a broken payload at $BIN.
+chmod +x "$BIN_TMP" || { warn "Failed to make $BIN_TMP executable"; exit 1; }
+bash_path=$(command -v bash) || bash_path=""
 if [ -n "$bash_path" ]; then
-    sed -i "1s|^#!.*|#!$bash_path|" "$BIN" || warn "Failed to fix shebang in $BIN"
+    sed -i "1s|^#!.*|#!$bash_path|" "$BIN_TMP" || { warn "Failed to fix shebang in $BIN_TMP"; exit 1; }
 else
-    warn "bash not found — cannot fix shebang in $BIN"
+    warn "bash not found — cannot fix shebang in $BIN_TMP"
 fi
-if ! bash -n "$BIN" 2>/dev/null; then
-    warn "${RED}The installed script has a syntax error — aborting.${R}"
+if ! bash -n "$BIN_TMP" 2>/dev/null; then
+    warn "${RED}The downloaded script has a syntax error — aborting.${R}"
     warn "It may be a corrupted download; re-run this installer."
     exit 1
 fi
-# Smoke test the CLI surface of the freshly installed copy — a syntax check
-# alone does not prove the binary runs.
-if ! "$BIN" --version >/dev/null 2>&1; then
-    warn "${RED}The installed script failed its smoke test (--version) — aborting.${R}"
+if ! "$BIN_TMP" --version >/dev/null 2>&1; then
+    warn "${RED}The downloaded script failed its smoke test (--version) — aborting.${R}"
     warn "Re-run this installer; if it keeps failing, report it with your Termux version."
     exit 1
 fi
+mv -f "$BIN_TMP" "$BIN" || { warn "Failed to move $BIN_TMP to $BIN"; exit 1; }
+chmod +x "$BIN" || { warn "Failed to chmod $BIN"; exit 1; }
 ok "Smoke test passed ($("$BIN" --version 2>/dev/null | head -n1))"
 
 divider

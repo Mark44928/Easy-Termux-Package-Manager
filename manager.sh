@@ -38,6 +38,12 @@ scratch_new() {
     _SCRATCH+=("$f")
     printf '%s\n' "$f"
 }
+# fzf's rc signals: 0 picked, 1 ESC/back, >=2 broken. Pickers are always run
+# under $(...), so state must cross the subshell through a file, like
+# request_app_exit. A session-scoped broken marker flip has_fzf() false for
+# the rest of the session (the app's "finish in text mode" design).
+FZF_BROKEN_FLAG="$HOME/.pkg-manager-fzf-broken"
+rm -f "$FZF_BROKEN_FLAG" 2>/dev/null || true
 cleanup_tmp() {
     local f
     for f in "${_SCRATCH[@]:-}"; do
@@ -46,9 +52,35 @@ cleanup_tmp() {
     _SCRATCH=()
     # An exit request must never outlive the session that made it.
     rm -f -- "${APP_EXIT_FLAG:-}" 2>/dev/null
+    rm -f -- "${FZF_BROKEN_FLAG:-}" 2>/dev/null
 }
 
 trap cleanup_tmp EXIT
+
+
+# print_safe <s> — strip C0/C1 controls and DEL from a string before display.
+# Terminal escape sequences embedded in user-editable logs/notes could plant
+# hyperlinks, clear-screen, or fake text in the user's tty.
+print_safe() {
+    printf '%s' "$1" | sed -e 's/[[:cntrl:]\x7f]//g'
+}
+
+# refuse_symlink <path> — stop fixed-path writes being used as a symlink-
+# redirection channel (shell trap: planted symlink in $HOME points the append
+# or truncation at a victim file).
+refuse_symlink() {
+    [ -L "$1" ] && { err "Refusing to write through symlink: $1"; return 1; }
+    return 0
+}
+
+# safe_cp <src> <dst> — like cp -p, but refuses to overwrite a symlink at
+# dst (a planted symlink could redirect the write to a victim file).
+safe_cp() {
+    local src="$1" dst="$2"
+    if [ -L "$dst" ]; then err "Refusing to overwrite symlink: $dst"; return 1; fi
+    cp -p -- "$src" "$dst"
+}
+
 
 # request_app_exit / app_exit_wanted — the "quit the app from a submenu"
 # request. It MUST travel through a flag file: picker code always runs inside
@@ -57,15 +89,13 @@ request_app_exit() { : > "${APP_EXIT_FLAG:-/dev/null}" 2>/dev/null || true; }
 app_exit_wanted() { [ -f "${APP_EXIT_FLAG:-}" ]; }
 APP_EXIT_FLAG="$HOME/.pkg-manager-exit"
 
-trap cleanup_tmp EXIT
-
 # Load .pkg-manager.conf as plain KEY=VALUE data, never `source`d: the file
 # may be planted / hand-edited, and sourcing it would run arbitrary code.
 load_config() {
     local line k v
     local c_mgr c_theme c_confirm c_log c_icons c_quiet c_lock c_startup c_favs c_recycle c_fzf
     [ -f "$HOME/.pkg-manager.conf" ] || return 0
-    while IFS= read -r line; do
+    while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ''|'#'*) continue ;;
         esac
@@ -120,6 +150,14 @@ export PREFIX
 case "$MGR" in apt|pkg) ;; *) MGR="apt" ;; esac
 # APT_BIN is re-evaluated per use so a mid-session MGR change (settings menu)
 # takes effect immediately.
+
+# apt prints an interactive-use nag on stderr ("apt does not have a stable
+# CLI interface ... Use with caution in scripts") on every scripted run.
+# Wrap it once: the two exact lines are stripped from stderr for EVERY
+# apt invocation (including the "$MGR" style), nothing else is touched.
+apt() {
+    command apt "$@" 2> >(grep -vE '^WARNING: apt does not have a stable CLI interface\. Use with caution in scripts\.$' >&2)
+}
 case "$THEME" in green|blue|purple|red|nord|amber|teal|mono|dracula|catppuccin|tokyo|gruvbox|onedark|solarized|everforest|rosepine) ;; *) THEME="green" ;; esac
 case "$CONFIRM" in 0|1) ;; *) CONFIRM=1 ;; esac
 case "$LOG_ENABLED" in 0|1) ;; *) LOG_ENABLED=1 ;; esac
@@ -301,9 +339,12 @@ fzf_label() {
 # (bad flag, crash, terminal too small) the app says so ONCE and completes the
 # session in text mode instead of silently misbehaving.
 UI_MODE="fzf"          # fzf | text — text is a full mode, not an error state
-FZF_BROKEN=0           # set when fzf exits abnormally; forces text mode
+# fzf writes $FZF_BROKEN_FLAG on rc>=2 (see fzf_select); have_fzf() honors it
 
 have_fzf() {
+    # fzf broke once this session: stay in text mode (marker survives the
+    # $(...) that a picker always runs inside)
+    [ -e "${FZF_BROKEN_FLAG:-/dev/null}" ] && return 1
     [ "$UI_MODE" = "fzf" ] || return 1
     [ "$FZF_ENABLED" = "1" ] || return 1
     [ "${NO_FZF:-0}" = "1" ] && return 1
@@ -387,7 +428,7 @@ banner_text() {
     n="${1:-}"
     [ -n "$n" ] || n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
     favs=0
-    [ -s "$FAVS_FILE" ] && favs=$(grep -c . "$FAVS_FILE" 2>/dev/null || echo 0)
+    if [ -s "$FAVS_FILE" ]; then favs=$(grep -c . "$FAVS_FILE" 2>/dev/null) || favs=0; fi
     dim "  pkg-manager v$VERSION · manager: $MGR · theme: $THEME · installed: ${n:-?} · favorites: $favs"
 }
 
@@ -432,7 +473,7 @@ valid_pkg_name() {
 # filter_pkgs — read newline-separated names on stdin, print only valid ones
 filter_pkgs() {
     local p
-    while IFS= read -r p; do
+    while IFS= read -r p || [ -n "$p" ]; do
         valid_pkg_name "$p" && printf '%s\n' "$p"
     done
 }
@@ -440,7 +481,6 @@ filter_pkgs() {
 build_menu() {
     OPTION_INSTALL="$ICON_INSTALL Install a package"
     OPTION_UNINSTALL="$ICON_UNINSTALL Uninstall a package"
-    OPTION_SEARCH="$ICON_SEARCH Search packages"
     OPTION_LIST="$ICON_LIST List installed packages"
     OPTION_REINSTALL="$ICON_REINSTALL Reinstall / repair a package"
     OPTION_UPDATE="$ICON_UPDATE Upgrade center"
@@ -492,7 +532,6 @@ build_menu() {
     OPTION_DEPTREE_GRAPH="$ICON_DEPENDS Dependency tree"
     OPTION_HEALTH="$ICON_SHIELD Health dashboard"
     OPTION_SNAPSHOT_DIFF="$ICON_BACKUP Snapshot / Diff"
-    OPTION_AUTO_MIRROR="$ICON_PLAY Auto-mirror"
     OPTION_THEME="$ICON_WAND Themes & terminal colors"
     OPTION_SELFUPDATE="$ICON_UP Update pkg-manager"
     OPTION_ESSENTIALS="$ICON_BOLT Essential toolkit"
@@ -516,7 +555,6 @@ build_menu() {
     _menu_desc() { MENU_DESC["$1"]="$2"; }
     _menu_desc "$OPTION_INSTALL"       "Install one or more packages (fzf multi-select with a live apt-cache info preview)"
     _menu_desc "$OPTION_UNINSTALL"     "Remove installed packages, keeping .deb copies in the recycle bin first"
-    _menu_desc "$OPTION_SEARCH"        "Fuzzy-search the repositories and pick from the matches"
     _menu_desc "$OPTION_LIST"          "Show every installed package, or filter by a substring"
     _menu_desc "$OPTION_REINSTALL"     "Re-download and reinstall a package to repair a broken one"
     _menu_desc "$OPTION_UPDATE"        "Upgrade center: refresh lists, preview, then upgrade all or selected"
@@ -568,7 +606,6 @@ build_menu() {
     _menu_desc "$OPTION_DEPTREE_GRAPH" "Colored forward/reverse dependency graph for one package"
     _menu_desc "$OPTION_HEALTH"        "Dashboard: upgradables, orphans, disk headroom, locks, dpkg state"
     _menu_desc "$OPTION_SNAPSHOT_DIFF" "Create, list, diff, restore or delete full snapshots"
-    _menu_desc "$OPTION_AUTO_MIRROR"   "Time the mirrors, switch to the fastest, then apt update"
     _menu_desc "$OPTION_THEME"         "Theme hub: preview every theme, export the palette to Termux"
     _menu_desc "$OPTION_SELFUPDATE"    "Update pkg-manager itself (SHA-256 verified download)"
     _menu_desc "$OPTION_ESSENTIALS"    "One-tap curated bundles of everyday tools"
@@ -583,7 +620,6 @@ build_menu() {
     _menu_detail() { MENU_DETAIL["$1"]="$2"; }
     _menu_detail "$OPTION_INSTALL"      "runs: apt install <pkgs> — one batch call"
     _menu_detail "$OPTION_UNINSTALL"    "runs: apt remove <pkgs> (archives the .deb first if RECYCLE=1)"
-    _menu_detail "$OPTION_SEARCH"       "runs: apt search <term>, then an fzf picker of the matches"
     _menu_detail "$OPTION_LIST"         "runs: apt list --installed / dpkg-query, optional substring filter"
     _menu_detail "$OPTION_REINSTALL"    "runs: apt install --reinstall <pkg>"
     _menu_detail "$OPTION_UPDATE"       "runs: apt update, then apt upgrade (all or picked)"
@@ -635,7 +671,6 @@ build_menu() {
     _menu_detail "$OPTION_DEPTREE_GRAPH" "runs: apt-cache depends/rdepends + apt-mark, colored graph"
     _menu_detail "$OPTION_HEALTH"       "runs: apt list --upgradable, apt-mark showauto, dpkg-query + du"
     _menu_detail "$OPTION_SNAPSHOT_DIFF" "runs: tar snapshots, then diffs or restores them"
-    _menu_detail "$OPTION_AUTO_MIRROR"  "times the mirrors, picks the fastest, then apt update"
     _menu_detail "$OPTION_THEME"        "writes ~/.termux/colors.properties (backup kept)"
     _menu_detail "$OPTION_SELFUPDATE"   "downloads the release, checks SHA-256, replaces the script"
     _menu_detail "$OPTION_ESSENTIALS"   "insts curated bundles of everyday tools"
@@ -644,7 +679,7 @@ build_menu() {
     _menu_detail "$OPTION_EXIT"         "leaves pkg-manager"
 
     MENU_ITEMS=(
-        "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_SEARCH" "$OPTION_LIST" "$OPTION_REINSTALL"
+        "$OPTION_INSTALL" "$OPTION_UNINSTALL" "$OPTION_LIST" "$OPTION_REINSTALL"
         "$OPTION_UPDATE" "$OPTION_CLEAN" "$OPTION_INFO" "$OPTION_AUTOREMOVE"
         "$OPTION_DEPENDS" "$OPTION_RDEPENDS" "$OPTION_SIZE" "$OPTION_FILES" "$OPTION_OWNER"
         "$OPTION_HOLD" "$OPTION_PURGE" "$OPTION_FIXBROKEN" "$OPTION_UPGRADABLE"
@@ -656,14 +691,14 @@ build_menu() {
         "$OPTION_LOCALDEB" "$OPTION_DOWNGRADE" "$OPTION_DLONLY" "$OPTION_HOLDVER" "$OPTION_FILESEARCH"
         "$OPTION_CHANGELOG" "$OPTION_WHY" "$OPTION_NOTES" "$OPTION_SNAPSHOT" "$OPTION_PALETTE"
         "$OPTION_WATCH" "$OPTION_MIRROR" "$OPTION_AUDIT" "$OPTION_MARKS" "$OPTION_RECYCLE" "$OPTION_REPOS"
-        "$OPTION_UNDO" "$OPTION_DEPTREE_GRAPH" "$OPTION_HEALTH" "$OPTION_SNAPSHOT_DIFF" "$OPTION_AUTO_MIRROR" "$OPTION_SELFUPDATE"
+        "$OPTION_UNDO" "$OPTION_DEPTREE_GRAPH" "$OPTION_HEALTH" "$OPTION_SNAPSHOT_DIFF" "$OPTION_SELFUPDATE"
         "$OPTION_ESSENTIALS" "$OPTION_SYSINFO" "$OPTION_WHATSNEW" "$OPTION_SETTINGS"
     )
 
     FAVPIN=()
     if [ "$FAVS_PINNED" = "1" ] && [ -s "$FAVS_FILE" ]; then
         local p_pin seen=" "
-        while IFS= read -r p_pin; do
+        while IFS= read -r p_pin || [ -n "$p_pin" ]; do
             p_pin=${p_pin#"${p_pin%%[![:space:]]*}"}
             p_pin=${p_pin%"${p_pin##*[![:space:]]}"}
             if [ -n "$p_pin" ] && valid_pkg_name "$p_pin" \
@@ -732,8 +767,9 @@ main_menu() {
             return
         fi
         # ESC with a healthy fzf cancels (the REPL loop treats it as Exit).
-        # Only fall through to the numbered list when fzf actually broke.
-        [ "$FZF_BROKEN" = "1" ] || return 1
+        # Only fall through to the numbered list when fzf actually broke
+        # (have_fzf() sees the $FZF_BROKEN_FLAG file fzf_select writes).
+        have_fzf && return 1
     fi
     printf '\n' >&2
         printf '%s\n' "$(paint "$PINK" "  ═══ MAIN MENU ═══")" >&2
@@ -765,15 +801,68 @@ main_menu() {
 # ask_name <prompt> <pkghint> — read a value into PKG_NAME. With pkghint="pkg"
 # (default for package prompts) the value is validated with valid_pkg_name;
 # pass "path" to skip validation for e.g. file paths, or "any" for free text.
+# With fzf available on a tty, a pkg prompt becomes a fuzzy finder over the
+# package list with the same live info preview the install picker shows; ESC
+# falls back to typing, the Exit row leaves the app. Not a tty (test feeds,
+# pipes): plain typed prompt, exactly as before.
+#
+# List kind — prompts that only make sense for an INSTALLED package (uninstall,
+# reinstall, purge, hold/unhold, downgrade, mark, why/explain, installed files)
+# fuzzy-search the installed list; everything else searches all known packages.
+# The typed fallback for installed-kind prompts is guarded too: an uninstalled
+# name gets a clear "not installed" message instead of a raw apt-mark/dpkg error.
 ask_name() {
     local prompt="$1" mode="${2:-pkg}"
     PKG_NAME=""
+    local kind="all"
+    case "$prompt" in
+        *nstalled*|*unhold*|*uninstall*|*reinstall*|*purge*|*hold*|*downgrade*|*"mark as"*|*explain*) kind="installed" ;;
+    esac
+    if [ "$mode" = "pkg" ] && [ -t 0 ] && have_fzf; then
+        local list sel rc
+        case "$kind" in
+            installed) list=$(list_installed_names) ;;
+            *)         list=$(apt-cache pkgnames 2>/dev/null | LC_ALL=C sort) ;;
+        esac
+        if [ -n "$list" ]; then
+            local -a extra=()
+            # Enter on an EMPTY query must not accept the first alphabetical
+            # row (a stray Enter would silently pick e.g. the first package
+            # for purge/reinstall). accept-non-empty exists since fzf 0.24;
+            # --accept-nth in --help is the probe proxy (0.58+ ⊃ 0.24).
+            case "${APP_INIT_CAPS:-}" in
+                *'--accept-nth'*) extra+=(--bind='enter:accept-non-empty') ;;
+            esac
+            FZF_PREVIEW=$(pkg_preview_cmd install)
+            FZF_GHOST="type to filter · ESC back"
+            sel=$(printf '%s\n' "$list" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "$prompt" "❯ " 0 "${extra[@]}")
+            rc=$?
+            FZF_PREVIEW=""; FZF_GHOST=""
+            if [ "$rc" -eq 0 ] && [ -n "$sel" ] && [ "$sel" != "$OPTION_APP_EXIT" ] && [ "$sel" != "$OPTION_SUB_EXIT" ]; then
+                PKG_NAME=$sel
+                return
+            fi
+            # Exit row / ctrl-q: cancel the action, the flag rides to the loop;
+            # ESC / Back row (rc 1, exactly alike): cancel the action, one level back
+            app_exit_wanted && return
+            [ "$rc" -eq 1 ] && return
+        fi
+    fi
     printf '❯ %s: ' "$prompt" >&2
     read -r PKG_NAME
     # normalize: trim surrounding whitespace and CR
     PKG_NAME=$(printf '%s\n' "$PKG_NAME" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     if [ "$mode" = "pkg" ] && [ -n "$PKG_NAME" ] && ! valid_pkg_name "$PKG_NAME"; then
         warn "Invalid package name: '$PKG_NAME'"
+        PKG_NAME=""
+        return
+    fi
+    # installed-kind prompts must name an actually-installed package: a typed
+    # name that is only in the repo would otherwise die later with raw
+    # apt-mark/dpkg errors ("can not be marked as it is not installed")
+    if [ -n "$PKG_NAME" ] && [ "$kind" = "installed" ] \
+       && ! list_installed_names | grep -Fxq -- "$PKG_NAME"; then
+        warn "'$PKG_NAME' is not installed."
         PKG_NAME=""
     fi
 }
@@ -788,6 +877,7 @@ run_spin() {
 
 log() {
     [ "$LOG_ENABLED" = "1" ] || return 0
+    refuse_symlink "$LOG_FILE" || return 0
     printf '%s\n' "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
@@ -795,6 +885,7 @@ log() {
 # meaningful (log() only records successful actions and never reaches these paths).
 log_err() {
     [ "$LOG_ENABLED" = "1" ] || return 0
+    refuse_symlink "$LOG_FILE" || return 0
     printf '%s\n' "[$(date '+%Y-%m-%d %H:%M:%S')] FAIL: $1" >> "$LOG_FILE"
 }
 
@@ -822,9 +913,9 @@ confirm_danger() {
 
 list_installed_names() {
     if [ "$MGR" = "pkg" ]; then
-        pkg list-installed 2>/dev/null | tail -n +2 | awk '{print $1}' | cut -d/ -f1
+        pkg list-installed 2>/dev/null | grep -E '^[^/[:space:]]+/' | awk '{print $1}' | cut -d/ -f1
     else
-        apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1
+        apt list --installed 2>/dev/null | grep -E '^[^/[:space:]]+/' | cut -d/ -f1
     fi
 }
 
@@ -853,7 +944,12 @@ save_config() {
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
         printf 'RECYCLE=%s\n' "$RECYCLE"
         printf 'FZF_ENABLED=%s\n' "$FZF_ENABLED"
-    } > "$tmp"
+    } > "$tmp" || { err "Could not write config temp file."; rm -f "$tmp"; return 1; }
+    if ! [ -s "$tmp" ]; then err "Config temp file is empty — leaving your settings alone."; rm -f "$tmp"; return 1; fi
+    # keep the previous config — hand-edits should survive a settings toggle
+    if [ -f "$HOME/.pkg-manager.conf" ] && [ ! -f "$HOME/.pkg-manager.conf.pkg-manager.bak" ]; then
+        safe_cp "$HOME/.pkg-manager.conf" "$HOME/.pkg-manager.conf.pkg-manager.bak" || err "Could not back up settings (writing anyway)."
+    fi
     if mv -f "$tmp" "$HOME/.pkg-manager.conf"; then
         printf '✓ Settings saved → %s\n' "$HOME/.pkg-manager.conf"
         return 0
@@ -957,9 +1053,12 @@ apply_termux_theme() {
         return 1
     }
     mkdir -p "$dir" || { err "Cannot create $dir"; return 1; }
-    if [ -f "$dir/colors.properties" ] && [ ! -f "$dir/colors.properties.pkg-manager.bak" ]; then
-        cp -f "$dir/colors.properties" "$dir/colors.properties.pkg-manager.bak" \
-            && dim "  existing colors backed up → $dir/colors.properties.pkg-manager.bak"
+    if [ -f "$dir/colors.properties" ]; then
+        if ! safe_cp "$dir/colors.properties" "$dir/colors.properties.pkg-manager.bak"; then
+            err "Could not back up $dir/colors.properties — aborting."
+            return 1
+        fi
+        dim "  existing colors backed up → $dir/colors.properties.pkg-manager.bak"
     fi
     tmp=$(scratch_new) || { err "Could not create a temp file."; return 1; }
     local -a v
@@ -970,7 +1069,8 @@ apply_termux_theme() {
         for i in $(seq 0 15); do
             printf 'color%d=#%s\n' "$i" "${v[$((i+2))]}"
         done
-    } > "$tmp"
+    } > "$tmp" || { err "Could not write the palette temp file."; rm -f "$tmp"; return 1; }
+    if ! [ -s "$tmp" ]; then err "Palette temp file is empty — colors.properties unchanged."; rm -f "$tmp"; return 1; fi
     if mv -f "$tmp" "$dir/colors.properties"; then
         ok "Wrote $dir/colors.properties (theme: $t)"
         log "termux colors ← theme $t"
@@ -983,13 +1083,14 @@ apply_termux_theme() {
 
 restore_termux_theme() {
     local dir="$HOME/.termux"
-    if [ -f "$dir/colors.properties.pkg-manager.bak" ]; then
-        mv -f "$dir/colors.properties.pkg-manager.bak" "$dir/colors.properties" \
-            && ok "Restored previous $dir/colors.properties" \
-            || err "Restore failed"
-    else
-        warn "No backup found ($dir/colors.properties.pkg-manager.bak)."
+    [ -f "$dir/colors.properties.pkg-manager.bak" ] || { warn "No backup found ($dir/colors.properties.pkg-manager.bak)."; return; }
+    if ! confirm_danger "Restore the pre-export $dir/colors.properties? (the current one will be replaced)"; then
+        say "Canceled — colors.properties unchanged."
+        return
     fi
+    mv -f "$dir/colors.properties.pkg-manager.bak" "$dir/colors.properties" \
+        && ok "Restored previous $dir/colors.properties" \
+        || err "Restore failed"
 }
 
 pause() {
@@ -1058,6 +1159,7 @@ run_multi_op() {
     if [ "$total" -eq 1 ]; then
         if out=$("$MGR" "$op" -y "${uniq[0]}" 2>&1); then
             hint=$(apt_hint "$out")
+            log "$op ${uniq[0]}"
             if [ -n "$hint" ]; then
                 ok "$hint"
             else
@@ -1072,11 +1174,13 @@ run_multi_op() {
     fi
     if out=$("$MGR" "$op" -y "${uniq[@]}" 2>&1); then
         for p in "${uniq[@]}"; do ok "$p"; done
+        log "$op ${uniq[*]}"
         return 0
     fi
     for pkg in "${uniq[@]}"; do
         if out=$("$MGR" "$op" -y "$pkg" 2>&1); then
             ok=$((ok+1))
+            log "$op $pkg"
             ok "$pkg"
         else
             fail=$((fail+1)); failed+=("$pkg")
@@ -1102,16 +1206,15 @@ list_upgradable() {
     if [ "$rc" -ne 0 ]; then
         return "$rc"
     fi
-    printf '%s\n' "$out" | tail -n +2
+    printf '%s\n' "$out" | grep -E '^[^/[:space:]]+/'
     return 0
 }
 
 do_install() {
-    FZF_ABORTED=0
-    if have_fzf; then
+        if have_fzf; then
         use_fzf_for_op install
         local rc=$?
-        return $rc   # ESC (FZF_ABORTED=1) cancels back to the main menu
+        return $rc   # ESC cancels back to the main menu
     fi
     ask_name "Package name to install"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
@@ -1138,11 +1241,10 @@ do_install() {
 }
 
 do_uninstall() {
-    FZF_ABORTED=0
-    if have_fzf; then
+        if have_fzf; then
         use_fzf_for_op remove
         local rc=$?
-        return $rc   # ESC (FZF_ABORTED=1) cancels back to the main menu
+        return $rc   # ESC cancels back to the main menu
     fi
     ask_name "Package name to uninstall"
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
@@ -1173,74 +1275,13 @@ do_uninstall() {
     fi
 }
 
-do_search() {
-    ask_name "Package name or keyword to search" any
-    [ -n "$PKG_NAME" ] || { warn "No search term given."; return; }
-    case "$PKG_NAME" in -*)
-        err "Invalid search term — must not start with '-'."
-        return ;;
-    esac
-    log "search $PKG_NAME"
-    local out installed
-    installed=$(list_installed_names)
-    out=$(apt search -- "$PKG_NAME" 2>/dev/null | grep -vE '^(Sorting|Full Text Search)')
-    if [ -z "$out" ]; then
-        err "No results — check the name or run $ICON_UPDATE Upgrade center first?"
-        return
-    fi
-    say "$ICON_SEARCH Search results for \"$PKG_NAME\" (✓ = already installed):"
-    printf '%s\n' "$out" | awk -v inst="$installed" '
-        BEGIN { n=split(inst, a, "\n"); for (i=1; i<=n; i++) has[a[i]]=1 }
-        /^[^ ]/ {
-            pkg=$0; sub(/\/.*/, "", pkg)
-            printf "%s%s\n", $0, (pkg in has ? "  ✓ [installed]" : "")
-            next
-        }
-        { print }
-    '
-    local cands sel
-    cands=$(printf '%s\n' "$out" | awk -v inst="$installed" '
-        BEGIN { n=split(inst, a, "\n"); for (i=1; i<=n; i++) has[a[i]]=1 }
-        /^[^ ]/ { pkg=$0; sub(/\/.*/, "", pkg); if (!(pkg in has)) print pkg }
-    ')
-    [ -n "$cands" ] || return
-    say "$ICON_INSTALL Found installable packages:"
-    printf '%s\n' "$cands"
-    if have_fzf; then
-        # Search results are bare names, so the preview's {1} placeholder is
-        # the whole line — no --delimiter/--nth needed (a --with-nth=2 here
-        # would show an empty column). The preview is the same rich apt-cache
-        # record the install and uninstall pickers show.
-        FZF_PREVIEW=$(pkg_preview_cmd install)
-        FZF_GHOST="type to narrow the matches"
-        sel=$(printf '%s\n' "$cands" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "Install from results — Tab/Space multi-select, ESC for none" "install> " 1) || sel=""
-        FZF_PREVIEW=""; FZF_GHOST=""
-        [ -n "$sel" ] || { app_exit_wanted || say "Nothing selected."; return; }
-    else
-        printf '\nInstall from these results? (space-separated names, or n): ' >&2
-        read -r sel
-        case "$sel" in
-            ""|n|N|no) return ;;
-        esac
-    fi
-    [ -n "$sel" ] || { app_exit_wanted || say "Nothing selected."; return; }
-    sel=$(printf '%s\n' "$sel" | tr ' ' '\n' | filter_pkgs)
-    [ -n "$sel" ] || { warn "No valid package names."; return; }
-    if confirm_danger "$ICON_INSTALL Install $(printf '%s\n' "$sel" | awk 'NF' | wc -l) package(s) from the results?"; then
-        log "search install: $(printf '%s' "$sel" | tr '\n' ' ')"
-        local -a _pkgs=()
-        mapfile -t _pkgs <<< "$sel"
-        run_multi_op install "${_pkgs[@]}"
-    fi
-}
-
 do_list() {
     log "list installed packages"
     local out n
     if [ "$MGR" = "pkg" ]; then
-        out=$(pkg list-installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
+        out=$(pkg list-installed 2>/dev/null | grep -E '^[^/[:space:]]+/' | awk '{print $1}' | cut -d/ -f1)
     else
-        out=$(apt list --installed 2>/dev/null | tail -n +2 | cut -d/ -f1)
+        out=$(apt list --installed 2>/dev/null | grep -E '^[^/[:space:]]+/' | cut -d/ -f1)
     fi
     if [ -n "$out" ]; then
         n=$(printf '%s\n' "$out" | grep -c .)
@@ -1299,13 +1340,34 @@ do_upgrade_center() {
     fi
     pkgs=$(printf '%s\n' "$list" | cut -d/ -f1)
     n=$(printf '%s\n' "$pkgs" | awk 'NF' | wc -l)
-    say "$ICON_UPGRADABLE $n package(s) have updates:"
-    printf '%s\n' "$list"
     if have_fzf; then
-        local -a _upg=()
-        mapfile -t _upg <<< "$pkgs"
-        choice=$(printf '%s\n' "All packages" "${_upg[@]}" | pick_multi "Select what to upgrade (SPACE toggles, ENTER goes)")
+        local us=$'\x1f' row pkg ver from disp
+        local -a urows=()
+        urows+=("All packages${us}【 】 All packages — upgrade all $n${us}0${us}every upgradable package")
+        while IFS= read -r row; do
+            [ -n "$row" ] || continue
+            pkg=${row%%/*}
+            ver=$(printf '%s\n' "$row" | awk '{print $2}')
+            from=$(printf '%s\n' "$row" | sed -n 's/.*upgradable from: *//p' | sed 's/].*//')
+            urows+=("$pkg${us}【 】 $pkg  ${from:-?} → $ver${us}${us}installed ${from:-?} → candidate $ver")
+        done <<< "$list"
+        FZF_PREVIEW=$(pkg_preview_cmd install)
+        FZF_NTH="--delimiter=\x1f --nth=1,2 --with-nth=2"
+        FZF_GHOST="type to filter $n package(s) · Tab multi"
+        local usel
+        usel=$(printf '%s\n' "${urows[@]}" "$OPTION_SUB_EXIT${us}$OPTION_SUB_EXIT${us}$us" "$OPTION_APP_EXIT${us}$OPTION_APP_EXIT${us}$us" | fzf_select "$n package(s) have updates — select what to upgrade (SPACE toggles, ESC back)" "upd ❯ " 1 \
+            --header="＋ upgrade · Tab multi · ESC back · ctrl-q quits" --footer="? preview · $n updates │ ESC back · ^Q quit")
+        FZF_PREVIEW=""; FZF_NTH=""; FZF_GHOST=""
+        [ -n "$usel" ] || { app_exit_wanted || say "Canceled."; return; }
+        if printf '%s\n' "$usel" | cut -d$'\x1f' -f1 | grep -qx "All packages"; then
+            choice="All packages"
+        else
+            choice=$(printf '%s\n' "$usel" | cut -d$'\x1f' -f1 | sort -u)
+        fi
+        # fzf rows carry the version transition inline, so the list stays readable in the picker
     else
+        say "$ICON_UPGRADABLE $n package(s) have updates:"
+        printf '%s\n' "$list"
         printf '\nUpgrade all [a], none [n], or pick some (space-separated names): ' >&2
         read -r choice
         case "$choice" in
@@ -1483,7 +1545,8 @@ do_files() {
     log "files $PKG_NAME"
     say "$ICON_FILES Files installed by $PKG_NAME:"
     local out hint
-    out=$(dpkg -L "$PKG_NAME" 2>&1 | tail -n +2)
+    # dpkg -L prints NO header — it starts with "/."; there is no first line to drop
+    out=$(dpkg -L "$PKG_NAME" 2>/dev/null)
     if [ -n "$out" ]; then
         printf '%s\n' "$out"
     else
@@ -1712,24 +1775,45 @@ do_stats() {
         Disk*)
             log "disk usage by directory"
             say "$ICON_DISK  Disk usage by directory ($PREFIX):"
-            if du -h -d1 "$PREFIX" 2>/dev/null | sort -rh | head -20; then
-                :
+            local dustmp
+            dustmp=$(mktemp "$HOME/.pkg-manager-du.XXXXXX" 2>/dev/null) || dustmp=""
+            if [ -n "$dustmp" ]; then
+                du -h -d1 "$PREFIX" > "$dustmp" 2>/dev/null
+                sort -rh "$dustmp" | head -20
+                rm -f "$dustmp"
             else
-                warn "Could not scan $PREFIX."
+                du -h -d1 "$PREFIX" 2>/dev/null | sort -rh | head -20 || warn "Could not scan $PREFIX."
             fi
             ;;
         *Largest*)
             log "largest files"
             say "$ICON_DISK  Largest files under $PREFIX:"
-            find "$PREFIX" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -20 \
-                | awk '{ printf "  %6.1f MiB  %s\n", $1/1048576, substr($0, index($0,"\t")+1) }'
+            local ltmp
+            ltmp=$(mktemp "$HOME/.pkg-manager-find.XXXXXX" 2>/dev/null) || ltmp=""
+            if [ -n "$ltmp" ]; then
+                find "$PREFIX" -type f -printf '%s\t%p\n' > "$ltmp" 2>/dev/null
+                sort -rn "$ltmp" | head -20 \
+                    | awk '{ printf "  %6.1f MiB  %s\n", $1/1048576, substr($0, index($0,"\t")+1) }'
+                rm -f "$ltmp"
+            else
+                find "$PREFIX" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -20 \
+                    | awk '{ printf "  %6.1f MiB  %s\n", $1/1048576, substr($0, index($0,"\t")+1) }'
+            fi
             ;;
         Cache*)
             log "cache breakdown"
             local dir="$PREFIX/var/cache/apt/archives"
             say "$ICON_DISK  Cache breakdown:"
             if [ -d "$dir" ]; then
-                du -ah "$dir" 2>/dev/null | sort -rh | head -20 || ls -lh "$dir"
+                local dtmp
+                dtmp=$(mktemp "$HOME/.pkg-manager-du.XXXXXX" 2>/dev/null) || dtmp=""
+                if [ -n "$dtmp" ]; then
+                    du -ah "$dir" > "$dtmp" 2>/dev/null
+                    sort -rh "$dtmp" | head -20
+                    rm -f "$dtmp"
+                else
+                    du -ah "$dir" 2>/dev/null | sort -rh | head -20 || ls -lh "$dir"
+                fi
                 say "Total: $(du -sh "$dir" 2>/dev/null | cut -f1)"
             else
                 say "No cache directory yet."
@@ -2009,7 +2093,19 @@ do_favs() {
             if grep -Fxq "$PKG_NAME" "$FAVS_FILE"; then
                 warn "$PKG_NAME is already a favorite."
             else
-                if tmp=$(scratch_new); then cat "$FAVS_FILE" > "$tmp" 2>/dev/null || true; printf '%s\n' "$PKG_NAME" >> "$tmp" && mv -f "$tmp" "$FAVS_FILE" && log "favorite add $PKG_NAME" && ok "$PKG_NAME added to favorites"; else err "Could not create temp file for favorites."; fi
+                if tmp=$(scratch_new); then
+                    if [ -f "$FAVS_FILE" ] && ! cp "$FAVS_FILE" "$tmp"; then
+                        err "Could not read favorites — leaving them unchanged."
+                        rm -f "$tmp"; return
+                    fi
+                    if printf '%s\n' "$PKG_NAME" >> "$tmp" && mv -f "$tmp" "$FAVS_FILE" && log "favorite add $PKG_NAME"; then
+                        ok "$PKG_NAME added to favorites"
+                    else
+                        err "Could not save favorites."; rm -f "$tmp"
+                    fi
+                    else
+                        err "Could not create temp file for favorites."
+                    fi
             fi
             [ "$FAVS_PINNED" = "1" ] && build_menu
             ;;
@@ -2030,9 +2126,9 @@ do_favs() {
                 esac
             fi
             [ -n "$name" ] || return
-            if grep -Fxq "$name" "$FAVS_FILE"; then
+            if grep -Fxq -- "$name" "$FAVS_FILE"; then
                 if tmp=$(scratch_new); then
-                    grep -Fxv "$name" "$FAVS_FILE" > "$tmp" || true
+                    grep -Fxv -- "$name" "$FAVS_FILE" > "$tmp" || [ $? -le 1 ] || { rm -f "$tmp"; err "Could not read favorites — leaving them unchanged."; return; }
                     if mv -f "$tmp" "$FAVS_FILE"; then
                         log "favorite remove $name"
                         ok "$name removed from favorites."
@@ -2174,6 +2270,10 @@ do_export() {
         *JSON*) ext="json" ;;
         *)      ext="txt" ;;
     esac
+    if [ "$ext" = "json" ] && ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 not found — exporting as plain text instead"
+        ext="txt"
+    fi
     printf 'Save path [%s]: ' "$HOME/pkg-export.$ext"
     read -r file
     [ -n "$file" ] || file="$HOME/pkg-export.$ext"
@@ -2184,7 +2284,10 @@ do_export() {
         say "Canceled."
         return
     fi
-    list=$(list_installed_names)
+    if ! list=$(list_installed_names); then
+        err "Could not read the installed list — not exporting."
+        return
+    fi
     count=$(printf '%s\n' "$list" | awk 'NF' | wc -l)
     if ! tmp=$(scratch_new); then
         err "Could not create a temp file for the export."
@@ -2197,9 +2300,6 @@ do_export() {
                 ok_write=0
             fi
         else
-            warn "python3 not found — exporting as plain text instead"
-            ext="txt"
-            file="${file%.json}.txt"
             if ! printf '%s\n' "$list" > "$tmp"; then ok_write=0; fi
         fi
     else
@@ -2391,10 +2491,10 @@ do_history() {
     case "$a" in
         *"all history"*)
             local lines
-            lines=$(grep -c . "$LOG_FILE" 2>/dev/null || echo 0)
+            lines=$(grep -c . "$LOG_FILE" 2>/dev/null) || lines=0
             say "$ICON_HISTORY Action history — $lines entr$( [ "$lines" = "1" ] && echo y || echo ies) ($LOG_FILE)"
             dim "  ────────────────────────────"
-            grep -n . "$LOG_FILE" | tail -n 60
+            grep -n . "$LOG_FILE" | tail -n 60 | while IFS= read -r _l; do print_safe "$_l"; printf '\n'; done
             ;;
         *errors*)
             say "$ICON_ERROR Errors & failures in the log:"
@@ -2418,6 +2518,7 @@ do_history() {
             ;;
         *Clear*)
             if confirm_danger "$ICON_ERROR  Clear the entire history log?"; then
+                refuse_symlink "$LOG_FILE" || return
                 : > "$LOG_FILE"
                 ok "History cleared."
             fi
@@ -2444,16 +2545,20 @@ do_inspect() {
         printf '\n═══ Reverse dependencies ═══\n'
         apt rdepends "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:' || echo "(none)"
         printf '\n═══ Installed files ═══\n'
-        if dpkg -L "$PKG_NAME" 2>/dev/null | tail -n +2; then
-            :
+        if out=$(dpkg -L "$PKG_NAME" 2>/dev/null); then
+            printf '%s\n' "$out"
         else
             echo "(not installed — no file list)"
         fi
         printf '\n═══ Hold status ═══\n'
-        if apt-mark showhold 2>/dev/null | grep -Fxq "$PKG_NAME"; then
-            echo "$PKG_NAME is held."
+        if heldlist=$(apt-mark showhold 2>/dev/null); then
+            if grep -Fxq -- "$PKG_NAME" <<< "$heldlist"; then
+                echo "$PKG_NAME is held."
+            else
+                echo "$PKG_NAME is not held."
+            fi
         else
-            echo "$PKG_NAME is not held."
+            echo "$PKG_NAME — hold status unknown (apt-mark failed)"
         fi
     } > "$tmp"
     cat "$tmp"
@@ -2615,7 +2720,7 @@ load_groups() {
     )
     if [ -f "$GROUPS_FILE" ]; then
         local line name pkgs pkgs_clean
-        while IFS= read -r line; do
+        while IFS= read -r line || [ -n "$line" ]; do
             [ -n "$line" ] || continue
             case "$line" in
                 *::*) name="${line%%::*}" pkgs="${line#*::}" ;;
@@ -2689,12 +2794,15 @@ do_groups() {
             ask_name "Packages (space-separated)" any
             gpkgs=$(printf '%s\n' "$PKG_NAME" | tr ' ' '\n' | filter_pkgs)
             [ -n "$gpkgs" ] || { warn "No valid package names."; return; }
-            if [ -f "$GROUPS_FILE" ] && grep -F -q -- "${gname}::" "$GROUPS_FILE"; then
+            if [ -f "$GROUPS_FILE" ] && awk -F:: -v g="$gname" '$1==g{found=1; exit} END{exit !found}' "$GROUPS_FILE"; then
                 warn "A group named \"$gname\" already exists."
                 return
             fi
             if tmp=$(scratch_new); then
-                [ -f "$GROUPS_FILE" ] && cat "$GROUPS_FILE" > "$tmp" 2>/dev/null || true
+                if [ -f "$GROUPS_FILE" ] && ! cp "$GROUPS_FILE" "$tmp"; then
+                    err "Could not read groups — leaving them unchanged."
+                    rm -f "$tmp"; return
+                fi
                 if printf '%s::%s\n' "$gname" "$(printf '%s' "$gpkgs" | tr '\n' ' ')" >> "$tmp" && mv -f "$tmp" "$GROUPS_FILE"; then
                     load_groups; log "group create $gname"; ok "Group \"$gname\" created."
                 else
@@ -2728,7 +2836,10 @@ do_groups() {
             esac
             if confirm_danger "$ICON_TRASH  Delete custom group \"$gname\"?"; then
                 if tmp=$(scratch_new); then
-                    grep -F -v -- "${gname}::" "$GROUPS_FILE" > "$tmp" || true
+                    if ! awk -F:: -v g="$gname" '$1 != g' "$GROUPS_FILE" > "$tmp"; then
+                        err "Could not read groups — leaving them unchanged."
+                        rm -f "$tmp"; return
+                    fi
                     if mv -f "$tmp" "$GROUPS_FILE"; then
                         load_groups
                         log "group delete $gname"
@@ -2797,7 +2908,7 @@ do_downgrade() {
     say "$ICON_REINSTALL Available versions for $PKG_NAME:"
     local vers out
     vers=$(apt-cache madison "$PKG_NAME" 2>/dev/null | awk '{print $3}' | head -20)
-    if [ -z "$vers" ]; then vers=$(apt-cache policy "$PKG_NAME" 2>/dev/null | grep -E '^\s+[0-9]' | awk '{print $1}' | head -20); fi
+    if [ -z "$vers" ]; then vers=$(apt-cache policy "$PKG_NAME" 2>/dev/null | grep -E '^[[:space:]]+[0-9]' | awk '{print $1}' | head -20); fi
     if [ -z "$vers" ]; then err "No versions found — check name or run Upgrade center."; return; fi
     printf '%s\n' "$vers"
     local picked
@@ -2938,10 +3049,10 @@ do_changelog() {
     log "changelog $PKG_NAME"
     say "$ICON_HISTORY Changelog for $PKG_NAME:"
     local out
-    if out=$(apt changelog "$PKG_NAME" 2>&1 | head -80) && [ -n "$out" ]; then
-        printf '%s\n' "$out"
-    elif out=$(apt-get changelog "$PKG_NAME" 2>&1 | head -80) && [ -n "$out" ]; then
-        printf '%s\n' "$out"
+    if out=$(apt changelog "$PKG_NAME" 2>&1) && [ -n "$out" ]; then
+        printf '%s\n' "$out" | sed -n '1,80p'
+    elif out=$(apt-get changelog "$PKG_NAME" 2>&1) && [ -n "$out" ]; then
+        printf '%s\n' "$out" | sed -n '1,80p' 
     else
         out=$("$MGR" show "$PKG_NAME" 2>/dev/null | grep -v '^WARNING:')
         if [ -n "$out" ]; then
@@ -2986,11 +3097,28 @@ do_notes() {
             note=$(printf '%s\n' "$note" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/::/--/g')
             [ -n "$note" ] || { warn "No note given."; return; }
             if [ -f "$NOTES_FILE" ] && awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
-                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note updated for $PKG_NAME"; log "note add $PKG_NAME"; else err "Could not create temp file for notes."; fi
+                if tmp=$(scratch_new); then
+                    if ! awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp"; then
+                        err "Could not read notes — leaving them unchanged."
+                        rm -f "$tmp"; return
+                    fi
+                    if printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp" && mv -f "$tmp" "$NOTES_FILE"; then
+                        ok "Note updated for $PKG_NAME"; log "note add $PKG_NAME"
+                    else
+                        err "Could not save notes."; rm -f "$tmp"
+                    fi
+                else err "Could not create temp file for notes."; fi
             else
                 if tmp=$(scratch_new); then
-                    [ -f "$NOTES_FILE" ] && cat "$NOTES_FILE" > "$tmp" 2>/dev/null || true
-                    printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp"; mv -f "$tmp" "$NOTES_FILE"; ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
+                    if [ -f "$NOTES_FILE" ] && ! cp "$NOTES_FILE" "$tmp"; then
+                        err "Could not read notes — leaving them unchanged."
+                        rm -f "$tmp"; return
+                    fi
+                    if printf '%s::%s\n' "$PKG_NAME" "$note" >> "$tmp" && mv -f "$tmp" "$NOTES_FILE"; then
+                        ok "Note added for $PKG_NAME"; log "note add $PKG_NAME"
+                    else
+                        err "Could not save notes."; rm -f "$tmp"
+                    fi
                 else
                     err "Could not create temp file for notes."
                 fi
@@ -3001,7 +3129,13 @@ do_notes() {
             ask_name "Package to remove note"
             [ -n "$PKG_NAME" ] || return
             if awk -F:: -v pkg="$PKG_NAME" '$1==pkg{found=1; exit} END{exit !found}' "$NOTES_FILE"; then
-                if tmp=$(scratch_new); then awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp" || true; mv -f "$tmp" "$NOTES_FILE"; ok "Note removed for $PKG_NAME"; log "note remove $PKG_NAME"; fi
+                if tmp=$(scratch_new); then
+                    if ! awk -F:: -v pkg="$PKG_NAME" '$1!=pkg' "$NOTES_FILE" > "$tmp"; then
+                        err "Could not read notes — leaving them unchanged."
+                        rm -f "$tmp"; return
+                    fi
+                    if mv -f "$tmp" "$NOTES_FILE"; then ok "Note removed for $PKG_NAME"; log "note remove $PKG_NAME"; else err "Could not save notes."; fi
+                fi
             else
                 warn "No note for $PKG_NAME"
             fi
@@ -3016,7 +3150,7 @@ do_notes() {
             local q
             printf '❯ Search: ' >&2; read -r q
             [ -n "$q" ] || return
-            grep -i -- "$q" "$NOTES_FILE" || say "No matches."
+            grep -iF -- "$q" "$NOTES_FILE" || say "No matches."
             ;;
         Show*package*)
             ask_name "Package to show note"
@@ -3040,7 +3174,10 @@ do_snapshot() {
             file="$HOME/pkg-snapshot-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
             say "$ICON_BACKUP Creating snapshot $file..."
             if ! tmp=$(scratch_new); then err "No temp file."; return; fi
-            list_installed_names > "$tmp" 2>/dev/null
+            if ! list_installed_names > "$tmp" 2>/dev/null; then
+                err "Could not read the installed list — snapshot aborted."
+                rm -f "$tmp"; return
+            fi
             if [ ! -s "$tmp" ]; then err "No packages to snapshot."; rm -f "$tmp"; return; fi
             stage=$(mktemp -d "$HOME/.pkg-snapshot.XXXXXX" 2>/dev/null) || { err "No stage dir"; rm -f "$tmp"; return; }
             _SCRATCH+=("$stage")
@@ -3079,18 +3216,26 @@ do_snapshot() {
             done
             [ "${#snap_files[@]}" -ge 1 ] || { warn "No snapshots."; return; }
             if have_fzf; then
-                picked=$(printf '%s\n' "${snap_files[@]}" | pick_multi "Pick 2 snapshots to diff" | tr '\n' ' ')
+                picked=$(printf '%s\n' "${snap_files[@]}" | pick_multi "Pick 2 snapshots to diff")
+                # fzf path now actually diffs (was dead code — picked was discarded)
+                mapfile -t _sel < <(printf '%s\n' "$picked" | awk 'NF')
+                if [ "${#_sel[@]}" -ge 2 ]; then
+                    diff -u <(tar -tzf "${_sel[0]}" 2>/dev/null | sort) <(tar -tzf "${_sel[1]}" 2>/dev/null | sort) | awk 'NR<=60' || true
+                else
+                    say "Need 2 snapshots to diff."
+                fi
             else
                 printf 'Snapshots:\n' >&2
-                local i=1
                 list_numbered 0 "${snap_files[@]}"
                 printf '❯ Pick 2 (space-separated numbers): ' >&2
                 read -r picked
-                picked=$(printf '%s\n' "$picked" | tr ' ' '\n' | while read -r n; do [ -n "$n" ] && printf '%s\n' "${snap_files[$((n-1))]}"; done | tr '\n' ' ')
-                # shellcheck disable=SC2086
-                set -- $picked
-                [ $# -ge 2 ] || { say "Need 2 snapshots."; return; }
-                diff -u <(tar -tzf "$1" 2>/dev/null | sort) <(tar -tzf "$2" 2>/dev/null | sort) | head -60 || true
+                picked=$(printf '%s\n' "$picked" | tr ' ' '\n' | while read -r n; do
+                    # reject non-numeric n before arithmetic ever sees it
+                    case "$n" in [0-9]|[0-9][0-9]) printf '%s\n' "${snap_files[$((n-1))]}" ;; esac
+                done | tr '\n' ' ')
+                mapfile -t _sel < <(printf '%s\n' "$picked" | tr ' ' '\n' | awk 'NF')
+                [ ${#_sel[@]} -ge 2 ] || { say "Need 2 snapshots."; return; }
+                diff -u <(tar -tzf "${_sel[0]}" 2>/dev/null | sort) <(tar -tzf "${_sel[1]}" 2>/dev/null | sort) | awk 'NR<=60' || true
             fi
             ;;
         Restore*)
@@ -3098,14 +3243,71 @@ do_snapshot() {
             file=$(pick_file "Select snapshot")
             case "$file" in -* ) err "Invalid path."; return ;; esac
             [ -n "$file" ] && [ -f "$file" ] || { warn "No file."; return; }
-            if ! confirm_danger "$ICON_RESTORE Restore from $file? This may overwrite favs/groups/notes."; then say "Canceled."; return; fi
+            if ! confirm_danger "$ICON_RESTORE Restore from $file? This may overwrite pkg-list.txt, favs, groups, config and notes."; then say "Canceled."; return; fi
             log "snapshot restore $file"
             say "$ICON_RESTORE Restoring $file..."
-            if tar -tzf "$file" 2>/dev/null | grep -qE '(^/|^\.\./|\.\./)'; then
+            # capture the listing first, THEN scan — grep -q can exit before
+            # tar finishes writing, and pipefail would flag tar's SIGPIPE as
+            # a failure and make the guard a no-op
+            local listfile
+            listfile=$(mktemp "$HOME/.pkg-manager-restore.XXXXXX" 2>/dev/null) || { err "mktemp failed"; return; }
+            if ! tar -tzf "$file" > "$listfile" 2>/dev/null; then
+                rm -f "$listfile"
+                err "Cannot read archive — aborting restore"
+                return
+            fi
+            if grep -E '(^/|^\.\./|\.\./)' "$listfile" | head -1 >/dev/null; then
+                rm -f "$listfile"
                 err "Archive contains unsafe paths — aborting restore"
                 return
             fi
-            if tar -xzf "$file" -C "$HOME" 2>/dev/null; then ok "Snapshot restored to $HOME"; else err "Restore failed (try tar -tzf $file to inspect)"; fi
+            rm -f "$listfile"
+            # NEVER extract straight into $HOME (symlink attack). Stage into
+            # a scratch dir, gate every member against the allowlist, then
+            # copy back file-by-file with backups.
+            local stage_d
+            stage_d=$(mktemp -d "$HOME/.pkg-restore.XXXXXX" 2>/dev/null) || { err "No restore dir"; return; }
+            _SCRATCH+=("$stage_d")
+            if ! tar -xzf "$file" -C "$stage_d" --no-same-owner --no-same-permissions 2>/dev/null; then
+                err "Restore failed (tar could not unpack it)"
+                rm -rf "$stage_d"
+                _SCRATCH=("${_SCRATCH[@]/"$stage_d"/}")
+                return
+            fi
+            # gate every extracted member
+            local f base ok=1 bad=""
+            while IFS= read -r -d '' f; do
+                base=${f##*/}
+                case "$base" in
+                    pkg-list.txt|.pkg-manager-favs|.pkg-manager-groups|.pkg-manager.conf|.pkg-manager-notes) ;;
+                    *) ok=0; bad="$base"; break ;;
+                esac
+                if [ ! -f "$f" ] || [ -L "$f" ]; then
+                    ok=0; bad="$base (not a regular file)"; break
+                fi
+            done < <(find "$stage_d" -mindepth 1 -maxdepth 1 -print0)
+            if [ "$ok" != "1" ]; then
+                err "Archive contains an unexpected member: $bad — refusing to restore"
+                rm -rf "$stage_d"
+                _SCRATCH=("${_SCRATCH[@]/"$stage_d"/}")
+                return
+            fi
+            # copy back one by one, backing up existing files first
+            local bak_count=0
+            local file_rel
+            for f in "$stage_d"/* "$stage_d"/.[A-Za-z0-9]*; do
+                [ -f "$f" ] || continue
+                base=${f##*/}
+                [ -f "$HOME/$base" ] && {
+                    safe_cp "$HOME/$base" "$HOME/$base.pkg-manager.bak" 2>/dev/null && bak_count=$((bak_count+1))
+                }
+                safe_cp "$f" "$HOME/$base" || { err "Failed to write $HOME/$base"; continue; }
+            done
+            rm -rf "$stage_d"
+            _SCRATCH=("${_SCRATCH[@]/"$stage_d"/}")
+            [ "$bak_count" -gt 0 ] && dim "  Backed up $bak_count existing file(s) to *.pkg-manager.bak"
+            ok "Snapshot restored to $HOME"
+
             ;;
         Delete*)
             local file
@@ -3196,7 +3398,7 @@ do_recycle() {
     [ -n "$a" ] || return
     case "$a" in
         Restore\ a*)
-            mapfile -t debs < <(printf '%s\n' "$TRASH_DIR"/*.deb | xargs -n1 basename 2>/dev/null)
+            mapfile -t debs < <(for _d in "$TRASH_DIR"/*.deb; do [ -e "$_d" ] && basename -- "$_d"; done 2>/dev/null)
             say "$ICON_TRASH Pick a .deb to restore:"
             if have_fzf; then
                 a=$(printf '%s\n' "${debs[@]}" | pick_one "$ICON_TRASH  Restore which package?")
@@ -3297,25 +3499,34 @@ do_marks() {
         "Show manually"*)
             log "mark showmanual"
             say "$ICON_CHECKBOX Manually installed packages (first 50):"
-            apt-mark showmanual 2>/dev/null | head -n 50 || say "(none)"
+            if out=$(apt-mark showmanual 2>/dev/null); then
+                [ -n "$out" ] && printf '%s\n' "$out" | awk 'NR<=50' || say "(none)"
+            else
+                err "Could not read the manual list (apt-mark failed)."
+            fi
             ;;
         "Show automatically"*)
             log "mark showauto"
             say "$ICON_CHECKBOX Automatically installed packages (first 50):"
-            apt-mark showauto 2>/dev/null | head -n 50 || say "(none)"
+            if out=$(apt-mark showauto 2>/dev/null); then
+                [ -n "$out" ] && printf '%s\n' "$out" | awk 'NR<=50' || say "(none)"
+            else
+                err "Could not read the auto list (apt-mark failed)."
+            fi
             ;;
         "Find what provides"*)
-            printf 'Package name or versioned expression (e.g. python3 (>= 3.11)): ' >&2
+            printf 'Virtual package to look up (e.g. awk, mail-transport-agent): ' >&2
             read -r expr
             expr=$(printf '%s\n' "$expr" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
             [ -n "$expr" ] || { warn "Nothing to look up."; return; }
             case "$expr" in -* ) err "Expression must not start with '-'."; return ;; esac
             log "satisfies: $expr"
-            say "$ICON_DEPENDS Packages providing \"$expr\":"
-            if out=$(apt satisfies "$expr" 2>&1); then
-                printf '%s\n' "$out" | head -n 30
+            # apt-cache pkgnames has no provides-query on Termux; search names+descriptions
+            say "$ICON_DEPENDS Packages matching/providing \"$expr\":"
+            if out=$(apt-cache search -- "$expr" 2>/dev/null | awk 'NF' | head -n 30) && [ -n "$out" ]; then
+                printf '%s\n' "$out"
             else
-                err "No packages provide \"$expr\" (or apt could not resolve it)."
+                err "No packages provide \"$expr\"."
             fi
             ;;
         *) return ;;
@@ -3353,6 +3564,7 @@ do_watch() {
                 say "$PKG_NAME is already on the watchlist."
                 return
             fi
+            refuse_symlink "$WATCH_FILE" || return
             if printf '%s\n' "$PKG_NAME" >> "$WATCH_FILE"; then
                 log "watch add $PKG_NAME"
                 ok "$PKG_NAME added to the watchlist."
@@ -3381,7 +3593,7 @@ do_watch() {
             [ -n "$p" ] || return
             valid_pkg_name "$p" || { err "Invalid package name: '$p'"; return; }
             if tmp=$(scratch_new); then
-                grep -Fxv -- "$p" "$WATCH_FILE" > "$tmp" || true
+                grep -Fxv -- "$p" "$WATCH_FILE" > "$tmp" || [ $? -le 1 ] || { rm -f "$tmp"; err "Could not read watchlist — leaving it unchanged."; return; }
                 if mv -f "$tmp" "$WATCH_FILE"; then
                     log "watch remove $p"
                     ok "$p removed from the watchlist."
@@ -3413,7 +3625,7 @@ do_watch_check() {
     log "watch check"
     say "$ICON_EYE  Checking watchlist against the repositories..."
     local p inst cand updates=0 gone=0
-    while IFS= read -r p; do
+    while IFS= read -r p || [ -n "$p" ]; do
         [ -n "$p" ] || continue
         valid_pkg_name "$p" || continue
         inst=$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null | head -n1)
@@ -3443,6 +3655,78 @@ do_watch_check() {
     else
         ok "All watched packages are up to date."
     fi
+}
+
+# --- mirror candidates — official mirrors from termux-tools mirrors/ (2026-11)
+# region|name|url, one per line; fetched from github.com/termux/termux-tools
+_mirror_candidates() {
+    cat <<'MIRS'
+primary|packages.termux.dev (official)|https://packages.termux.dev/apt/termux-main
+primary|packages-cf.termux.dev (cloudflare)|https://packages-cf.termux.dev/apt/termux-main
+asia|DomaiNesia|https://linux.domainesia.com/applications/termux/termux-main
+asia|freedif|https://mirror.freedif.org/termux/termux-main
+asia|jeonnam.school|https://mirror.jeonnam.school/termux/termux-main
+asia|meowsmp.net|https://mirror.meowsmp.net/termux/termux-main
+asia|nag.albony.in|https://mirror.nag.albony.in/termux/termux-main
+asia|nevacloud.com|https://mirror.nevacloud.com/applications/termux/termux-main
+asia|rinarin.dev|https://mirror.rinarin.dev/termux/termux-main
+asia|twds.com.tw|https://mirror.twds.com.tw/termux/termux-main
+asia|cbrx.io|https://mirrors.cbrx.io/apt/termux/termux-main
+asia|in.sahilister.net|https://mirrors.in.sahilister.net/termux/termux-main
+asia|krnk.org|https://mirrors.krnk.org/apt/termux/termux-main
+asia|nguyenhoang.cloud|https://mirrors.nguyenhoang.cloud/termux/termux-main
+asia|ravidwivedi.in|https://mirrors.ravidwivedi.in/termux/termux-main
+asia|saswata.cc|https://mirrors.saswata.cc/termux/termux-main
+asia|niranjan.co|https://termux.niranjan.co/termux-main
+asia|tmx.xvx.my.id|https://tmx.xvx.my.id/apt/termux-main
+chinese_mainland|iscas.ac.cn|https://mirror.iscas.ac.cn/termux/apt/termux-main
+chinese_mainland|nyist.edu.cn|https://mirror.nyist.edu.cn/termux/apt/termux-main
+chinese_mainland|sjtu.edu.cn|https://mirror.sjtu.edu.cn/termux/termux-main
+chinese_mainland|aliyun.com|https://mirrors.aliyun.com/termux/termux-main
+chinese_mainland|bfsu.edu.cn|https://mirrors.bfsu.edu.cn/termux/apt/termux-main
+chinese_mainland|cernet.edu.cn|https://mirrors.cernet.edu.cn/termux/apt/termux-main
+chinese_mainland|cqupt.edu.cn|https://mirrors.cqupt.edu.cn/termux/termux-main
+chinese_mainland|hust.edu.cn|https://mirrors.hust.edu.cn/termux/apt/termux-main
+chinese_mainland|nju.edu.cn|https://mirrors.nju.edu.cn/termux/apt/termux-main
+chinese_mainland|pku.edu.cn|https://mirrors.pku.edu.cn/termux/termux-main
+chinese_mainland|sau.edu.cn|https://mirrors.sau.edu.cn/termux/apt/termux-main
+chinese_mainland|sdu.edu.cn|https://mirrors.sdu.edu.cn/termux/termux-main
+chinese_mainland|sustech.edu.cn|https://mirrors.sustech.edu.cn/termux/apt/termux-main
+chinese_mainland|tuna.tsinghua.edu.cn|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main
+chinese_mainland|ustc.edu.cn|https://mirrors.ustc.edu.cn/termux/termux-main
+chinese_mainland|zju.edu.cn|https://mirrors.zju.edu.cn/termux/apt/termux-main
+europe|agdsn.de|https://ftp.agdsn.de/termux/termux-main
+europe|fau.de|https://ftp.fau.de/termux/termux-main
+europe|icm.edu.pl|https://ftp.icm.edu.pl/pub/Linux/dist/termux/termux-main
+europe|grimler.se|https://grimler.se/termux/termux-main
+europe|is.mirror.flokinet.net|https://is.mirror.flokinet.net/termux/termux-main
+europe|md.mirrors.hacktegic.com|https://md.mirrors.hacktegic.com/termux/termux-main
+europe|mirror.accum.se|https://mirror.accum.se/mirror/termux.dev/termux-main
+europe|mirror.autkin.net|https://mirror.autkin.net/termux/termux-main
+europe|mirror.bouwhuis.network|https://mirror.bouwhuis.network/termux/termux-main
+europe|mirror.cutie.dating|https://mirror.cutie.dating/termux/termux-main
+europe|mirror.leitecastro.com|https://mirror.leitecastro.com/termux/termux-main
+europe|mirror.sunred.org|https://mirror.sunred.org/termux/termux-main
+europe|mirrors.medzik.dev|https://mirrors.medzik.dev/termux/termux-main
+europe|nl.mirror.flokinet.net|https://nl.mirror.flokinet.net/termux/termux-main
+europe|ro.mirror.flokinet.net|https://ro.mirror.flokinet.net/termux/termux-main
+europe|termux.3san.dev|https://termux.3san.dev/termux/termux-main
+europe|termux.cdn.lumito.net|https://termux.cdn.lumito.net/termux-main
+europe|termux.librehat.com|https://termux.librehat.com/apt/termux-main
+north_america|gnlug.org|https://gnlug.org/pub/termux/termux-main
+north_america|mirror.csclub.uwaterloo.ca|https://mirror.csclub.uwaterloo.ca/termux/termux-main
+north_america|mirror.fcix.net|https://mirror.fcix.net/termux/termux-main
+north_america|mirror.mwt.me|https://mirror.mwt.me/termux/main
+north_america|mirror.quantum5.ca|https://mirror.quantum5.ca/termux/termux-main
+north_america|mirror.vern.cc|https://mirror.vern.cc/termux/termux-main
+north_america|mirrors.utermux.dev|https://mirrors.utermux.dev/termux/termux-main
+north_america|plug-mirror.rcac.purdue.edu|https://plug-mirror.rcac.purdue.edu/termux/termux-main
+north_america|termux.danyael.xyz|https://termux.danyael.xyz/termux/termux-main
+oceania|middlendian.com|https://mirrors.middlendian.com/termux/termux-main
+russia|mephi.ru|http://mirror.mephi.ru/termux/termux-main
+russia|repository.su|https://repository.su/termux/termux-main
+south_america|ufscar.br|https://mirror.ufscar.br/termux/termux-main
+MIRS
 }
 
 do_mirror() {
@@ -3476,39 +3760,31 @@ do_mirror() {
     fi
     [ -n "$cur_url" ] || cur_url="https://packages.termux.dev/apt/termux-main"
     say "Current main mirror: $cur_url"
-    local -a names=() urls=()
-    names+=("current"); urls+=("$cur_url")
-    local -a cand_names=(
-        "official (packages.termux.dev)" "cloudflare (packages-cf.termux.dev)"
-        "mwt (mirror.mwt.me)" "tuna (tsinghua)" "bfsu" "nju" "iscas"
-        "gnlug" "librehat" "middlendian" "krnk" "autkin"
-    )
-    local -a cand_urls=(
-        "https://packages.termux.dev/apt/termux-main" "https://packages-cf.termux.dev/apt/termux-main"
-        "https://mirror.mwt.me/termux/main" "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
-        "https://mirrors.bfsu.edu.cn/termux/apt/termux-main" "https://mirrors.nju.edu.cn/termux/apt/termux-main"
-        "https://mirror.iscas.ac.cn/termux/apt/termux-main" "https://gnlug.org/pub/termux/termux-main"
-        "https://termux.librehat.com/apt/termux-main" "https://mirrors.middlendian.com/termux/termux-main"
-        "https://mirrors.krnk.org/apt/termux/termux-main" "https://mirror.autkin.net/termux/termux-main"
-    )
-    local i
-    for i in "${!cand_urls[@]}"; do
-        [ "${cand_urls[$i]}" = "$cur_url" ] && continue
-        names+=("${cand_names[$i]}")
-        urls+=("${cand_urls[$i]}")
-    done
-    results=""
-    local unreachable=0
-    for i in "${!urls[@]}"; do
-        t=$(curl -fsS -m 8 -o /dev/null -w '%{time_total}' "${urls[$i]}/dists/stable/Release" 2>/dev/null)
-        if [ -n "$t" ]; then
-            [ -n "$results" ] && results+=$'\n'
-            results+="${t}"$'\t'"${names[$i]}"$'\t'"${urls[$i]}"
-        else
-            unreachable=$((unreachable+1))
-            printf '! unreachable: %s (%s)\n' "${names[$i]}" "${urls[$i]}"
-        fi
-    done
+    # the FULL official candidate list, probed in parallel
+    local probe_file
+    probe_file=$(mktemp "$HOME/.pkg-manager-mirror-probe.XXXXXX" 2>/dev/null) || { err "mktemp failed"; return; }
+    # probe ALL candidates (including current — harmless) in parallel
+    local _i=0 total
+    total=$(_mirror_candidates | wc -l)
+    while IFS='|' read -r region name url; do
+        _i=$((_i+1))
+        (
+            t=$(curl -fsS -m 6 --connect-timeout 3 -o /dev/null -w '%{time_total}' "$url/dists/stable/Release" 2>/dev/null)
+            [ -n "$t" ] && printf '%s\t%s\t%s\n' "$t" "$name" "$url" >> "$probe_file.lock-$((_i % 16))"
+        ) &
+        # bound concurrency to 16
+        while [ "$(jobs -r | wc -l)" -ge 16 ]; do wait -n 2>/dev/null || break; done
+    done < <(_mirror_candidates)
+    wait
+    cat "$probe_file".lock-* > "$probe_file" 2>/dev/null || true
+    rm -f "$probe_file".lock-*
+    local results="" unreachable=0 responded=0
+    if [ -s "$probe_file" ]; then
+        results=$(sort -n -s "$probe_file")
+        responded=$(printf '%s\n' "$results" | grep -c .)
+    fi
+    rm -f "$probe_file"
+    unreachable=$(( total - responded ))
     if [ -z "$results" ]; then
         err "No mirror responded — check your connection."
         log_err "mirror test: no mirror reachable"
@@ -3532,7 +3808,7 @@ do_mirror() {
     fi
     local target="${cur_src:-$PREFIX/etc/apt/sources.list}" backup tmp
     backup="$target.pkg-manager.bak"
-    if ! cp -- "$target" "$backup" 2>/dev/null; then
+    if ! safe_cp "$target" "$backup" 2>/dev/null; then
         if [ ! -f "$target" ]; then
             mkdir -p "$PREFIX/etc/apt" 2>/dev/null || true
             : > "$target" || { err "Could not create $target"; return 1; }
@@ -3541,15 +3817,31 @@ do_mirror() {
             return 1
         fi
     fi
+    # never silently truncate: the file must stay readable, and the rewrite must
+    # keep every line that isn't the main repo line
+    [ -r "$target" ] || { err "$target is not readable — aborting, mirror unchanged."; return 1; }
     if ! tmp=$(scratch_new); then
         err "Could not create a temp file for sources.list."
         return 1
     fi
+    local keep grc
+    keep=$(grep -v -E '^deb[[:space:]].*termux-main' "$target" 2>/dev/null)
+    grc=$?   # rc 0 = lines filtered out; rc 1 = no other lines (fine); rc >=2 = read failure
+    if [ "$grc" -ge 2 ]; then
+        err "Could not read $target — aborting, mirror unchanged."
+        rm -f "$tmp"
+        return 1
+    fi
     {
-        grep -v -E '^deb[[:space:]].*termux-main' "$target" 2>/dev/null
+        [ -n "$keep" ] && printf '%s\n' "$keep"
         printf '# main repo switched by Easy Termux Package Manager (backup: %s)\n' "$backup"
         printf 'deb %s stable main\n' "$best_url"
-    } > "$tmp"
+    } > "$tmp" || { rm -f "$tmp"; err "Could not stage $tmp — mirror unchanged."; return 1; }
+    if ! grep -q '^deb ' "$tmp"; then
+        err "Refusing to write an empty/invalid $target — aborting."
+        rm -f "$tmp"
+        return 1
+    fi
     if ! mv -f "$tmp" "$target"; then
         err "Failed to write $target — restore it from $backup"
         rm -f "$tmp"
@@ -3576,8 +3868,13 @@ do_audit() {
     local score=100
     local -a issues=()
     local up_n orph_n held_n res_n cache_k disk_k up out
-    # 1. available upgrades
-    up_n=$(list_upgradable 2>/dev/null | grep -c .)
+    # 1. available upgrades (unknown ≠ zero when apt fails)
+    if ! out=$(list_upgradable 2>/dev/null); then
+        err "Could not check for upgrades — cannot score this section."
+        up_n=0
+    else
+        up_n=$(printf '%s\n' "$out" | grep -c . || true)
+    fi
     if [ "$up_n" -gt 0 ]; then
         if [ "$up_n" -ge 20 ]; then
             score=$((score-15))
@@ -3588,24 +3885,35 @@ do_audit() {
         fi
     fi
     # 2. orphans
-    out=$(apt autoremove --simulate -y 2>&1)
-    orph_n=$(printf '%s\n' "$out" | awk '
-        /will be REMOVED:/ {on=1; next}
-        on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
-        on { for (i=1;i<=NF;i++)
-                if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }' | grep -c .)
+    if ! out=$(apt autoremove --simulate -y 2>&1); then
+        orph_n=0
+    else
+        orph_n=$(printf '%s\n' "$out" | awk '
+            /will be REMOVED:/ {on=1; next}
+            on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+            on { for (i=1;i<=NF;i++)
+                    if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }' | grep -c . || true)
+    fi
     if [ "$orph_n" -gt 0 ]; then
         score=$((score-orph_n))
         issues+=("$orph_n orphaned package(s) can be autoremoved (option 29 or 9)")
     fi
     # 3. held packages (informational)
-    held_n=$(apt-mark showhold 2>/dev/null | grep -c .)
+    if ! out=$(apt-mark showhold 2>/dev/null); then
+        held_n=0
+    else
+        held_n=$(printf '%s\n' "$out" | grep -c . || true)
+    fi
     if [ "$held_n" -gt 0 ]; then
         score=$((score-held_n*2))
         issues+=("$held_n package(s) are pinned from upgrades (informational)")
     fi
     # 4. residual config files (rc state = purged but not auto-removed)
-    res_n=$(dpkg -l 2>/dev/null | awk '$1=="rc" && NF>1' | grep -c .)
+    if ! out=$(dpkg -l 2>/dev/null); then
+        res_n=0
+    else
+        res_n=$(printf '%s\n' "$out" | awk '$1=="rc" && NF>1' | grep -c . || true)
+    fi
     if [ "$res_n" -gt 0 ]; then
         score=$((score-5))
         issues+=("$res_n package(s) still have leftover config files (purge them)")
@@ -3665,7 +3973,17 @@ do_selfupdate() {
            [ -n "$resolved" ] && self="$resolved"
            ;;
     esac
-    [ -n "$self" ] || self="$0"
+    # refuse to guess the install path when we only have $0 == relative name
+    case "$self" in
+        /*) ;;
+        *) resolved=$(command -v -- "$self" 2>/dev/null)
+           if [ -z "$resolved" ]; then
+               err "Cannot resolve install path from \$0 — nothing was changed."
+               return 1
+           fi
+           self="$resolved"
+           ;;
+    esac
     if ! new_tmp=$(scratch_new); then
         err "Could not create a temp file for the download."
         return 1
@@ -3730,10 +4048,43 @@ do_selfupdate() {
         rm -f "$new_tmp"
         return 0
     fi
-    if cp -- "$new_tmp" "$self.new" && mv -f -- "$self.new" "$self"; then
-        chmod +x "$self" 2>/dev/null || true
-        log "self-update to ${remote_ver:-latest}"
+    # Self-update must not leave a broken payload behind, and must fix the
+    # shebang exactly like install.sh does (#!/bin/bash is wrong on Termux).
+    local bash_path
+    bash_path=$(command -v bash 2>/dev/null) || bash_path=""
+    # bash_path goes into a replacement string; restrict to a sane charset
+    case "$bash_path" in ''|*[!A-Za-z0-9/._-]*) err "Unexpected bash path — aborting."; rm -f "$new_tmp"; return 1 ;; esac
+    if [ -n "$bash_path" ]; then
+        # avoid sed replacement-delimiter injection by rewriting the first line directly
+        if ! { printf '#!%s\n' "$bash_path"; tail -n +2 "$new_tmp"; } > "${new_tmp}.fixed"; then
+            err "Could not rewrite the shebang — nothing was changed."
+            rm -f "$new_tmp" "${new_tmp}.fixed"
+            return 1
+        fi
+        if ! mv -f "${new_tmp}.fixed" "$new_tmp"; then
+            err "Could not install the shebang-fixed download — nothing was changed."
+            rm -f "$new_tmp" "${new_tmp}.fixed"
+            return 1
+        fi
+        # re-run the syntax check on the rewritten file
+        if ! bash -n "$new_tmp" 2>/dev/null; then
+            err "Downloaded file failed the bash syntax check after shebang rewrite — nothing was changed."
+            log_err "self-update: downloaded file failed bash -n (after shebang fix)"
+            rm -f "$new_tmp"
+            return 1
+        fi
+    fi
+    # back up the running script before replacing it
+    if ! safe_cp "$self" "$self.pkg-manager.bak" 2>/dev/null; then
+        err "Could not back up $self — aborting, nothing was changed."
+        log_err "self-update: backup of $self failed"
+        rm -f "$new_tmp"
+        return 1
+    fi
+    if cp -- "$new_tmp" "$self.new" && chmod +x "$self.new" 2>/dev/null && mv -f -- "$self.new" "$self"; then
+        log "self-update to ${remote_ver:-latest} (backup: $self.pkg-manager.bak)"
         ok "Updated to ${remote_ver:-the latest version}! Restart pkg-manager to use it."
+        ok "The previous version is at ${self}.pkg-manager.bak"
         rm -f "$new_tmp"
         return 0
     fi
@@ -3755,6 +4106,8 @@ do_palette() {
         [ -n "$det" ] || det="menu action"
         prows+=("$i$us$d$us$n$us$det")
     done
+    prows+=("$OPTION_SUB_EXIT${us}$OPTION_SUB_EXIT${us}0${us}back one level")
+    prows+=("$OPTION_APP_EXIT${us}$OPTION_APP_EXIT${us}0${us}leave the app")
     if have_fzf; then
         local e_bold e_dim e_off
         e_bold=$'\033[1m'; e_dim=$'\033[2m'; e_off=$'\033[0m'
@@ -3770,7 +4123,7 @@ do_palette() {
         read -r picked
         local all
         all=$(printf '%s\n' "${MENU_ITEMS[@]}")
-        if [ -n "$picked" ]; then all=$(printf '%s\n' "$all" | grep -i -- "$picked" || printf '%s\n' "$all"); fi
+        if [ -n "$picked" ]; then all=$(printf '%s\n' "$all" | grep -iF -- "$picked" || printf '%s\n' "$all"); fi
         if ! tmp=$(scratch_new); then return; fi
         printf '%s\n' "$all" > "$tmp"
         nl -w2 -s') ' "$tmp" >&2
@@ -3784,7 +4137,6 @@ do_palette() {
     case "$picked" in
         "$OPTION_INSTALL") do_install ;;
         "$OPTION_UNINSTALL") do_uninstall ;;
-        "$OPTION_SEARCH") do_search ;;
         "$OPTION_LIST") do_list ;;
         "$OPTION_REINSTALL") do_reinstall ;;
         "$OPTION_UPDATE") do_upgrade_center ;;
@@ -3835,11 +4187,12 @@ do_palette() {
         "$OPTION_REPOS") do_repos ;;
         "$OPTION_HEALTH") do_health ;;
         "$OPTION_DEPTREE_GRAPH") do_depgraph ;;
-        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
         "$OPTION_THEME") do_theme ;;
         "$OPTION_ESSENTIALS") do_essentials ;;
         "$OPTION_SYSINFO") do_sysinfo ;;
         "$OPTION_WHATSNEW") do_whatsnew ;;
+        "$OPTION_UNDO") do_undo ;;
+        "$OPTION_SNAPSHOT_DIFF") do_snapshot ;;
         *) err "Unknown palette selection." ;;
     esac
 }
@@ -4011,13 +4364,14 @@ do_whatsnew() {
     dim "  the preview panel now explains what each action actually does"
     dim "    (apt install / apt purge / dpkg -L …), never a repeat of the"
     dim "    status strip"
-    dim "  search results gained the same package-info preview pane"
     dim "  install/uninstall rows are capped to the list width, so a long"
     dim "    description is truncated instead of scrolling sideways into a"
     dim "    middle slice of itself — the full text stays in the preview"
     say "  NEW in v5.3.1:"
     dim "  every submenu now has TWO rows: ⬅️ Back to main menu (back a"
     dim "    level, like ESC) and 🚪 Exit pkg-manager (leave the app)"
+    dim "  the upgrade center picker shows installed → candidate versions"
+    dim "    inline instead of printing a list that disappears (Back row)"
     dim "  Ctrl-Q quits the app from any fzf picker, one key"
     dim "  long lists/reports now show their entry counts and rules;"
     dim "    package sizes print human-readable instead of raw bytes/KiB"
@@ -4042,20 +4396,39 @@ refresh_fzf_cache() {
     if [ -f "$FZF_CACHE" ]; then
         last=$(stat -c %Y "$FZF_CACHE" 2>/dev/null || echo 0)
     fi
-    if [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
+    if [ "$now" -eq 0 ] || [ $((now - last)) -gt 1800 ] || [ ! -s "$FZF_CACHE" ]; then
         # INSTALL list: only packages that are NOT installed yet — already
         # installed names had to be filtered out of hundreds of rows every time.
         # Rows are "name|description" with the FULL description: the display
         # column is built (and length-capped) when the list is READ, not here,
         # so a terminal resize no longer invalidates the cache.
         {
-            dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > "${FZF_CACHE}.inst" 2>/dev/null || : > "${FZF_CACHE}.inst"
-            apt-cache search ".*" 2>/dev/null | sed -E 's/^([^ ]+) - (.*)$/\1|\2/' \
+            # stage with mktemp rather than fixed $HOME paths: a fixed name can
+            # be pre-planted as a symlink and redirect the rewrite
+            local inst tmp
+            inst=$(mktemp "$HOME/.pkg-manager-fzf-inst.XXXXXX" 2>/dev/null) || inst=""
+            tmp=$(mktemp "$HOME/.pkg-manager-fzf-cache.XXXXXX" 2>/dev/null) || tmp=""
+            if [ -z "$inst" ] || [ -z "$tmp" ]; then
+                err "Could not build the package cache (mktemp failed)."
+                rm -f "$inst" "$tmp"; return
+            fi
+            dpkg-query -W -f='${Package}\n' 2>/dev/null | sort > "$inst" 2>/dev/null || : > "$inst"
+            if apt-cache search ".*" 2>/dev/null | sed -E 's/^([^ ]+) - (.*)$/\1|\2/' \
                 | awk -F'|' 'NR == FNR { installed[$1] = 1; next }
-                    $1 != "" && !($1 in installed) && !seen[$1]++' "${FZF_CACHE}.inst" - \
-                > "${FZF_CACHE}.tmp" 2>/dev/null || true
-            mv "${FZF_CACHE}.tmp" "$FZF_CACHE" 2>/dev/null || true
-            rm -f "${FZF_CACHE}.inst" 2>/dev/null || true
+                    $1 != "" && !($1 in installed) && !seen[$1]++' "$inst" - \
+                > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+                # sanity check: refuse to replace a good cache with an empty one
+                if mv "$tmp" "$FZF_CACHE"; then
+                    :
+                else
+                    rm -f "$tmp"
+                    warn "Could not replace the package cache — keeping the old one."
+                fi
+            else
+                rm -f "$tmp"
+                warn "apt-cache search failed — keeping the old package cache."
+            fi
+            rm -f "$inst" 2>/dev/null || true
         }
     fi
 }
@@ -4214,7 +4587,9 @@ fzf_select() {
     fi
     # Ctrl-Q (or the "Exit pkg-manager" row): leave the app from any picker.
     # The command runs in fzf's shell, so the path is expanded here.
-    args+=(--bind="ctrl-q:execute-silent(touch ${APP_EXIT_FLAG:?})+abort")
+    local _qflag
+    printf -v _qflag '%q' "${APP_EXIT_FLAG:?}"
+    args+=(--bind="ctrl-q:execute-silent(touch $_qflag)+abort")
     [ "${#extra[@]}" -gt 0 ] && args+=("${extra[@]}")
     # --no-hscroll + --ellipsis: a row wider than the list pane used to be
     # H-scrolled so fzf kept the matched substring plus hscroll-off=10
@@ -4226,23 +4601,24 @@ fzf_select() {
     # truncation. Row pre-clipping with fzf_disp_max() stays as the second
     # belt (the full row text is also always in the preview pane).
     local rc errfile out
-    errfile=$(mktemp "${TMPDIR:-$HOME}/pkgmgr-fzf-err.XXXXXX" 2>/dev/null) || errfile=""
-    if [ -n "$errfile" ]; then
-        out=$(fzf "${args[@]}" 2>"$errfile")
-        rc=$?
-        if [ "$rc" -ge 2 ]; then
-            # rc 0 = picked, 1 = ESC. Anything else is a real fzf failure.
-            errline=$(head -n 1 "$errfile" 2>/dev/null)
-            rm -f "$errfile"
-            warn "fzf failed (exit $rc)${errline:+ — $errline}"
-            say "Switching to text mode for this session (NO_FZF=1 to force it)."
-            UI_MODE="text"; FZF_BROKEN=1
-            return 1
-        fi
-        rm -f "$errfile"
-    else
-        out=$(fzf "${args[@]}" 2>/dev/null)
-        rc=$?
+    errfile=$(mktemp "${TMPDIR:-$HOME}/pkgmgr-fzf-err.XXXXXX" 2>/dev/null) || errfile=/dev/null
+    out=$(fzf "${args[@]}" 2>"$errfile")
+    rc=$?
+    local errline
+    errline=$(head -n 1 "$errfile" 2>/dev/null)
+    [ "$errfile" != /dev/null ] && rm -f "$errfile"
+    if [ "$rc" -eq 130 ]; then
+        # ESC / Ctrl-C in fzf exits 130 — a normal cancel, NOT a broken fzf.
+        [ "$errfile" != /dev/null ] && rm -f "$errfile"
+        return 1
+    fi
+    if [ "$rc" -ge 2 ]; then
+        # rc 0 = picked, 1 = ESC-cancelled-with-empty. Anything else fails.
+        # stderr, not stdout — callers capture fzf_select's stdout
+        printf '%s\n' "$(paint "$YELLOW" "⚠ fzf failed (exit $rc)${errline:+ — $errline}")" >&2
+        printf '%s\n' "$(paint "$DIM" "Switching to text mode for this session (NO_FZF=1 to force it).")" >&2
+        : > "${FZF_BROKEN_FLAG:?}" 2>/dev/null || true
+        return 1
     fi
     # The submenu Exit row is not a pick: strip it from the answer so no caller
     # can ever install a package called "Exit pkg-manager", and record the
@@ -4250,7 +4626,7 @@ fzf_select() {
     # substitution, where a variable would die with the subshell. Anything
     # ELSE the user selected stays in the answer, so "pick two, then Exit"
     # still installs the two.
-    if [ -n "$OPTION_SUB_EXIT" ] && printf '%s\n' "$out" | grep -qF "$OPTION_SUB_EXIT"; then
+    if [ -n "$OPTION_SUB_EXIT" ] && case "$out" in *"$OPTION_SUB_EXIT"*) true ;; *) false ;; esac; then
         out=$(printf '%s\n' "$out" | grep -vF "$OPTION_SUB_EXIT" || true)
         # "Back to main menu" picked alone == ESC: no answer, so the caller
         # returns one level. Anything else picked stays in the answer.
@@ -4259,7 +4635,7 @@ fzf_select() {
     # The explicit app-exit row (or the ctrl-q bind below) asks to LEAVE THE
     # APP: the request rides in the flag file out of this command
     # substitution, and the main loop answers it with the farewell.
-    if [ -n "$OPTION_APP_EXIT" ] && printf '%s\n' "$out" | grep -qF "$OPTION_APP_EXIT"; then
+    if [ -n "$OPTION_APP_EXIT" ] && case "$out" in *"$OPTION_APP_EXIT"*) true ;; *) false ;; esac; then
         request_app_exit
         out=$(printf '%s\n' "$out" | grep -vF "$OPTION_APP_EXIT" || true)
         [ -n "$out" ] || rc=1
@@ -4337,11 +4713,12 @@ pick_multi() {
         if [ "$tok" -eq "$exit_n" ] 2>/dev/null; then continue; fi
         if [ "$tok" -eq "$app_n" ] 2>/dev/null; then request_app_exit; continue; fi
         case "$tok" in
-            [1-9]|[1-9][0-9]) n=$(printf '%s\n' "$@" | sed -n "${tok}p"); out="$out$n\n" ;;
+            [1-9]|[1-9][0-9]) n=$(printf '%s\n' "$@" | sed -n "${tok}p"); out="$out$n"$'\n' ;;
         esac
     done
     [ -n "$out" ] || return 1
-    printf '%b' "$out"
+    # %s, not %b — package names must never be re-interpreted as escapes
+    printf '%s' "$out"
 }
 
 # pick_one <header> — single-select from a stdin list (package names, version
@@ -4456,7 +4833,7 @@ fzf_pick_pkgs() {
     [ -z "$selected" ] && return 1
     # Field 1 of "name|display" rows is the bare name; a plain name (text-mode
     # style input, or a test feeding one line) passes through unchanged.
-    printf '%s\n' "$selected" | cut -d'|' -f1 | sed '/^$/d' | sort -u
+    printf '%s\n' "$selected" | cut -d'|' -f1 | sed '/^$/d' | filter_pkgs
 }
 
 # human_size <kb> — "1.2 MB" / "834 KB" for apt's Installed-Size in KB.
@@ -4510,12 +4887,12 @@ audit_log() {
     local action="$1"; shift
     local msg="${*:-}"
     local logfile="$HOME/.pkg-manager-audit.log"
-    printf '%s [%s] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(whoami 2>/dev/null || echo $USER)" "$action" "$msg" >> "$logfile" 2>/dev/null || true
+    printf '%s [%s] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(whoami 2>/dev/null || echo "$USER")" "$action" "$msg" >> "$logfile" 2>/dev/null || true
 }
 
 do_repos() {
     local source_file="$PREFIX/etc/apt/sources.list"
-    local backup_file="$HOME/pkg-repo-backup-$(date +%Y%m%d).txt"
+    local backup_file="$HOME/pkg-repo-backup-$(date +%Y%m%d-%H%M%S).txt"
     if [ ! -f "$source_file" ]; then
         err "Sources file not found: $source_file"
         return 1
@@ -4535,29 +4912,57 @@ do_repos() {
         "Test mirror speed"|"2")
             do_mirror ;;
         "Add repo line"|"3")
-            ask_name "Repo line (e.g. deb https://mirror.freedif.org/termux/termux-main stable main)" "any"
+            ask_name "Repo line (e.g. deb https://packages.termux.dev/apt/termux-main stable main)" "any"
             if [ -n "$PKG_NAME" ]; then
-                echo "$PKG_NAME" >> "$source_file"
-                say "Added: $PKG_NAME"
+                # validate shape: must start with `deb` (or deb-src) and carry a
+                # URI + suite — anything else breaks every apt update
+                if ! printf '%s\n' "$PKG_NAME" | grep -qE '^deb(-src)?[[:space:]]+https?://[^[:space:]]+[[:space:]]+[[:alnum:]-]+[[:space:]]+[[:alnum:],-]+'; then
+                    err "That doesn't look like a valid repo line (must match: deb <url> <suite> <components...>)."
+                    return
+                fi
+                safe_cp "$source_file" "$source_file.pkg-manager.bak" || { err "Could not back up $source_file — aborting."; return; }
+                # stage the new line, verify it's intact, then promote
+                if ! tmp=$(scratch_new); then err "Could not create scratch for the add."; return; fi
+                if ! { cat "$source_file"; printf '%s\n' "$PKG_NAME"; } > "$tmp" || ! [ -s "$tmp" ]; then
+                    err "Could not build new sources.list — aborted."
+                    rm -f "$tmp"; return
+                fi
+                if ! mv -f "$tmp" "$source_file"; then
+                    err "Could not install the new sources.list."
+                    rm -f "$tmp"; return
+                fi
+                say "Added: $PKG_NAME (backup: $source_file.pkg-manager.bak)"
                 audit_log "repo_add" "$PKG_NAME"
                 say "Running apt update..."
-                apt update -qq 2>/dev/null || true
+                apt update -qq 2>&1 | tail -n 3 || true
             fi ;;
         "Remove line by number"|"4")
             echo "Current lines:"
             grep -n "" "$source_file" | head -n 20
             ask_name "Line number to delete" "number"
             if [[ "$PKG_NAME" =~ ^[0-9]+$ ]]; then
-                sed -i "${PKG_NAME}d" "$source_file"
-                say "Deleted line $PKG_NAME"
-                audit_log "repo_remove" "line $PKG_NAME"
+                if ! sed -n "${PKG_NAME}p" "$source_file" | grep -q .; then
+                    err "No line $PKG_NAME in $source_file."
+                    return
+                fi
+                cp -p "$source_file" "$source_file.pkg-manager.bak" || { err "Could not back up $source_file — aborting."; return; }
+                if sed -i "${PKG_NAME}d" "$source_file"; then
+                    say "Deleted line $PKG_NAME (backup: $source_file.pkg-manager.bak)"
+                    audit_log "repo_remove" "line $PKG_NAME"
+                else
+                    err "sed failed — restoring backup."
+                    safe_cp "$source_file.pkg-manager.bak" "$source_file"
+                fi
             else
                 err "Invalid number."
             fi ;;
         "Backup sources"|"5")
-            cp "$source_file" "$backup_file"
-            say "Backed up to $backup_file"
-            audit_log "repo_backup" "$backup_file" ;;
+            if safe_cp "$source_file" "$backup_file"; then
+                say "Backed up to $backup_file"
+                audit_log "repo_backup" "$backup_file"
+            else
+                err "Could not back up $source_file."
+            fi ;;
         "Apt update"|"6")
             apt update ;;
         "Back"|"7"|"") return ;;
@@ -4566,46 +4971,6 @@ do_repos() {
     read -r _ < /dev/tty 2>/dev/null || true
 }
 
-use_fzf_for_op() {
-    # Sets FZF_ABORTED=1 when the fzf picker itself was aborted (ESC), so
-    # callers can fall back to the typed-name prompt. Distinguish confirm-cancel.
-    FZF_ABORTED=0
-    local op="$1"
-    if ! have_fzf; then
-        FZF_ABORTED=1
-        return 1
-    fi
-    local selected
-    selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC cancels" "$op") || {
-        FZF_ABORTED=1
-        # Silence "Canceled." when the user chose Exit — that wasn't a cancel.
-        app_exit_wanted || dim "  Canceled."
-        return 1
-    }
-    local -a pkgs=()
-    while IFS= read -r line; do
-        [ -n "$line" ] && pkgs+=("$line")
-    done <<< "$selected"
-    [ ${#pkgs[@]} -eq 0 ] && return 1
-    batch_preview "$op" "${pkgs[@]}"
-    local confirm="y"
-    printf 'Confirm %s %s package(s)? (y/n/d=dry-run): ' "$op" "${#pkgs[@]}" >&2
-    read -r confirm
-    if [ "$confirm" = "d" ]; then
-        say "Dry-run — no apt command executed."
-        audit_log "dryrun" "$op ${pkgs[*]}"
-        return 0
-    elif [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-        audit_log "batch_start" "$op ${pkgs[*]}"
-        run_multi_op "$op" "${pkgs[@]}"
-        local rc=$?
-        audit_log "batch_end" "$op ${pkgs[*]} rc=$rc"
-        return $rc
-    else
-        say "Canceled."
-        return 1
-    fi
-}
 # ============================================================================
 # MAX 99 — extreme features from exa research: aptui (undo/redo, tabs, mirror fetch,
 # transaction history), pkgtui (metrics/dashboard, dependency tree breadcrumbs, disk cleanup),
@@ -4629,12 +4994,17 @@ do_undo() {
             local pkgs; pkgs=$(echo "$entry" | sed 's/.*batch_start [a-z]* //')
             [ -z "$op" ] && op="install"
             local revert_op="remove"; [ "$op" = "remove" ] && revert_op="install"
-            if [ -n "$pkgs" ]; then
-                say "Reverting with: $revert_op $pkgs"
-                if confirm_danger "Undo $op → $revert_op for $pkgs?"; then
-                    audit_log "undo_start" "$revert_op $pkgs"
-                    run_multi_op "$revert_op" $pkgs
-                    audit_log "undo_done" "$revert_op $pkgs rc=$?"
+            # audit-log tokens are not pre-validated: filter them before apt
+            local clean_pkgs
+            clean_pkgs=$(printf '%s\n' "$pkgs" | tr ' ' '\n' | filter_pkgs)
+            if [ -n "$clean_pkgs" ]; then
+                say "Reverting with: $revert_op $(printf '%s\n' "$clean_pkgs" | tr '\n' ' ')"
+                if confirm_danger "Undo $op → $revert_op for $(printf '%s\n' "$clean_pkgs" | tr '\n' ' ')?"; then
+                    audit_log "undo_start" "$revert_op $(printf '%s\n' "$clean_pkgs" | tr '\n' ' ')"
+                    local -a _upkgs=()
+                    mapfile -t _upkgs <<< "$clean_pkgs"
+                    run_multi_op "$revert_op" "${_upkgs[@]}"
+                    audit_log "undo_done" "$revert_op rc=$?"
                 fi
             else
                 err "Could not parse packages from audit line."
@@ -4679,18 +5049,29 @@ do_depgraph() {
 
 # Health / Metrics Dashboard (pkgtui M / pactool stats style)
 do_health() {
-    say "$CYAN═══ SYSTEM HEALTH DASHBOARD ═══$RESET"
+    say "═══ SYSTEM HEALTH DASHBOARD ═══"
     local total installed upgradable auto_orphan
-    total=$(dpkg-query -W 2>/dev/null | wc -l)
-    installed=$total
-    upgradable=$(apt list --upgradable 2>/dev/null | tail -n +2 | wc -l)
-    auto_orphan=$(apt-mark showauto 2>/dev/null | wc -l)
-    printf '  Installed:  %s\n' "$installed"
-    printf '  Upgradable: %s\n' "$upgradable"
-    printf '  Auto/Orphan:%s\n' "$auto_orphan"
+    if ! out=$(dpkg-query -W 2>/dev/null); then
+        raw_known=0; installed=0
+    else
+        raw_known=1; installed=$(printf '%s\n' "$out" | wc -l)
+    fi
+    if ! out=$(apt list --upgradable 2>/dev/null); then
+        upd_known=0; upgradable=0
+    else
+        upd_known=1; upgradable=$(printf '%s\n' "$out" | grep -cE '^[^/[:space:]]+/' || true)
+    fi
+    if ! out=$(apt-mark showauto 2>/dev/null); then
+        orph_known=0; auto_orphan=0
+    else
+        orph_known=1; auto_orphan=$(printf '%s\n' "$out" | wc -l)
+    fi
+    if [ "$raw_known" = 1 ]; then printf '  Installed:  %s\n' "$installed"; else printf '  Installed:  ? (dpkg failed)\n'; fi
+    if [ "$upd_known" = 1 ]; then printf '  Upgradable: %s\n' "$upgradable"; else printf '  Upgradable: ? (apt failed)\n'; fi
+    if [ "$orph_known" = 1 ]; then printf '  Auto/Orphan:%s\n' "$auto_orphan"; else printf '  Auto/Orphan: ? (apt-mark failed)\n'; fi
     local last_audit; last_audit=$(tail -n1 "$HOME/.pkg-manager-audit.log" 2>/dev/null | awk '{print $1" "$2}')
     printf '  Last audit: %s\n' "${last_audit:-none}"
-    echo "  ${YELLOW}Top disk users (Installed-Size):${RESET}"
+    printf '\n  Top disk users (Installed-Size):\n'
     dpkg-query -W -f='${Installed-Size} ${Package}\n' 2>/dev/null | sort -nr | head -n 6 | while read -r sz pkg; do
         printf '    %10s KB  %s\n' "$sz" "$pkg"
     done
@@ -4698,41 +5079,50 @@ do_health() {
     printf '  Apt cache:  %s\n' "${cache_size:-unknown}"
 }
 
-# Auto-mirror optimization (pactool / aptui mirror-fetch style)
-do_auto_mirror() {
-    local arch_part; arch_part=$(uname -m)
-    local source_file="$PREFIX/etc/apt/sources.list"
-    [ -f "$source_file" ] || { err "No sources file."; return; }
-    say "Testing mirrors (curl latency)..."
-    local best_url="" best_time=999999
-    local urls=(
-        "https://mirror.freedif.org/termux/termux-main"
-        "https://packages.termux.dev/apt/termux-main"
-        "https://termux-archive.repo/enstry.net/packages/termux"
-    )
-    for url in "${urls[@]}"; do
-        local t; t=$(curl -o /dev/null -s -w "%{time_total}" --max-time 3 --connect-timeout 2 "$url/${arch_part}/dpkg.status" 2>/dev/null || echo 999)
-        local t_int; t_int=$(printf '%d' "${t%.*}" 2>/dev/null || echo 999)
-        if [ "$t_int" -lt "$best_time" ]; then best_time="$t_int"; best_url="$url"; fi
-    done
-    if [ -n "$best_url" ]; then
-        say "Fastest: $best_url (${best_time}s)"
-        if confirm_danger "Apply $best_url to sources.list?"; then
-            # Replace domain part while keeping path structure
-            local old_domain; old_domain=$(grep -oE '^deb https://[^/]+/termux/termux-main' "$source_file" 2>/dev/null | awk '{print $3}' | sed 's|/termux/termux-main||' | head -n1)
-            if [ -n "$old_domain" ]; then
-                sed -i "s|$old_domain|${best_url}|g" "$source_file"
-            else
-                echo "deb $best_url stable main" > "$source_file"
-            fi
-            audit_log "mirror_auto" "$best_url"
-            say "Updated. Running apt update..."
-            apt update -qq 2>/dev/null || true
-        fi
+
+use_fzf_for_op() {
+    local op="$1"
+    if ! have_fzf; then
+        return 1
+    fi
+    local selected
+    selected=$(fzf_pick_pkgs "Select packages for $op — Tab/Space multi-select, ESC cancels" "$op") || {
+        # Silence "Canceled." when the user chose Exit — that wasn't a cancel.
+        app_exit_wanted || dim "  Canceled."
+        return 1
+    }
+    local -a pkgs=()
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] && pkgs+=("$line")
+    done <<< "$selected"
+    [ ${#pkgs[@]} -eq 0 ] && return 1
+    batch_preview "$op" "${pkgs[@]}"
+    local confirm="y"
+    printf 'Confirm %s %s package(s)? (y/n/d=dry-run): ' "$op" "${#pkgs[@]}" >&2
+    read -r confirm
+    if [ "$confirm" = "d" ]; then
+        say "Dry-run — no apt command executed."
+        audit_log "dryrun" "$op ${pkgs[*]}"
+        return 0
+    elif [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        audit_log "batch_start" "$op ${pkgs[*]}"
+        run_multi_op "$op" "${pkgs[@]}"
+        local rc=$?
+        audit_log "batch_end" "$op ${pkgs[*]} rc=$rc"
+        return $rc
     else
-        err "Mirror test failed."
+        say "Canceled."
+        return 1
     fi
 }
+# ============================================================================
+# MAX 99 — extreme features from exa research: aptui (undo/redo, tabs, mirror fetch,
+# transaction history), pkgtui (metrics/dashboard, dependency tree breadcrumbs, disk cleanup),
+# pactool (auto-mirror, stats), glazepkg (snapshots/diffs, 36 managers), metapak (themes,
+# animations, i18n, embedded console), trx (tiered fuzzy, cache, themes)
+# ============================================================================
+
+# Transaction Undo / Redo Engine (aptui-style 'z' / transaction history)
 
 # ============================================================================
 # CLI MODE — non-interactive flags. Before this point options only configure
@@ -4799,7 +5189,11 @@ USAGE
     check-updates|check-updates-quiet)
         # v5.1: scriptable upgrade check (cron / status scripts).
         # --check-updates prints a human list; --quiet prints just the count.
-        local_up=$(list_upgradable 2>/dev/null)
+        # An apt failure must NOT read as "0 upgrades available".
+        if ! local_up=$(list_upgradable 2>/dev/null); then
+            printf 'Could not check for upgrades (apt failed).\n' >&2
+            exit 1
+        fi
         local_n=$(printf '%s\n' "$local_up" | grep -c . || true)
         if [ "$CLI_MODE" = "check-updates-quiet" ]; then
             printf '%s\n' "$local_n"
@@ -4856,7 +5250,6 @@ while true; do
     case "$choice" in
         "$OPTION_INSTALL")    do_install ;;
         "$OPTION_UNINSTALL")  do_uninstall ;;
-        "$OPTION_SEARCH")     do_search ;;
         "$OPTION_LIST")       do_list ;;
         "$OPTION_REINSTALL")  do_reinstall ;;
         "$OPTION_UPDATE")     do_upgrade_center ;;
@@ -4908,7 +5301,6 @@ while true; do
         "$OPTION_DEPTREE_GRAPH") do_depgraph ;;
         "$OPTION_HEALTH")      do_health ;;
         "$OPTION_SNAPSHOT_DIFF") do_snapshot ;;
-        "$OPTION_AUTO_MIRROR") do_auto_mirror ;;
         "$OPTION_THEME")       do_theme ;;
         "$OPTION_SELFUPDATE")  do_selfupdate ;;
         "$OPTION_ESSENTIALS")  do_essentials ;;

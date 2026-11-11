@@ -12,9 +12,15 @@ LOG="${FZF_CALL_LOG:-/dev/null}"
 case "$1" in
     --version) printf '0.61.0 (Go)\n' ;; # keep >= the ghost floor (0.61)
     --help) printf '%s\n' '--highlight-line   Highlight the whole current line' \
-                     '--scrollbar[=C1[C2]] Scrollbar character(s)' ;;
+                     '--scrollbar[=C1[C2]] Scrollbar character(s)' \
+                     '--accept-nth=N        Define which fields to print on accept' ;;
     *) ;;
 esac
+if [ -n "$FAKE_FZF_FAIL" ]; then
+    # full failure (like fzf exiting 2 on a dead terminal): no queue consumed,
+    # exit 2 immediately — exercises the fzf-broken fallback path
+    exit 2
+fi
 case "$1" in --version|--help) exit 0 ;; esac
 
 printf 'fzf %s\n' "$*" >> "$LOG"

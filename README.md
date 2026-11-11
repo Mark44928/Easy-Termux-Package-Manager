@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-186%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-182%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
@@ -15,7 +15,7 @@
 
 # Easy Termux Package Manager
 
-Install, remove, search, inspect, back up, and repair packages on Termux — without ~ever~ touching a `pkg` or `apt` command ~again.~
+Install, remove, inspect, back up, and repair packages on Termux — without ~ever~ touching a `pkg` or `apt` command ~again.~
 
 Wait that's boring, let's try again.
 
@@ -71,7 +71,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 
 | | |
 |--|--|
-| 🎛️ **59 menu entries** (58 actions + exit, plus pinned favorites) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
+| 🎛️ **57 menu entries** (57 numbered actions + Exit row) | 🔄 **Upgrade center** — refresh → pick → autoremove → clean in one flow |
 | 👁️ **Simulate before changing** — dry-run previews (`apt -s`) | 📊 **Package stats & disk** — sizes, per-dir usage, biggest files, cache breakdown |
 | 🗃️ **Cache manager** — clean all or outdated `.deb`s, browse | 🌳 **Dependency tools** — recursive tree + orphan finder |
 | 🔍 **Package inspector** — info, deps, reverse deps, files, hold | 🩺 **Maintenance wizard** — on-demand or on-launch health pass |
@@ -82,13 +82,13 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
 | ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **16 themes** (9 truecolor) + Nerd Font or emoji icons |
 | 🛟 **Plain-text fallback** — works without `fzf` | 📋 **Timestamped history** of every action |
-| 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test**, **watchlist**, **history charts** | 45–49 |
-| 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 43, 55–58, 59 |
+| 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test** (all 65 official mirrors), **watchlist**, **history charts** | 43–47 |
+| 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 42, 54–57, 58 |
 | ⌨️ **Consistent ESC** | ESC cancels everywhere — submenus go back a level, the top menu exits with a goodbye, and the package pickers say `Canceled.` and return (no more typed-name detours). If fzf itself ever breaks, the app explains why and finishes the session in numbered text mode | all views |
 | 🖥️ **New 5.1** | **Scriptable CLI**: `--check-updates` lists upgradable packages, `--quiet` prints just the count (for cron/status lines), `--doctor` runs the full system audit and exits — no menu needed | CLI |
 | 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (it travels inside the picker as its header, so a terminal resize cannot wipe it), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
-| 🆕 **New 5.3/5.3.1** | the **screen clears** at startup · a **ghost hint** in every picker's input line (with live package counts where they matter) · the menu **list shows the bare action label** while the **preview panel** carries the description, **what the action actually runs** (`apt install …`, `apt purge …`, `dpkg -L …`) and its row number · picker rows **never scroll sideways**: overflow is capped to the pane and fzf itself gets `--no-hscroll --ellipsis=…`, so every row stays anchored at its start (name always readable) instead of showing a `···`-wrapped middle slice · **polished pickers**: whole-row highlight, a slim scrollbar, ranking that prefers matches on the *name* over the description, and **Ctrl-Y copies the highlighted package name** · **one list style everywhere**: text mode uses the same right-aligned `N)` numbering and `❯` prompt in the main menu and every submenu · **search results** gained the same package-info preview · every submenu picker ends with **⬅️ Back to main menu** and **🚪 Exit pkg-manager** rows (selecting packages and then Back still installs them), and **Ctrl-Q** quits from any picker · submenus have **Back** and **Exit** rows · **Ctrl-Q** quits from any picker | 1, 2, 3, all pickers |
-| 🔍 **fzf integration** | fzf is a first-class picker: multi-select install/uninstall with a **live package-info preview pane** (dpkg status + size-humanized `apt-cache show`, `bat`-colored), an **info pane on the main menu and command palette** describing every entry, search-result multi-pick, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 44 |
+| 🆕 **New 5.3/5.3.1** | the **screen clears** at startup · a **ghost hint** in every picker's input line (with live package counts where they matter) · the menu **list shows the bare action label** while the **preview panel** carries the description, **what the action actually runs** (`apt install …`, `apt purge …`, `dpkg -L …`) and its row number · picker rows **never scroll sideways**: overflow is capped to the pane and fzf itself gets `--no-hscroll --ellipsis=…`, so every row stays anchored at its start (name always readable) instead of showing a `···`-wrapped middle slice · **polished pickers**: whole-row highlight, a slim scrollbar, ranking that prefers matches on the *name* over the description, and **Ctrl-Y copies the highlighted package name** · **one list style everywhere**: text mode uses the same right-aligned `N)` numbering and `❯` prompt in the main menu and every submenu · every submenu picker ends with **⬅️ Back to main menu** and **🚪 Exit pkg-manager** rows (selecting packages and then Back still installs them), and **Ctrl-Q** quits from any picker | 1, 2, all pickers |
+| 🔍 **fzf integration** | fzf is a first-class picker: **every package prompt** (reinstall, purge, hold, info, notes, watch, …) opens as a fuzzy finder with the live info preview (ESC cancels back to the menu), multi-select install/uninstall with a **live package-info preview pane** (dpkg status + size-humanized `apt-cache show`, `bat`-colored), an **info pane on the main menu and command palette** describing every entry, search-result multi-pick, and the text-mode menu — all theme-colored, all with ESC fallback to typing | 1–3, 43 |
 | 📐 **Screen-adaptive** | the banner and status strip ride inside every picker (they are its header), so they survive a terminal resize; pickers still stay below 100% height (fullscreen fzf switches to the alternate screen and hides them), lists entries top-down in natural order, and moves the preview pane to the side on wide/landscape terminals or below on narrow ones | all fzf views |
 | 🧹 **Clean install picker** | only packages you have **not** installed are offered (no more scrolling past 500 installed names); uninstall gets its own finder with installed-only rows and a removal-flavoured preview | 1, 2 |
 
@@ -96,19 +96,19 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 
 | Category | What you get | Menu |
 |----------|--------------|:----:|
-| 📦 **Basic** | Install, uninstall, reinstall/repair, upgrade center, clean cache, autoremove | 1–9 |
-| 🔎 **Search** | Smart search (installed markers + install-from-results), upgradable list | 3, 18 |
-| 👁️ **Preview** | Simulate install / remove / upgrade before doing anything | 26 |
-| 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner | 12–14, 27, 32 |
-| 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder | 10, 11, 29 |
-| 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) | 15–17, 33 |
-| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 29, 30, 33 |
-| 💾 **Data** | Backup, restore, export (txt/JSON), import | 19–22 |
-| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/charts/undo/clear), settings | 23, 24–25, 27, 59 |
-| 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 35–43 |
-| 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin | 45–49 |
-| 🆕 **New 4.1** | Optional repositories, undo last batch, dependency tree, health dashboard, snapshot/diff hub, auto-mirror | 50–55 |
-| 🚀🚀 **New 5.0** | Real terminal themes (truecolor + Termux `colors.properties` export), theme preview hub, **fzf-first pickers** (install/uninstall multi-select with previews, search, palette, text menu), **CLI flags** (`--help --version --theme --list-themes --export-theme`), essential toolkit, system & network info, what's-new screen | 1–3, 43, 55–59 |
+| 📦 **Basic** | Install, uninstall, reinstall/repair, upgrade center, clean cache, autoremove | 1–8 |
+| 📜 **Upgradable** | live upgradable list with per-package actions | 17 |
+| 👁️ **Preview** | Simulate install / remove / upgrade before doing anything | 24 |
+| 📊 **Insight** | Package stats & disk drill-down, package inspector, sizes, files, owner | 11–13, 25, 30 |
+| 🔗 **Relationships** | Dependency tree, dependencies, reverse dependencies, orphan finder | 9, 10, 50, 27 |
+| 📌 **Maintenance** | Pin/hold, purge, fix-broken, maintenance wizard (on-demand or on-launch) | 14–16, 31 |
+| 📚 **Bulk** | Install/remove many, multi-select from installed/upgradable lists, favorites (pinnable), groups | 28, 29, 32 |
+| 💾 **Data** | Backup, restore, export (txt/JSON), import | 18–21 |
+| 🔧 **Tooling** | Dependency doctor, cache manager, history & log viewer (filter/charts/undo/clear), settings | 22, 23–24, 26, 58 |
+| 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 34–42 |
+| 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin | 43–47 |
+| 🆕 **New 4.1** | Optional repositories, undo last batch, dependency tree, health dashboard, snapshot/diff hub | 48–52 |
+| 🚀🚀 **New 5.0** | Real terminal themes (truecolor + Termux `colors.properties` export), theme preview hub, **fzf-first pickers** (install/uninstall multi-select with previews, palette, text menu), **CLI flags** (`--help --version --theme --list-themes --export-theme`), essential toolkit, system & network info, what's-new screen | 1–3, 42, 54–58 |
 
 ## 📋 Requirements
 
@@ -116,7 +116,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 - `bash` — preinstalled
 - `apt` / `dpkg` — preinstalled
 - `curl` — needed for the one-liner / manual install (install with `pkg install curl -y`)
-- [`fzf`](https://github.com/junegunn/fzf) — **the UI**: fuzzy menu, multi-select install/uninstall with previews, search results, palette, and every submenu. Auto-installed by `install.sh`. Disable with `FZF_ENABLED=0` (falls back to the numbered text lists).
+- [`fzf`](https://github.com/junegunn/fzf) — **the UI**: fuzzy menu, multi-select install/uninstall with previews, palette, and every submenu. Auto-installed by `install.sh`. Disable with `FZF_ENABLED=0` (falls back to the numbered text lists).
 - **Nerd Font** — **CaskaydiaCove** (recommended) or **FiraCode** (alternative), both bundled in this repo (`fonts/`); the installer lets you pick and installs it safely (atomic temp-file + rename, then `termux-reload-settings`). Without one, switch to emoji icons from **Settings → Icons**.
 
 ## 🛠️ Installation
@@ -190,10 +190,9 @@ With **fzf** installed it *is* the UI — themed to match the current color sche
 
 | Where | What you get |
 |-------|--------------|
-| **Text-mode main menu** | type to filter the menu (arrow keys still work). Press **ESC** to fall back to the numbered list |
-| **Install / Uninstall** (1, 2) | multi-select from every package (`Tab`/`Ctrl-a` select-all, `Ctrl-d` deselect-all) with a live `apt-cache show` preview, then a batch preview before apt runs. **ESC** drops you to the typed-name prompt |
-| **Search results** (3) | multi-pick the installable candidates straight from the results |
-| **Command palette** (43) | fuzzy-find any of the 59 options |
+| **Text-mode main menu** | no filter — a right-aligned numbered list (1–58, `0` exits); type a number and press Enter |
+| **Install / Uninstall** (1, 2) | multi-select from the not-yet-installed packages (install) or installed packages (uninstall), with a live `apt-cache show` preview, then a batch preview before apt runs. **ESC** / **Back** returns to the menu |
+| **Command palette** (42) | fuzzy-find any of the 57 actions |
 
 ```bash
 fzf -m --layout=reverse --cycle --info=inline \
@@ -209,131 +208,128 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 ```text
  ✨ Easy Termux Package Manager · v5.3.1
 
- [1]  📦 Install a package
- [2]  🗑️ Uninstall a package
- [3]  🔎 Search packages
+ 1) 📦 Install a package
+ 2) 🗑️ Uninstall a package
   ⋮
- [59] ⚙️ Settings
- [0]  🚪 Exit
- Choose an option:
+58) ⚙️ Settings
+ 0) 🚪 Exit
+❯
 ```
 
 ### 🧭 Menu map
 
-#### 📦 Core — everyday package actions (1–9)
+#### 📦 Core — everyday package actions (1–8)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 1 | 📦 Install a package | `apt install -y <name>` |
 | 2 | 🗑️  Uninstall a package | `apt remove -y <name>` |
-| 3 | 🔎 Search packages | `apt search <term>` |
-| 4 | 📜 List installed packages | `apt list --installed` |
-| 5 | 🔧 Reinstall / repair a package | `apt install --reinstall -y <name>` |
-| 6 | 🔄 Upgrade center | `apt update`, pick what to upgrade, then `apt autoremove` + `apt clean` |
-| 7 | 🧹 Clean download cache | `apt clean` |
-| 8 | ℹ️  Show package info | `apt show <name>` |
-| 9 | 🧽 Autoremove cleanup | `apt autoremove -y` |
+| 3 | 📜 List installed packages | `apt list --installed` |
+| 4 | 🔧 Reinstall / repair a package | `apt install --reinstall -y <name>` |
+| 5 | 🔄 Upgrade center | `apt update`, pick what to upgrade, then `apt autoremove` + `apt clean` |
+| 6 | 🧹 Clean download cache | `apt clean` |
+| 7 | ℹ️  Show package info | `apt show <name>` |
+| 8 | 🧽 Autoremove cleanup | `apt autoremove -y` |
 
-#### 🔗 Relationships & files (10–14)
-
-| # | Option | What it does |
-|:-:|--------|--------------|
-| 10 | 🔗 Dependencies | `apt depends <name>` |
-| 11 | 🔃 Reverse deps | `apt rdepends <name>` |
-| 12 | ⚖️  Package size | `apt-cache show <name>` |
-| 13 | 📁 Installed files | `dpkg -L <name>` |
-| 14 | 🏷️  File owner | `dpkg -S <path>` |
-
-#### 📌 Maintenance & safety (15–17, 32)
+#### 🔗 Relationships & files (9–13)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 15 | 📌 Pin / hold packages | `apt-mark hold/unhold` |
-| 16 | 🧨 Purge a package | `apt purge -y <name>` |
-| 17 | 🩹 Fix broken packages | `apt --fix-broken install -y` |
-| 32 | 🩺 Maintenance wizard | health pass: optional `apt update` refresh, upgradable, orphans, broken packages, cache, held |
+| 9 | 🔗 Dependencies | `apt depends <name>` |
+| 10 | 🔃 Reverse deps | `apt rdepends <name>` |
+| 11 | ⚖️  Package size | `apt-cache show <name>` |
+| 12 | 📁 Installed files | `dpkg -L <name>` |
+| 13 | 🏷️  File owner | `dpkg -S <path>` |
 
-#### 💾 Data & backup (19–22)
-
-| # | Option | What it does |
-|:-:|--------|--------------|
-| 19 | 💾 Backup installed packages | dump names to `~/pkg-backup-*.txt` |
-| 20 | ♻️  Restore from backup | installs the listed packages (batched into one `apt install`, falls back to per-package reporting on failure) |
-| 21 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
-| 22 | 📥 Import package list | install from any list file |
-
-#### 🛠️ Tooling (23–25)
+#### 📌 Maintenance & safety (14–16, 31)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 23 | 🔧 Dependency doctor | check/install `fzf`, `git`, `curl`, `figlet` |
-| 24 | 📋 History & log viewer | view/filter the log (incl. **charts & statistics** — per-day bars, top actions), show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
-| 25 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
+| 14 | 📌 Pin / hold packages | `apt-mark hold/unhold` |
+| 15 | 🧨 Purge a package | `apt purge -y <name>` |
+| 16 | 🩹 Fix broken packages | `apt --fix-broken install -y` |
+| 31 | 🩺 Maintenance wizard | health pass: optional `apt update` refresh, upgradable, orphans, broken packages, cache, held |
 
-#### 📊 Insight & upgrades (18, 26–28, 31)
-
-| # | Option | What it does |
-|:-:|--------|--------------|
-| 18 | 📈 Upgradable list | `apt list --upgradable` |
-| 26 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
-| 27 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
-| 28 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
-| 31 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
-
-#### 📚 Bulk, favorites & groups (29–30, 33)
+#### 💾 Data & backup (18–21)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 29 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
-| 30 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
-| 33 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
+| 18 | 💾 Backup installed packages | dump names to `~/pkg-backup-*.txt` |
+| 19 | ♻️  Restore from backup | installs the listed packages (batched into one `apt install`, falls back to per-package reporting on failure) |
+| 20 | 📤 Export package list | plain text, or JSON when `python3` is installed (else auto-falls back to text) |
+| 21 | 📥 Import package list | install from any list file |
 
-#### 🆕 New in 3.0 — advanced (35–43)
-
-| # | Option | What it does |
-|:-:|--------|--------------|
-| 34 | 📁 Local .deb install | `dpkg -i <file>` then `apt --fix-broken install -y` if needed |
-| 35 | 🔧 Downgrade package | `apt install <pkg>=<ver>` from `apt-cache madison` |
-| 36 | 🗃️ Download only | `apt download` or `apt install --download-only` to cache |
-| 37 | 📌 Hold specific version | install chosen version then `apt-mark hold` |
-| 38 | 🔎 File search (pre-install) | `apt-file search` / `pkgfile` or `dpkg -S` fallback |
-| 39 | 📋 Changelog | `apt changelog` / `apt-get changelog` or `apt show` |
-| 40 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
-| 41 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
-| 42 | 💾 Snapshot / Diff | full device snapshot as tar (`pkg-list.txt` + favs/groups/conf/notes) to `~/pkg-snapshot-*.tar.gz`, then list/diff/restore/delete snapshots in one hub |
-| 43 | 🪄 Command palette | fuzzy-find any of the 59 options with `fzf` |
-
-#### 🆕🆕 New in 4.0 — watch, speed, audit, recycle (44–48)
+#### 🛠️ Tooling (22–24)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 44 | 👁️ Package watchlist | track packages in `~/.pkg-manager-watch`, compare installed vs candidate versions, `termux-notification` summary when updates appear |
-| 45 | 🌐 Mirror speed test | times candidate mirrors (official + community), shows a ranked table, optionally rewrites the main repo line in `sources.list` (old file kept as `.bak`) and runs `apt update` |
-| 46 | 🛡️ System audit | health score from upgrades, orphans, holds, leftover configs, cache weight and free disk — with a findings list |
-| 47 | ☑️ Mark manual / auto | `apt-mark manual/auto`, show manual/auto lists, `apt satisfies` (what provides a virtual package) |
-| 48 | 🗑️ Recycle bin | with **Settings → Recycle bin** on, every remove/purge first downloads the `.deb` into `~/pkg-trash/`; restore one or all of them later via `dpkg -i` (+ `apt --fix-broken install`) — no network needed |
+| 22 | 🔧 Dependency doctor | check/install `fzf`, `git`, `curl`, `figlet` |
+| 23 | 📋 History & log viewer | view/filter the log (incl. **charts & statistics** — per-day bars, top actions), show errors, undo last removal, clear (undo reads the action log — keep “History log” enabled in Settings) |
+| 24 | 👁️  Simulate a change | `apt install -s` / `remove -s` / `upgrade -s` dry-runs |
+
+#### 📊 Insight & upgrades (17, 25–27, 30)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 17 | 📈 Upgradable list | `apt list --upgradable` |
+| 25 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
+| 26 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
+| 27 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
+| 30 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
+
+#### 📚 Bulk, favorites & groups (28–29, 32)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 28 | 📚 Bulk operations | install/remove many, or multi-select from installed/upgradable lists |
+| 29 | ⭐ Favorites | add/remove/show, install all, install one, pin to main menu |
+| 32 | 🗂️  Package groups | curated bundles (web dev, python dev, media…) + custom groups |
+
+#### 🆕 New in 3.0 — advanced (34–42)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 33 | 📁 Local .deb install | `dpkg -i <file>` then `apt --fix-broken install -y` if needed |
+| 34 | 🔧 Downgrade package | `apt install <pkg>=<ver>` from `apt-cache madison` |
+| 35 | 🗃️ Download only | `apt download` or `apt install --download-only` to cache |
+| 36 | 📌 Hold specific version | install chosen version then `apt-mark hold` |
+| 37 | 🔎 File search (pre-install) | `apt-file search` / `pkgfile` or `dpkg -S` fallback |
+| 38 | 📋 Changelog | `apt changelog` / `apt-get changelog` or `apt show` |
+| 39 | 🔗 Why installed | `apt-mark showmanual/showauto` + `apt rdepends` |
+| 40 | 📝 User notes | annotate packages in `~/.pkg-manager-notes` (`pkg::note`) |
+| 41 | 💾 Snapshot / Diff | full device snapshot as tar (`pkg-list.txt` + favs/groups/conf/notes) to `~/pkg-snapshot-*.tar.gz`, then list/diff/restore/delete snapshots in one hub |
+| 42 | 🪄 Command palette | fuzzy-find any of the 57 options with `fzf` |
+
+#### 🆕🆕 New in 4.0 — watch, speed, audit, recycle (43–47)
+
+| # | Option | What it does |
+|:-:|--------|--------------|
+| 43 | 👁️ Package watchlist | track packages in `~/.pkg-manager-watch`, compare installed vs candidate versions, `termux-notification` summary when updates appear |
+| 44 | 🌐 Mirror speed test | times candidate mirrors (official + community), shows a ranked table, optionally rewrites the main repo line in `sources.list` (old file kept as `.bak`) and runs `apt update` |
+| 45 | 🛡️ System audit | health score from upgrades, orphans, holds, leftover configs, cache weight and free disk — with a findings list |
+| 46 | ☑️ Mark manual / auto | `apt-mark manual/auto`, show manual/auto lists, `apt satisfies` (what provides a virtual package) |
+| 47 | 🗑️ Recycle bin | with **Settings → Recycle bin** on, every remove/purge first downloads the `.deb` into `~/pkg-trash/`; restore one or all of them later via `dpkg -i` (+ `apt --fix-broken install`) — no network needed |
 
 > The mirror test only touches the **main** repo line; `root` and `x11` repos in `sources.list.d/` are never modified.
 
-#### 🆕 New in 4.1 — repos, undo, graph, health, snapshot/diff, mirror (49–54)
+#### 🆕 New in 4.1 — repos, undo, graph, health, snapshot/diff (48–52)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 49 | 📂 Optional repositories | add/remove `root` and `x11` snippet files under `sources.list.d/` (files are kept as `disabled.bak` before removal), peek the main line |
-| 50 | 📋 Undo last batch | audit-logged replay/reverse of the last install/remove/purge batch — pick the entry to invert |
-| 51 | 🔗 Dependency tree | colored dependency graph for one package: forward `Depends`/`Recommends`/`Suggests` tree, reverse dependents, and whether it was installed manually or pulled in as a dependency |
-| 52 | 🛡️ Health dashboard | combined check: upgradables, broken deps, disk headroom, cache weight, stale locks, dpkg state — with repair suggestions |
-| 53 | 💾 Snapshot / Diff | shortcut to the full snapshot hub (same as 42) |
-| 54 | ▶️ Auto-mirror | time the mirrors from 45 and switch to the fastest one automatically (then `apt update`) |
+| 48 | 📂 Optional repositories | add/remove `root` and `x11` snippet files under `sources.list.d/` (files are kept as `disabled.bak` before removal), peek the main line |
+| 49 | 📋 Undo last batch | audit-logged replay/reverse of the last install/remove/purge batch — pick the entry to invert |
+| 50 | 🔗 Dependency tree | colored dependency graph for one package: forward `Depends`/`Recommends`/`Suggests` tree, reverse dependents, and whether it was installed manually or pulled in as a dependency |
+| 51 | 🛡️ Health dashboard | combined check: upgradables, broken deps, disk headroom, cache weight, stale locks, dpkg state — with repair suggestions |
+| 52 | 💾 Snapshot / Diff | shortcut to the full snapshot hub (same as row 41) |
 
-#### 🚀 New in 5.0 — self-update, toolkit, dashboards (55–58)
+#### 🚀 New in 5.0 — self-update, toolkit, dashboards (53–57)
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 55 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
-| 56 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
-| 57 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
-| 58 | 🚀 What's new in v5.3.1 | the changelog screen for this release |
+| 53 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
+| 54 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
+| 55 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
+| 56 | 🚀 What's new in v5.3.1 | the changelog screen for this release |
 
 > Self-update replaces the script you are currently running (repo copy or `$PREFIX/bin/pkg-manager`) and asks first — restart the app to use the new version.
 
@@ -341,7 +337,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 
 | # | Option | What it does |
 |:-:|--------|--------------|
-| 59 | ⚙️  Settings | backend, **Themes & terminal colors** (theme hub: pick / preview / export palette / restore), icons, toggles, quiet mode, safety lock |
+| 57 | ⚙️  Settings | backend, **Themes & terminal colors** (theme hub: pick / preview / export palette / restore), icons, toggles, quiet mode, safety lock |
 | 60+ | 📍 Pinned: *name* | one-tap install of a pinned favorite (appears when Favorites are pinned) |
 | 0 | 🚪 Exit | — |
 
@@ -389,7 +385,7 @@ LOCK=0            # 1 = always confirm destructive ops (blocks quiet mode)
 STARTUP_CHECK=0   # 1 = run the maintenance wizard on every launch
 FAVS_PINNED=0     # 1 = show favorite packages at the end of the main menu
 RECYCLE=0         # 1 = keep a .deb in ~/pkg-trash before every remove/purge
-FZF_ENABLED=1     # 1 = fzf-first pickers (install/uninstall/search/palette/menu)
+FZF_ENABLED=1     # 1 = fzf-first pickers (install/uninstall/palette/menu)
 ```
 > `NO_FZF=1` in the environment disables the same code paths without touching the config; handy for tests and slow terminals.
 
@@ -405,9 +401,9 @@ Changes made in **Settings** apply immediately; edits to the file itself apply o
 Easy-Termux-Package-Manager/
 ├── fonts/          # CaskaydiaCove + FiraCode Nerd Fonts, Regular (bundled, ~5.4 MB total)
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
-├── manager.sh      # the entire app (~4.8k lines, single file)
+├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 186 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 182 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -446,7 +442,7 @@ A few ground rules to keep the docs in sync:
   ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
 - Run `make lint` (`bash -n` + shellcheck) after every edit — it takes seconds.
-- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 186 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
+- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 182 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
 
 ### 🛠️ Make targets (developers)
 
@@ -456,7 +452,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
-| `make test` | full 186-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
+| `make test` | full 182-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |

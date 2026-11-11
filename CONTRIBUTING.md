@@ -8,7 +8,7 @@ Thanks for improving ETPM. This project is two shell files (`manager.sh`,
 1. **Two-file core stays two files.** No new source files in the repo root;
    room for content lands in `manager.sh` (UI and menu logic) or
    `install.sh` (bootstrap). Text assets (`fonts/`) are the exception.
-2. **Bash + gum only.** `gum` is optional at runtime — every gum call must
+2. **Bash + fzf only.** `gum` is optional at runtime — every gum call must
    degrade gracefully when it is absent (tests cover the fallback paths).
 3. **Version bump discipline.** Bumping the version means updating every
    place the name appears: the README badges, both ASCII art lines, the menu
@@ -30,7 +30,7 @@ Thanks for improving ETPM. This project is two shell files (`manager.sh`,
 2. Try the UI: `bash manager.sh` — first in bare Termux, then with `gum`
    installed (`pkg install gum`).
 3. Run the test suite: `bash tests/run-tests.sh` — fakebin stubs for
-   `apt`/`dpkg`/`gum` plus 169 scenario tests. All must pass before a PR.
+   `apt`/`dpkg`/`gum` plus 182 scenario tests. All must pass before a PR.
 4. Lint if available: `make lint` (or `shellcheck` on changed files; CI runs
    the test suite).
 

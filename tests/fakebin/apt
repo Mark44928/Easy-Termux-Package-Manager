@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # fake apt
+
+# the real apt prints this nag on stderr for every scripted run — the app
+# must strip it; every test therefore doubles as a regression check
+printf '%s\n' "WARNING: apt does not have a stable CLI interface. Use with caution in scripts." >&2
 if [[ "$1" == --* ]]; then
     # Leading global option (e.g. --fix-broken) is consumed only to shift it
     # off argv; the stub does not act on its value.
