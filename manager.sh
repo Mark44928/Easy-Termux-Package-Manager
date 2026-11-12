@@ -423,13 +423,27 @@ banner_text() {
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
         art="TERMUX Pkg Manager v$VERSION"
     fi
-    printf '%s\n' "$(paint "$CYAN" "$art")"
+    # Multi-hue banner: ramp the art's lines across the theme's four accent
+    # hues (CYAN → GREEN → YELLOW → PINK) instead of one flat color, then
+    # color each status-strip value from the same palette.
+    local total i=0 line idx
+    local hues=("$CYAN" "$GREEN" "$YELLOW" "$PINK")
+    total=$(printf '%s\n' "$art" | wc -l | tr -d ' ')
+    [ "$total" -ge 2 ] || total=2
+    while IFS= read -r line; do
+        if [ -z "$line" ]; then printf '\n'; else
+            idx=$(( i * 4 / total ))
+            printf '%s\n' "$(paint "${hues[$idx]}" "$line")"
+        fi
+        i=$((i+1))
+    done <<< "$art"
     # status strip: manager · theme · installed count · version
     n="${1:-}"
     [ -n "$n" ] || n=$(dpkg-query -W 2>/dev/null | wc -l | tr -d ' ')
     favs=0
     if [ -s "$FAVS_FILE" ]; then favs=$(grep -c . "$FAVS_FILE" 2>/dev/null) || favs=0; fi
-    dim "  pkg-manager v$VERSION · manager: $MGR · theme: $THEME · installed: ${n:-?} · favorites: $favs"
+    printf '%s\n' \
+        "$(paint "$CYAN" "  pkg-manager v$VERSION")$(paint "$DIM" " · manager: ")$(paint "$GREEN" "$MGR")$(paint "$DIM" " · theme: ")$(paint "$PINK" "$THEME")$(paint "$DIM" " · installed: ")$(paint "$YELLOW" "${n:-?}")$(paint "$DIM" " · favorites: ")$(paint "$YELLOW" "$favs")"
 }
 
 # BANNER_BLOCK — cached banner text. Refreshed once per menu iteration so
@@ -778,7 +792,7 @@ main_menu() {
         local _n=${#opts[@]}
         local w=${#_n}
         list_numbered 1 "${opts[@]}"
-        printf "%${LIST_NUM_W}d) %s\n" 0 "$OPTION_EXIT" >&2
+        num_row 0 "$OPTION_EXIT" >&2
         printf '%s\n' "$(paint "$DIM" "  ───────────────")" >&2
         printf '❯ ' >&2
         if ! read -r n; then
@@ -4437,11 +4451,13 @@ refresh_fzf_cache() {
     fi
 }
 
-# fzf_theme — build an fzf --color=... string from the active palette so the
-# picker matches the app (works for both 256-index and truecolor hex palettes).
+# fzf_theme — build an fzf --color=... string from the active palette. Plain
+# rows keep the terminal's own foreground; the accents (selected row, match
+# highlight, prompt, pointer, marker, spinner) carry the theme hues so the
+# picker reads multi-colored, not one flat wash.
 fzf_theme() {
-    printf -- '--color=fg:%s,hl:%s,fg+:%s,info:%s,prompt:%s,pointer:%s,marker:%s,spinner:%s,header:%s,border:%s' \
-        "$CYAN" "$GREEN" "$YELLOW" "$CYAN" "$PINK" "$PINK" "$GREEN" "$CYAN" "$DIM" "$CYAN"
+    printf -- '--color=fg+:%s,hl:%s,info:%s,prompt:%s,pointer:%s,marker:%s,spinner:%s,header:%s,border:%s' \
+        "$GREEN" "$YELLOW" "$DIM" "$PINK" "$PINK" "$CYAN" "$GREEN" "$DIM" "$CYAN"
 }
 
 # Widest display column a picker may use: rows longer than this make fzf
@@ -4653,12 +4669,19 @@ fzf_select() {
 # row) so the number column is uniform for every row of that list. The width
 # follows the total (9 rows -> "1)", 12 rows -> " 1)") and is left in
 # LIST_NUM_W for a caller that prints the trailing row itself.
+# num_row <n> <item> — one numbered row: the "N)" painted in the theme accent
+# (CYAN), the item text in the terminal's own foreground. Uses the row width
+# list_numbered() computed so the number column stays right-aligned.
+num_row() {
+    printf '%s %s\n' "$(paint "$CYAN" "$(printf "%${LIST_NUM_W}d)" "$1")")" "$2"
+}
+
 list_numbered() {
     local extra_rows=$1; shift
     local n=$(($# + extra_rows))
     LIST_NUM_W=${#n}
     local i=1 o
-    for o in "$@"; do printf "%${LIST_NUM_W}d) %s\n" "$i" "$o" >&2; i=$((i+1)); done
+    for o in "$@"; do num_row "$i" "$o" >&2; i=$((i+1)); done
 }
 
 # pick_menu <header> <item>... — single-select submenu picker.
@@ -4675,8 +4698,8 @@ pick_menu() {
     exit_n=$(( $# + 1 ))
     app_n=$(( $# + 2 ))
     list_numbered 2 "$@"
-    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
-    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
+    num_row "$exit_n" "$OPTION_SUB_EXIT" >&2
+    num_row "$app_n" "$OPTION_APP_EXIT" >&2
     printf '❯ ' >&2
     read -r pick
     case "$pick" in
@@ -4707,8 +4730,8 @@ pick_multi() {
     exit_n=$(( $# + 1 ))
     app_n=$(( $# + 2 ))
     list_numbered 2 "$@"
-    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
-    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
+    num_row "$exit_n" "$OPTION_SUB_EXIT" >&2
+    num_row "$app_n" "$OPTION_APP_EXIT" >&2
     printf '%s' "$prompt" >&2
     read -r _picks
     case "$_picks" in ""|n|N|no) return 1 ;; esac
@@ -4742,8 +4765,8 @@ pick_one() {
     n=1
     mapfile -t _items <<< "$list"
     list_numbered 2 "${_items[@]}"
-    printf "%${LIST_NUM_W}d) %s\n" "$exit_n" "$OPTION_SUB_EXIT" >&2
-    printf "%${LIST_NUM_W}d) %s\n" "$app_n"  "$OPTION_APP_EXIT" >&2
+    num_row "$exit_n" "$OPTION_SUB_EXIT" >&2
+    num_row "$app_n" "$OPTION_APP_EXIT" >&2
     printf '%s' "$prompt" >&2
     read -r pick
     case "$pick" in
