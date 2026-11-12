@@ -1,6 +1,6 @@
 # AGENTS.md — Easy-Termux-Package-Manager
 
-> **This is Termux, not Linux.** Bionic libc (not glibc), no FHS filesystem, no root. `$PREFIX` = `/data/data/com.termux/files/usr`. All standard Linux assumptions can break here. `manager.sh` is a single-file Bash app (~4.8k lines); `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`/`apt`/`fzf`. CI: `.github/workflows/ci.yml` (lint + tests on ubuntu-latest — the suite is hermetic).
+> **This is Termux, not Linux.** Bionic libc (not glibc), no FHS filesystem, no root. `$PREFIX` = `/data/data/com.termux/files/usr`. All standard Linux assumptions can break here. `manager.sh` is a single-file Bash app (~5.3k lines); `install.sh` copies it to `$PREFIX/bin/pkg-manager`. No build step, no dependencies beyond `bash`/`apt`/`fzf`. CI: `.github/workflows/ci.yml` (lint + tests on ubuntu-latest — the suite is hermetic).
 
 ## Make
 
@@ -48,7 +48,7 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 - **Config precedence:** env overrides → config file → hardcoded defaults (`manager.sh:18-28` (defaults), `94-142` (load_config)), all validated via case statements. Config keys: `MGR THEME CONFIRM LOG_ENABLED ICONS QUIET LOCK STARTUP_CHECK FAVS_PINNED RECYCLE FZF_ENABLED`.
 - **Confirmation (3-layer):** `CONFIRM=1` (normal) → `QUIET=1` (skip all) → `LOCK=1` (force even if QUIET). `confirm_danger()` checks LOCK first.
-- **Main loop** (`manager.sh:5226+`): clears the screen first when stdout is a tty (`printf '\033[2J\033[H'` — piped runs stay clean for tests/scripts), then `while true`; first iteration runs `do_maintenance` if `STARTUP_CHECK=1`; `banner_refresh` per iteration (caches the `BANNER_BLOCK` text, so the dpkg-query behind the status strip runs once, not once per picker), prints the banner only when `have_fzf` is false; `pause` after each action. Pinned favorites dispatched via `*"Pinned:"*` glob. Menu items 1–58 (Settings last, at 58) + pinned at 59+; the theme hub is the ONE theme row in Settings (`do_theme`, pick/preview/export/restore) — it is not in the main menu.
+- **Main loop** (`manager.sh:5226+`): clears the screen first when stdout is a tty (`printf '\033[2J\033[H'` — piped runs stay clean for tests/scripts), then `while true`; first iteration runs `do_maintenance` if `STARTUP_CHECK=1`; `banner_refresh` per iteration (caches the `BANNER_BLOCK` text, so the dpkg-query behind the status strip runs once, not once per picker), prints the banner only when `have_fzf` is false; `pause` after each action. Pinned favorites dispatched via `*"Pinned:"*` glob. Menu items 1–57 (Settings last, at 57) + pinned at 58+; the theme hub is the ONE theme row in Settings (`do_theme`, pick/preview/export/restore) — it is not in the main menu.
 - **`run_multi_op()`** (`manager.sh:1134`): batch fast path (single `apt install/remove -y`), falls back to per-package retry on failure. `RECYCLE=1` + remove → `archive_pkg()` first.
 - **Logging:** `log()` successes only, `log_err()` failures (`manager.sh:878-887`, both to `~/.pkg-manager.log`). Undo reads log via `grep`.
 - **Text-mode lists share one style:** every numbered list goes through `list_numbered <extra_rows> <item>...`, which right-aligns the number column to the total row count (`9 rows -> "1)"`, `12 rows -> " 1)"`) and leaves the width in `LIST_NUM_W` for the trailing Exit row. Every selection prompt is `❯ ` (the same glyph as the fzf prompt) — `ask_name` prefixes it too, so the whole app asks questions the same way. Confirmations keep their `… [y/N]` form. The main menu uses the same style as the submenus (`0) Exit` stays row 0).
@@ -138,12 +138,12 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 | `apply_termux_theme()` | export palette to `~/.termux/colors.properties` (backup first) |
 | `do_theme()` | The theme hub (pick / preview all / apply to Termux / restore) — the ONE theme row, inside Settings only |
 | `set_theme_pick()` / `theme_preview()` / `apply_termux_theme()` | theme label list, swatch preview, Termux palette export |
-| `do_essentials()` / `do_sysinfo()` / `do_whatsnew()` | v5.0 hubs (menu rows 55–57) |
+| `do_essentials()` / `do_sysinfo()` / `do_whatsnew()` | v5.0 hubs (menu rows 54–56) |
 
 ## Gotchas
 
  - Banner art is gzip-compressed, base64 in `BANNER_B64` (`manager.sh:390`). Re-compress after editing.
- - **Never reuse an `OPTION_*` variable name** — a shadowed assignment once made two menu rows render identically and left `do_depgraph()` unreachable (bash `case` takes the first match). The `menu_unique` test asserts 60 unique menu rows, so CI catches a repeat instantly.
+ - **Never reuse an `OPTION_*` variable name** — a shadowed assignment once made two menu rows render identically and left `do_depgraph()` unreachable (bash `case` takes the first match). The `menu_unique` test asserts 58 unique menu rows (57 options + Exit), so CI catches a repeat instantly.
 - `install.sh` uses atomic writes (`.tmp` → `mv`) — never overwrite in place.
 - `set -o pipefail` active — pipelines fail on first error.
 - `log()` records successes only; `log_err()` for failures.
@@ -262,7 +262,7 @@ FZF_QUEUE="$h/queue" FZF_CALL_LOG="$h/calls" HOME="$h" PREFIX="$h" MGR=apt ICONS
   abort paths get exercised.
 - `ICONS=emoji` matters: menu labels embed the icon, so queued answers must match it.
 - `HOME`/`PREFIX` point at a temp dir — nothing real is installed or configured.
-- Text mode: `printf '59\n2\n' | NO_FZF=1 TERM=dumb bash manager.sh` (numbered menus, same `do_*` bodies).
+- Text mode: `printf '3\n' | NO_FZF=1 TERM=dumb bash manager.sh` (numbered menus, same `do_*` bodies).
 - One function in isolation: `bash -c 'source <(sed -n "/^fzf_select()/,/^}/p" manager.sh); ...'`.
 
 ### When the full suite is actually required
@@ -303,7 +303,7 @@ The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs 
 - `apt_hint()` = O(n) case statement on output; instant for <100 lines.
 - Dep tree depth capped at 4 (`dep_tree()`, `manager.sh:1881`).
 - `list_upgradable()` propagates apt exit code.
-- Menu rebuild on favs change is O(58 items) with no external calls — instant.
+- Menu rebuild on favs change is O(57 items) with no external calls — instant.
 
 ## User-Facing Support Playbook
 

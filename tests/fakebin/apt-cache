@@ -48,9 +48,11 @@ case "$sub" in
         ;;
     madison)
         if [ "$pkg" = "invalidpkg" ]; then echo "E: No packages found" >&2; exit 100; fi
-        echo " $pkg | 3.12 | https://packages.termux.dev stable/main arm64 Packages"
-        echo " $pkg | 3.11 | https://packages.termux.dev stable/main arm64 Packages"
-        echo " $pkg | 3.10 | https://packages.termux.dev stable/main arm64 Packages"
+        if [ -z "$FAKE_MADISON_EMPTY" ]; then
+            echo " $pkg | 3.12 | https://packages.termux.dev stable/main arm64 Packages"
+            echo " $pkg | 3.11 | https://packages.termux.dev stable/main arm64 Packages"
+            echo " $pkg | 3.10 | https://packages.termux.dev stable/main arm64 Packages"
+        fi
         exit 0
         ;;
     policy)
@@ -58,8 +60,11 @@ case "$sub" in
         echo "$pkg:"
         echo "  Installed: 3.12"
         echo "  Candidate: 3.12"
-        echo "     3.12 500"
-        echo "     3.11 500"
+        echo "  Version table:"
+        echo " *** 3.12 500"
+        echo "        500 https://packages.termux.dev stable/main arm64 Packages"
+        echo " *** 3.11 100"
+        echo "        100 /data/data/com.termux/files/usr/var/lib/dpkg/status"
         exit 0
         ;;
     search)

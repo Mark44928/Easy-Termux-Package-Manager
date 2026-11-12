@@ -231,6 +231,25 @@ P pkg_backup       <(printf '18\n')                    "Backed up" "pkg-backup-*
 # --- v3.0 new features (text/apt) ---
 T localdeb_ok      <(printf '33\n%s/tmp/localdeb_ok/var/cache/apt/archives/python3_3.12_arm64.deb\ny\n' "$PWD") "Installed"
 T downgrade_ok     <(printf '34\npython3\n1\ny\n') "downgraded"
+
+# --- downgrade policy fallback (madison empty): must pick a version from the
+# version table, never the priority column ("500"/"100") ---
+FAKE_MADISON_EMPTY=1
+export FAKE_MADISON_EMPTY
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/downgrade_policy"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+out=$(printf '34\npython3\n1\ny\n' | timeout 30 bash "$MANAGER" 2>&1); rc=$?
+if [ "$rc" -eq 124 ] || { [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; }; then
+    FAIL=$((FAIL+1)); FAILED+=("downgrade_policy:exit=$rc")
+elif printf '%s\n' "$out" | grep -Fq "downgraded to 3.12"; then
+    PASS=$((PASS+1))
+else
+    FAIL=$((FAIL+1)); FAILED+=("downgrade_policy:$out")
+fi
+unset FAKE_MADISON_EMPTY
 T dlonly_ok        <(printf '35\npython3\ny\n') "Downloaded"
 T holdver_show     <(printf '36\n3\n') "Held packages"
 T filesearch_ok    <(printf '37\nbin/python\n') "python3:"

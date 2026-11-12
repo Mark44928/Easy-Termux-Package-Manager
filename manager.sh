@@ -2908,7 +2908,7 @@ do_downgrade() {
     say "$ICON_REINSTALL Available versions for $PKG_NAME:"
     local vers out
     vers=$(apt-cache madison "$PKG_NAME" 2>/dev/null | awk '{print $3}' | head -20)
-    if [ -z "$vers" ]; then vers=$(apt-cache policy "$PKG_NAME" 2>/dev/null | grep -E '^[[:space:]]+[0-9]' | awk '{print $1}' | head -20); fi
+    if [ -z "$vers" ]; then vers=$(apt-cache policy "$PKG_NAME" 2>/dev/null | sed -nE 's/^[[:space:]]*(\*\*\*[[:space:]]+)?([A-Za-z0-9._+~:-]*[A-Za-z0-9._+~-])[[:space:]]+[0-9]+[[:space:]]*$/\2/p' | head -20); fi
     if [ -z "$vers" ]; then err "No versions found — check name or run Upgrade center."; return; fi
     printf '%s\n' "$vers"
     local picked
@@ -4081,6 +4081,7 @@ do_selfupdate() {
         rm -f "$new_tmp"
         return 1
     fi
+    rm -f "$self.new" 2>/dev/null
     if cp -- "$new_tmp" "$self.new" && chmod +x "$self.new" 2>/dev/null && mv -f -- "$self.new" "$self"; then
         log "self-update to ${remote_ver:-latest} (backup: $self.pkg-manager.bak)"
         ok "Updated to ${remote_ver:-the latest version}! Restart pkg-manager to use it."
@@ -4728,7 +4729,7 @@ pick_multi() {
 # lists). fzf first → numbered text prompt. Both branches append the Exit row.
 pick_one() {
     local header="$1" prompt="${2:-❯ }" list sel
-    list=$(cat)
+    list=$(cat | awk 'NF')
     if have_fzf; then
         printf '%s\n' "$list" "$OPTION_SUB_EXIT" "$OPTION_APP_EXIT" | fzf_select "$header" "$prompt" 0
         return $?
@@ -4948,7 +4949,7 @@ do_repos() {
                     err "No line $PKG_NAME in $source_file."
                     return
                 fi
-                cp -p "$source_file" "$source_file.pkg-manager.bak" || { err "Could not back up $source_file — aborting."; return; }
+                safe_cp "$source_file" "$source_file.pkg-manager.bak" || { err "Could not back up $source_file — aborting."; return; }
                 if sed -i "${PKG_NAME}d" "$source_file"; then
                     say "Deleted line $PKG_NAME (backup: $source_file.pkg-manager.bak)"
                     audit_log "repo_remove" "line $PKG_NAME"
