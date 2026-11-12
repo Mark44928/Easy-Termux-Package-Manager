@@ -201,6 +201,22 @@ paint() {
     esac
 }
 
+# mix_colors <a> <b> <weight> — interpolate two colors for the banner ramp.
+# Two #RRGGBB hexes blend per RGB channel (weight 0..100 toward b); legacy
+# 256-index palettes carry no channel data, so they fall back to the nearer
+# endpoint and keep the old stepped look.
+mix_colors() {
+    local a="$1" b="$2" w="$3" ar ag ab
+    if [[ "$a" == \#* && "$b" == \#* ]]; then
+        ar=$(( (16#${a:1:2} * (100 - w) + 16#${b:1:2} * w) / 100 ))
+        ag=$(( (16#${a:3:2} * (100 - w) + 16#${b:3:2} * w) / 100 ))
+        ab=$(( (16#${a:5:2} * (100 - w) + 16#${b:5:2} * w) / 100 ))
+        printf '#%02x%02x%02x' "$ar" "$ag" "$ab"
+    else
+        [ "$w" -ge 50 ] && printf '%s' "$b" || printf '%s' "$a"
+    fi
+}
+
 set_theme() {
     case "$THEME" in
         # Legacy 256-color themes: both dominant roles (CYAN accents/headers,
@@ -423,17 +439,26 @@ banner_text() {
     if ! art=$(printf '%s' "$BANNER_B64" | base64 -d 2>/dev/null | gzip -d 2>/dev/null); then
         art="TERMUX Pkg Manager v$VERSION"
     fi
-    # Multi-hue banner: ramp the art's lines across the theme's four accent
-    # hues (CYAN → GREEN → YELLOW → PINK) instead of one flat color, then
-    # color each status-strip value from the same palette.
-    local total i=0 line idx
-    local hues=("$CYAN" "$GREEN" "$YELLOW" "$PINK")
+    # Smooth multi-hue banner: ramp the art's lines across the theme's four
+    # accent hues, warm (PINK) at the logo top, cool (CYAN) at the bottom so
+    # the last art line flows into the status strip's first (CYAN) value,
+    # interpolating between adjacent hues line by line (mix_colors) so real
+    # terminal themes get a continuous gradient.
+    local total i=0 line t k frac hue
+    local hues=("$PINK" "$YELLOW" "$GREEN" "$CYAN")
     total=$(printf '%s\n' "$art" | wc -l | tr -d ' ')
     [ "$total" -ge 2 ] || total=2
     while IFS= read -r line; do
         if [ -z "$line" ]; then printf '\n'; else
-            idx=$(( i * 4 / total ))
-            printf '%s\n' "$(paint "${hues[$idx]}" "$line")"
+            t=$(( i * 300 / (total - 1) ))
+            [ "$t" -le 300 ] || t=300
+            k=$(( t / 100 )); frac=$(( t % 100 ))
+            if [ "$k" -ge 3 ]; then
+                hue="${hues[3]}"
+            else
+                hue="$(mix_colors "${hues[$k]}" "${hues[$((k + 1))]}" "$frac")"
+            fi
+            printf '%s\n' "$(paint "$hue" "$line")"
         fi
         i=$((i+1))
     done <<< "$art"
