@@ -36,7 +36,7 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
 
 | File | Role |
 |------|------|
-| `manager.sh` | The entire app (~4.8k lines) |
+| `manager.sh` | The entire app (~5.4k lines) |
 | `install.sh` | Installer (atomic writes, derives VERSION from `manager.sh`, smoke-tests the installed binary), offers Nerd Font |
 | `Makefile` | Dev targets (`run`/`test`/`lint`/`check`/`install`/`uninstall`/`clean`) |
 | `fonts/` | Bundled Nerd Font TTFs (CaskaydiaCove, FiraCode) |

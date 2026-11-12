@@ -8,7 +8,7 @@
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/shell-Bash-4EAA25?logo=gnubash&logoColor=white" alt="Bash">
-  <img src="https://img.shields.io/badge/single%20file-%7E4.8k%20lines-9cf" alt="Single file">
+  <img src="https://img.shields.io/badge/single%20file-%7E5.4k%20lines-9cf" alt="Single file">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
