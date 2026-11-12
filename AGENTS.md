@@ -7,7 +7,7 @@
 | Target | What |
 |--------|------|
 | `make run` | Launch app (text mode: `NO_FZF=1 make run`) |
-| `make test` | **Full** suite — 182 tests, **~6 min**. NOT a routine check: see [Verification workflow](#verification-workflow--read-first) |
+| `make test` | **Full** suite — 183 tests, **~6 min**. NOT a routine check: see [Verification workflow](#verification-workflow--read-first) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` (0 findings; SC2015/SC2119/SC2120 excluded) |
 | `make check` | lint **+ full suite** — only at the end of a cross-cutting change |
 | `make install` / `make uninstall` | Via `install.sh` / `rm $PREFIX/bin/pkg-manager` |
@@ -19,7 +19,7 @@ bash manager.sh                # run the app
 make lint                      # after every edit — seconds, not minutes
 ```
 
-Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 182 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
+Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 183 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
 
 ## Hard Rules
 
@@ -270,7 +270,7 @@ FZF_QUEUE="$h/queue" FZF_CALL_LOG="$h/calls" HOME="$h" PREFIX="$h" MGR=apt ICONS
 Cross-cutting changes (shared chokepoints), before declaring work finished, or when a test you
 added is the point: `make test`. Then run `make check` (lint + suite) once at the very end.
 
-The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs all 182 tests.
+The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs all 183 tests.
 
 ## Debugging Workflow
 

@@ -761,6 +761,39 @@ else
     FAIL=$((FAIL+1)); FAILED+=("selfupdate_replace")
 fi
 
+# ---- Real-theme export contract ----
+# Every truecolor theme must write a full 18-row colors.properties
+# (background, foreground, color0..color15) of valid #RRGGBB values, and a
+# legacy 256-color theme must refuse with a clear message instead of writing
+# a broken palette.
+TOTAL=$((TOTAL + 1))
+exhome="$PWD/tmp/export_theme"
+rm -rf "$exhome"; mkdir -p "$exhome"
+export HOME="$exhome" PREFIX="$exhome" MGR=apt
+export_ok=1
+for t in dracula catppuccin tokyo nord gruvbox onedark solarized everforest rosepine; do
+    rm -rf "$exhome/.termux"
+    if ! timeout 20 bash "$MANAGER" --export-theme "$t" > "$exhome/run.log" 2>&1; then
+        export_ok=0; FAILED+=("export_theme:$t:rc"); break
+    fi
+    if [ "$(grep -cE '^[a-z0-9]+=#?[0-9A-F]{6}$' "$exhome/.termux/colors.properties" 2>/dev/null)" -ne 18 ]; then
+        export_ok=0; FAILED+=("export_theme:$t:rows"); break
+    fi
+done
+if [ "$export_ok" -eq 1 ]; then
+    rm -rf "$exhome/.termux"
+    if timeout 20 bash "$MANAGER" --export-theme green > "$exhome/legacy.log" 2>&1; then
+        export_ok=0; FAILED+=("export_theme:legacy_green_rc")
+    elif ! grep -qF "no full ANSI table" "$exhome/legacy.log"; then
+        export_ok=0; FAILED+=("export_theme:legacy_green_msg")
+    fi
+fi
+if [ "$export_ok" -eq 1 ]; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1))
+fi
+
 echo
 echo "== RESULTS =="
 echo "TOTAL: $TOTAL  PASS: $PASS  FAIL: $FAIL"
