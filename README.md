@@ -23,13 +23,7 @@ Wait that's boring, let's try again.
 
 An **fzf-powered, interactive package manager** for [Termux](https://termux.dev) wrapped in one Bash script. Fuzzy-filter through a gorgeous menu, and let the script handle all the scary apt/pkg syntax for you.
 
-```
-    ________________  __  ___
-   / ____/_  __/ __ \/  |/  /
-  / __/   / / / /_/ / /|_/ / 
- / /___  / / / ____/ /  / /  
-/_____/ /_/ /_/   /_/  /_/   
-```
+<img src="docs/menu.png" width="720" alt="ETPM main menu — figlet banner, fzf preview panel, 57 actions + Exit"/>
 
 > The banner art is stored gzip-compressed in one line of `manager.sh` and decompressed at runtime — always pixel-accurate, never hand-drawn.
 
