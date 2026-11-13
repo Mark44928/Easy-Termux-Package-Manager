@@ -190,6 +190,10 @@ THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo
 paint() {
     local c="$1"; shift
     local s="$*" hex
+    if [ -n "${NO_COLOR:-}" ]; then
+        printf '%s' "$s"
+        return 0
+    fi
     case "$c" in
         \#*)
             hex="${c#\#}"
