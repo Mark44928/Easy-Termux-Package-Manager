@@ -175,7 +175,7 @@ unset MGR_ENV THEME_ENV CONFIRM_ENV LOG_ENABLED_ENV ICONS_ENV RECYCLE_ENV FZF_EN
 # (cursor/borders), GREEN (ok), YELLOW (warn), RED (err), DIM (muted).
 # Legacy themes use 256-color numbers; the real terminal themes below use
 # official #RRGGBB truecolor hex from the upstream palettes (draculatheme.com,
-# catppuccin.com, tokyonight.org, nordtheme.com, gruvbox, One Dark, solarized,
+# catppuccin.com, folke/tokyonight.nvim, nordtheme.com, gruvbox, One Dark, solarized,
 # everforest, rosepinetheme.com).
 GREEN=46
 CYAN=45
@@ -259,7 +259,7 @@ theme_ansi() {
         tokyo)      printf '%s\n' 1A1B26 C0CAF5 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 545C7E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5 ;;
         nord)       printf '%s\n' 2E3440 D8DEE9 3B4252 BF616A A3BE8C EBCB8B 5E81AC B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4 ;;
         gruvbox)    printf '%s\n' 282828 EBDBB2 282828 CC241D 98971A D79921 458588 B16286 689D6A A89984 928374 FB4934 B8BB26 FABD2F 83A598 D3869B 8EC07C EBDBB2 ;;
-        onedark)    printf '%s\n' 282C34 ABB2BF 1E2127 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 ABB2BF 5C6370 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 FFFFFF ;;
+        onedark)    printf '%s\n' 282C34 ABB2BF 21252B E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 ABB2BF 5C6370 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 FFFFFF ;;
         solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 073642 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
         everforest) printf '%s\n' 2D353B D3C6AA 475258 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 D3C6AA 7A8478 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 9DA9A0 ;;
         rosepine)   printf '%s\n' 191724 E0DEF4 26233A EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 6E6A86 EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 ;;
@@ -5307,7 +5307,7 @@ while true; do
     # fzf mode: the banner rides inside the picker window (its header), so a
     # terminal resize cannot wipe it. Printing it here as well would show it
     # twice. Text mode has no window to carry it and prints it as before.
-    have_fzf || banner
+    have_fzf || { banner; [ -t 1 ] && dim '  tip: pick a number · ESC backs out of any screen · q quits from the menu'; }
     choice=$(main_menu)
     case "$choice" in
         "$OPTION_INSTALL")    do_install ;;
