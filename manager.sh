@@ -85,7 +85,8 @@ safe_cp() {
 # request_app_exit / app_exit_wanted — the "quit the app from a submenu"
 # request. It MUST travel through a flag file: picker code always runs inside
 # a command substitution, where a shell variable would die with the subshell.
-request_app_exit() { : > "${APP_EXIT_FLAG:-/dev/null}" 2>/dev/null || true; }
+# Silent symlink guard: no output allowed — pickers run inside $(...).
+request_app_exit() { local f="${APP_EXIT_FLAG:-/dev/null}"; [ -L "$f" ] && return 1; : > "$f" 2>/dev/null || true; }
 app_exit_wanted() { [ -f "${APP_EXIT_FLAG:-}" ]; }
 APP_EXIT_FLAG="$HOME/.pkg-manager-exit"
 
@@ -4666,7 +4667,7 @@ fzf_select() {
         # stderr, not stdout — callers capture fzf_select's stdout
         printf '%s\n' "$(paint "$YELLOW" "⚠ fzf failed (exit $rc)${errline:+ — $errline}")" >&2
         printf '%s\n' "$(paint "$DIM" "Switching to text mode for this session (NO_FZF=1 to force it).")" >&2
-        : > "${FZF_BROKEN_FLAG:?}" 2>/dev/null || true
+        [ -L "${FZF_BROKEN_FLAG:?}" ] || : > "${FZF_BROKEN_FLAG}" 2>/dev/null || true
         return 1
     fi
     # The submenu Exit row is not a pick: strip it from the answer so no caller
@@ -4943,6 +4944,7 @@ audit_log() {
     local action="$1"; shift
     local msg="${*:-}"
     local logfile="$HOME/.pkg-manager-audit.log"
+    [ -L "$logfile" ] && return 0
     printf '%s [%s] %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(whoami 2>/dev/null || echo "$USER")" "$action" "$msg" >> "$logfile" 2>/dev/null || true
 }
 
