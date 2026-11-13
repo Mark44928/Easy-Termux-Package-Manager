@@ -5213,6 +5213,10 @@ Usage:
                                   readable, for cron / status lines)
   pkg-manager --doctor           run the full system audit and exit
 
+Environment:
+  NO_COLOR=1                     strip all ANSI color output (CI / logs)
+  NO_FZF=1                       force the numbered text-mode fallback
+
 Interactive extras (inside the app):
   Settings → Command palette      filter all commands with fzf
   Install / Uninstall             fzf multi-select picker with live
