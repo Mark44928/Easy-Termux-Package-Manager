@@ -4435,7 +4435,7 @@ do_whatsnew() {
     section "What's new in pkg-manager v$VERSION"
     say "  9 real terminal themes with official truecolor palettes:"
     dim "  dracula · catppuccin · tokyo-night · nord · gruvbox · one-dark ·"
-    dim "  solarized · everforest · rosepine (plus the 8 legacy 256-color ones)"
+    dim "  solarized · everforest · rosepine (plus the 7 legacy 256-color ones)"
     say "  Theme hub: preview every theme, and export the palette to"
     dim "  ~/.termux/colors.properties so the whole terminal matches the app"
     say "  Truecolor in plain text mode too — menus, ok/warn/err all themed"
