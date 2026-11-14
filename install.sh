@@ -137,8 +137,8 @@ case ":$PATH:" in
 esac
 info "Run it anytime with: ${BD}pkg-manager${R}   ·   quick help: ${BD}pkg-manager --help${R}"
 divider
-info "${BD}v${VERSION:-?} highlights:${R} 16 truecolor themes (dracula, catppuccin, tokyo-night, nord,"
-info "  gruvbox, one-dark, solarized, everforest, rose-pine …) · theme hub with live"
+info "${BD}v${VERSION:-?} highlights:${R} 9 truecolor themes (dracula, catppuccin, tokyo-night, nord,"
+info "  gruvbox, one-dark, solarized, everforest, rose-pine …) + 7 legacy ones · theme hub with live"
 info "  preview + Termux colors.properties export · ${BD}fzf pickers${R} for install/uninstall"
 info "  with live package-info preview panes and the command palette ·"
 info "  apt / pkg backends · undo engine · dep tree · system audit / doctor ·"
@@ -168,10 +168,10 @@ install_font() {
 
 if [ -n "${FONT:-}" ]; then
     case "${FONT,,}" in
-        1|cask*) install_font "CaskaydiaCoveNerdFont-Regular.ttf" ;;
-        2|fira*)            install_font "FiraCodeNerdFont-Regular.ttf" ;;
-        s|skip|none)        warn "Skipping the font install." ;;
-        *)                  warn "Invalid FONT value '$FONT' — skipping the font install." ;;
+        1|cask*)       install_font "CaskaydiaCoveNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        2|fira*)       install_font "FiraCodeNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        s|skip|none)   warn "Skipping the font install." ;;
+        *)             warn "Invalid FONT value '$FONT' — skipping the font install." ;;
     esac
 elif [ $YES -eq 1 ]; then
     warn "--yes given — skipping the font install."
@@ -189,10 +189,10 @@ elif [ -d "$HOME/.termux" ]; then
         read -r _ans < /dev/tty 2>/dev/null || _ans="s"
     fi
     case "${_ans,,}" in
-        ""|1) install_font "CaskaydiaCoveNerdFont-Regular.ttf";;
-        2)    install_font "FiraCodeNerdFont-Regular.ttf";;
-        s)    warn "Skipping the font install.";;
-        *)    warn "Invalid choice — skipping the font install.";;
+        ""|1) install_font "CaskaydiaCoveNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        2)    install_font "FiraCodeNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        s)    warn "Skipping the font install." ;;
+        *)    warn "Invalid choice — skipping the font install." ;;
     esac
 else
     warn "$HOME/.termux not found — skipping the font install."

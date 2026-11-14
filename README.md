@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-183%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-184%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
@@ -402,7 +402,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 183 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 184 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -441,7 +441,7 @@ A few ground rules to keep the docs in sync:
   ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
 - Run `make lint` (`bash -n` + shellcheck) after every edit — it takes seconds.
-- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 183 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
+- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 184 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
 
 ### 🛠️ Make targets (developers)
 
@@ -451,7 +451,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
-| `make test` | full 183-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
+| `make test` | full 184-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |

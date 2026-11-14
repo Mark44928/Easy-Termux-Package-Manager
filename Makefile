@@ -16,7 +16,7 @@ help: ## Show available targets
 run: ## Launch the app (text mode: NO_FZF=1 make run)
 	bash manager.sh
 
-test: ## Run the full scenario suite (183 tests, ~6 min)
+test: ## Run the full scenario suite (184 tests, ~6 min)
 	bash tests/run-tests.sh
 
 lint: ## bash -n + shellcheck on every shell script
