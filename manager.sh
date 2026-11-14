@@ -642,7 +642,7 @@ build_menu() {
     _menu_desc "$OPTION_WHY"           "Explain why a package is installed (manual or pulled in)"
     _menu_desc "$OPTION_NOTES"         "Attach personal notes to packages"
     _menu_desc "$OPTION_SNAPSHOT"      "Full snapshot of packages, favorites, groups, notes as a tar.gz"
-    _menu_desc "$OPTION_PALETTE"       "Command palette: fuzzy-filter all 59 menu entries"
+    _menu_desc "$OPTION_PALETTE"       "Command palette: fuzzy-filter all 57 menu entries"
     _menu_desc "$OPTION_WATCH"         "Watchlist: get told when watched packages change version"
     _menu_desc "$OPTION_MIRROR"         "Time every mirror and switch to the fastest one"
     _menu_desc "$OPTION_AUDIT"         "System audit with a health score and repair suggestions"
@@ -3246,14 +3246,18 @@ do_notes() {
         Show*all*)
             if [ ! -s "$NOTES_FILE" ]; then say "No notes yet."; return; fi
             say "$ICON_MEMO User notes:"
-            cat "$NOTES_FILE"
+            while IFS= read -r line; do print_safe "$line"; printf '\n'; done < "$NOTES_FILE"
             ;;
         Search*)
             [ -s "$NOTES_FILE" ] || { warn "No notes yet."; return; }
             local q
             printf '❯ Search: ' >&2; read -r q
             [ -n "$q" ] || return
-            grep -iF -- "$q" "$NOTES_FILE" || say "No matches."
+            if grep -iF -- "$q" "$NOTES_FILE" >/dev/null; then
+                grep -iF -- "$q" "$NOTES_FILE" | while IFS= read -r line; do print_safe "$line"; printf '\n'; done
+            else
+                say "No matches."
+            fi
             ;;
         Show*package*)
             ask_name "Package to show note"
@@ -3512,8 +3516,12 @@ do_recycle() {
                 read -r a
             fi
             [ -n "$a" ] || { say "Canceled."; return; }
-            local picked="$TRASH_DIR/$a"
-            case "$a" in /*) picked="$a" ;; esac
+            local picked
+            case "$a" in
+                /*) picked="$a" ;;
+                */*) err "Pick a bare .deb filename or an absolute path."; return ;;
+                *) picked="$TRASH_DIR/$a" ;;
+            esac
             case "$picked" in /*.deb) ;; *) err "Pick a .deb from the recycle bin."; return ;; esac
             if confirm_danger "$ICON_TRASH Reinstall from $picked?"; then
                 install_deb "$picked"
