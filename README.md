@@ -102,7 +102,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🆕 **New 3.0** | Local .deb, downgrade, download-only, hold version, file search, changelog, why, notes, snapshot, palette | 34–42 |
 | 🆕🆕 **New 4.0** | Watchlist, mirror speed test, system audit, mark manual/auto, recycle bin | 43–47 |
 | 🆕 **New 4.1** | Optional repositories, undo last batch, dependency tree, health dashboard, snapshot/diff hub | 48–52 |
-| 🚀🚀 **New 5.0** | Real terminal themes (truecolor + Termux `colors.properties` export), theme preview hub, **fzf-first pickers** (install/uninstall multi-select with previews, palette, text menu), **CLI flags** (`--help --version --theme --list-themes --export-theme`), essential toolkit, system & network info, what's-new screen | 1–3, 42, 54–58 |
+| 🚀🚀 **New 5.0** | Real terminal themes (truecolor + Termux `colors.properties` export), theme preview hub, **fzf-first pickers** (install/uninstall multi-select with previews, palette, text menu), **CLI flags** (`--help --version --theme --list-themes --export-theme --export-all-themes`), essential toolkit, system & network info, what's-new screen | 1–3, 42, 54–58 |
 
 ## 📋 Requirements
 
@@ -174,6 +174,11 @@ pkg-manager --theme dracula    # set the app theme (writes ~/.pkg-manager.conf)
 pkg-manager --export-theme tokyo
                                 # write that palette to ~/.termux/colors.properties,
                                 # then run: termux-reload-settings
+pkg-manager --export-all-themes ~/palettes
+                                # write one <theme>.colors.properties per truecolor
+                                # theme into a folder (great for dotfile repos)
+pkg-manager --theme-info nord   # every role of a palette: bg, fg, red, bright_cyan…
+pkg-manager --search bash       # apt-cache package-name search (read-only)
 ```
 
 > `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts truecolor themes only (the 9 "real" palettes); the 8 legacy 256-color themes can't be expressed as a full ANSI table.

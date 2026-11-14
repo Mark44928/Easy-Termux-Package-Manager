@@ -257,7 +257,7 @@ theme_ansi() {
         dracula)    printf '%s\n' 282A36 F8F8F2 21222C FF5555 50FA7B F1FA8C BD93F9 FF79C6 8BE9FD F8F8F2 6272A4 FF6E6E 69FF94 FFFFA5 D6ACFF FF92DF A4FFFF FFFFFF ;;
         catppuccin) printf '%s\n' 1E1E2E CDD6F4 45475A F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 BAC2DE 585B70 F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 A6ADC8 ;;
         tokyo)      printf '%s\n' 1A1B26 C0CAF5 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 545C7E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5 ;;
-        nord)       printf '%s\n' 2E3440 D8DEE9 3B4252 BF616A A3BE8C EBCB8B 5E81AC B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4 ;;
+        nord)       printf '%s\n' 2E3440 D8DEE9 3B4252 BF616A A3BE8C EBCB8B 81A1C1 B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4 ;;
         gruvbox)    printf '%s\n' 282828 EBDBB2 282828 CC241D 98971A D79921 458588 B16286 689D6A A89984 928374 FB4934 B8BB26 FABD2F 83A598 D3869B 8EC07C EBDBB2 ;;
         onedark)    printf '%s\n' 282C34 ABB2BF 21252B E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 ABB2BF 5C6370 E06C75 98C379 E5C07B 61AFEF C678DD 56B6C2 FFFFFF ;;
         solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 073642 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
@@ -403,6 +403,9 @@ case "${1:-}" in
     --list-themes)            CLI_MODE="list-themes" ;;
     --theme)                  CLI_MODE="set-theme" ;;
     --export-theme)           CLI_MODE="export-theme" ;;
+    --export-all-themes)      CLI_MODE="export-all-themes" ;;
+    --theme-info)             CLI_MODE="theme-info" ;;
+    --search)                 CLI_MODE="search" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --quiet)                  CLI_MODE="check-updates-quiet" ;;
     --doctor)                 CLI_MODE="doctor" ;;
@@ -1083,6 +1086,62 @@ theme_preview() {
     done
     THEME="$saved"
     set_theme
+}
+
+# theme_info <name> — label every color in the theme's terminal table so
+# users know which hex drives foreground, red, bright_cyan, etc.
+theme_info() {
+    local n="$1" vals
+    if vals=$(theme_ansi "$n"); then
+        local -a v
+        mapfile -t v <<< "$vals"
+        local -a names=(background foreground black red green yellow blue magenta cyan bright_black bright_white bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan white)
+        section "Theme: $n (truecolor)"
+        local i
+        for i in "${!names[@]}"; do
+            printf '  %-14s #%s  %s\n' "${names[$i]}" "${v[$i]}" "$(paint "#${v[$i]}" '████████')"
+        done
+        printf '  %s\n' "$(paint "$DIM" "export: pkg-manager --export-theme $n")"
+    else
+        local saved="$THEME"
+        THEME="$n"; set_theme
+        section "Theme: $n (legacy 256-color)"
+        printf '  %s\n' "$(paint "$CYAN" 'accent')  $(paint "$PINK" 'secondary')  $(paint "$GREEN" 'ok')  $(paint "$YELLOW" 'warn')  $(paint "$RED" 'err')"
+        printf '  %s\n' "$(paint "$DIM" "no terminal color table — use --list-themes to compare")"
+        THEME="$saved"; set_theme
+    fi
+}
+
+# export_all_themes <dir> — batch-write one colors.properties per truecolor
+# theme so users can keep a palette folder, sync it, or preview in another app.
+export_all_themes() {
+    local dir="$1" n vals out count=0 skipped=0
+    mkdir -p "$dir" || { err "Cannot create $dir"; return 1; }
+    for n in "${THEME_NAMES[@]}"; do
+        if ! vals=$(theme_ansi "$n"); then
+            dim "  skip $n (legacy 256-color theme)"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        out="$dir/$n.colors.properties"
+        local -a v
+        mapfile -t v <<< "$vals"
+        {
+            printf 'background=#%s\n' "${v[0]}"
+            printf 'foreground=#%s\n' "${v[1]}"
+            local i
+            for i in $(seq 0 15); do
+                printf 'color%d=#%s\n' "$i" "${v[$((i + 2))]}"
+            done
+        } > "$out" || { err "Failed writing $out"; return 1; }
+        dim "  wrote $out"
+        count=$((count + 1))
+    done
+    if [ "$skipped" -gt 0 ]; then
+        ok "Exported $count theme(s) to $dir ($skipped skipped)"
+    else
+        ok "Exported $count theme(s) to $dir"
+    fi
 }
 
 # apply_termux_theme — export the current theme's full ANSI palette to
@@ -5207,6 +5266,11 @@ Usage:
                                   ~/.termux/colors.properties (truecolor
                                   themes only; run termux-reload-settings
                                   afterwards to apply it)
+  pkg-manager --export-all-themes <dir>
+                                  write one <theme>.colors.properties per
+                                  truecolor theme into <dir>
+  pkg-manager --theme-info <name> show every role of a theme's palette
+  pkg-manager --search <term>     search package names (apt-cache)
   pkg-manager --check-updates    list packages with available upgrades
                                   (scriptable: prints the count and list)
   pkg-manager --quiet            print only the upgradable count (machine
@@ -5246,6 +5310,28 @@ USAGE
     export-theme)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
         apply_termux_theme "$2" || exit 1
+        exit 0
+        ;;
+    theme-info)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --theme-info <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
+        case " ${THEME_NAMES[*]} " in
+            *" $2 "*) theme_info "$2" ;;
+            *) printf 'unknown theme: %s (run: pkg-manager --list-themes)\n' "$2" >&2; exit 2 ;;
+        esac
+        exit 0
+        ;;
+    search)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --search <term>\n' >&2; exit 2; }
+        if command -v apt-cache >/dev/null 2>&1; then
+            apt-cache search --names-only -- "$2" | head -40
+            exit 0
+        fi
+        printf 'apt-cache is not available — install it with: pkg install apt\n' >&2
+        exit 1
+        ;;
+    export-all-themes)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-all-themes <dir>\n' >&2; exit 2; }
+        export_all_themes "$2" || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)
