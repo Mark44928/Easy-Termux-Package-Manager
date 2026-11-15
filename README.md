@@ -110,7 +110,7 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 - `bash` — preinstalled
 - `apt` / `dpkg` — preinstalled
 - `curl` — needed for the one-liner / manual install (install with `pkg install curl -y`)
-- [`fzf`](https://github.com/junegunn/fzf) — **the UI**: fuzzy menu, multi-select install/uninstall with previews, palette, and every submenu. Auto-installed by `install.sh`. Disable with `FZF_ENABLED=0` (falls back to the numbered text lists).
+- [`fzf`](https://github.com/junegunn/fzf) — **optional UI**: fuzzy menu, multi-select install/uninstall with previews, palette, and every submenu. `install.sh` never installs it; the app works in text mode without it. Disable with `FZF_ENABLED=0` (falls back to the numbered text lists).
 - **Nerd Font** — **CaskaydiaCove** (recommended) or **FiraCode** (alternative), both bundled in this repo (`fonts/`); the installer lets you pick and installs it safely (atomic temp-file + rename, then `termux-reload-settings`). Without one, switch to emoji icons from **Settings → Icons**.
 
 ## 🛠️ Installation

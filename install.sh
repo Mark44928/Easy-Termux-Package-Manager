@@ -17,34 +17,56 @@ warn()    { printf '%b\n' "  ${YEL}⚠${R} ${*}"; }
 divider() { printf '%b\n' "${DM}$(printf '─%.0s' {1..50})${R}"; }
 
 REPO="https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master"
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin/pkg-manager"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 FONT_DIR="$DIR/fonts"
 FONT_REMOTE_DIR="$REPO/fonts"
 TERMUX_FONT="$HOME/.termux/font.ttf"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/pkg-manager"
+MANIFEST="$STATE_DIR/installed.tsv"
 
 # ── Flags ─────────────────────────────────────────────────────────────────
 #   --theme <name>   after install, export that theme's terminal palette to
 #                    ~/.termux/colors.properties (pkg-manager --export-theme)
+#   --prefix DIR     install prefix (default: $PREFIX on Termux, ~/.local)
+#   --uninstall      remove the binary recorded by this installer
+#   --dry-run        print what would be installed, no writes
+#   --force          uninstall even if the binary changed
 #   --yes            non-interactive: skip font + launch prompts
 #   --help           show this
 THEME_ARG=""
 YES=0
+DRY=0
+UNINSTALL=0
+FORCE=0
 while [ $# -ge 1 ]; do
     case "$1" in
         -t|--theme)
             [ -n "${2:-}" ] || { printf 'install.sh: --theme needs a name (see: pkg-manager --list-themes)\n' >&2; exit 2; }
             THEME_ARG="$2"; shift 2 ;;
         --theme=*) THEME_ARG="${1#*=}"; shift ;;
+        --prefix)
+            [ -n "${2:-}" ] || { printf 'install.sh: --prefix needs a directory\n' >&2; exit 2; }
+            PREFIX="$2"; BIN="$PREFIX/bin/pkg-manager"; shift 2 ;;
+        --prefix=*)
+            PREFIX="${1#*=}"; BIN="$PREFIX/bin/pkg-manager"; shift ;;
+        --uninstall) UNINSTALL=1; shift ;;
+        --dry-run) DRY=1; shift ;;
+        --force) FORCE=1; shift ;;
         -y|--yes) YES=1; shift ;;
         -h|--help)
             printf 'install.sh — Easy Termux Package Manager installer\n\n'
-            printf 'Usage: bash install.sh [--theme <name>] [--yes]\n\n'
+            printf 'Usage: bash install.sh [options]\n\n'
             printf '  --theme <name>  also set the terminal colors to that theme\n'
             printf '                  (truecolor themes: dracula, nord, catppuccin,\n'
             printf '                  tokyo, gruvbox, onedark, solarized, everforest,\n'
             printf '                  rosepine ... see: pkg-manager --list-themes)\n'
+            printf "  --prefix DIR    install under DIR/bin (default: \$PREFIX on Termux,\n"
+            printf '                  ~/.local elsewhere)\n'
+            printf '  --uninstall     remove the binary recorded by this installer\n'
+            printf '  --force         uninstall even if the binary changed\n'
+            printf '  --dry-run       print what would be installed, no writes\n'
             printf '  --yes           skip all interactive prompts\n'
             printf '  FONT=1|2|s      env: font choice (1 caskaydia, 2 firacode, s skip)\n'
             exit 0 ;;
@@ -52,24 +74,79 @@ while [ $# -ge 1 ]; do
     esac
 done
 
-BIN_TMP=$(mktemp "$PREFIX/bin/.pkg-manager.XXXXXX" 2>/dev/null) || BIN_TMP=$(mktemp "$HOME/.pkg-manager-install.XXXXXX") || { warn "Cannot create a temp file"; exit 1; }
-FONT_TMP=$(mktemp "$HOME/.termux/.font.ttf.XXXXXX" 2>/dev/null) || FONT_TMP=$(mktemp "$HOME/.pkg-manager-font.XXXXXX")
+hash_file() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+    elif command -v cksum >/dev/null 2>&1; then cksum "$1" | awk '{print $1 "-" $2}'
+    else printf 'unknown'
+    fi
+}
+
+manifest_upsert() {
+    local path="$1" tmp
+    mkdir -p "$STATE_DIR" || return 1
+    tmp="$MANIFEST.$$"
+    { [ -f "$MANIFEST" ] && awk -F'\t' -v p="$path" '$1 != p' "$MANIFEST" || true; } > "$tmp"
+    printf '%s\t%s\n' "$path" "$(hash_file "$path")" >> "$tmp"
+    mv -f "$tmp" "$MANIFEST"
+}
+
+if [ "$UNINSTALL" = "1" ]; then
+    [ -f "$MANIFEST" ] || { info "No files recorded by this installer."; exit 0; }
+    if [ "$YES" -eq 0 ] && [ "$DRY" -eq 0 ]; then
+        if [ -t 0 ]; then
+            printf 'Remove the pkg-manager binary recorded in %s? [y/N] ' "$MANIFEST"
+            read -r _ans
+            case "$_ans" in [Yy]*) ;; *) echo "Canceled."; exit 0 ;; esac
+        else
+            printf 'install.sh: use --yes with --uninstall in a non-interactive shell\n' >&2; exit 2
+        fi
+    fi
+    removed=0; kept=0; tmp="$MANIFEST.$$"; tmp_old="$tmp.old"
+    cat "$MANIFEST" > "$tmp_old"
+    while IFS=$'\t' read -r path old_hash; do
+        [ -n "$path" ] || continue
+        [ -e "$path" ] || continue
+        if [ "$FORCE" -eq 0 ] && [ "$(hash_file "$path")" != "$old_hash" ]; then
+            warn "Keeping modified file: $path (use --force to remove)"
+            printf '%s\t%s\n' "$path" "$old_hash" >> "$tmp"
+            kept=$((kept + 1)); continue
+        fi
+        if [ "$DRY" -eq 1 ]; then
+            info "Would remove: $path"
+        else
+            rm -f "$path" || { warn "Failed to remove $path"; exit 1; }
+            ok "Removed: $path"
+        fi
+        removed=$((removed + 1))
+    done < "$tmp_old"
+    if [ "$DRY" -eq 0 ]; then
+        if [ "$kept" -eq 0 ]; then rm -f "$MANIFEST"; rmdir "$STATE_DIR" 2>/dev/null || true
+        else mv -f "$tmp" "$MANIFEST"; fi
+    fi
+    rm -f "$tmp" "$tmp_old"
+    info "Uninstall complete: $removed removed, $kept kept. Config/log/favorites were left untouched."
+    exit 0
+fi
+
+if [ "$DRY" -eq 1 ]; then
+    info "Would install manager.sh from $DIR to: $BIN"
+    info "Would record it in: $MANIFEST"
+    [ -n "$THEME_ARG" ] && info "Would export theme: $THEME_ARG"
+    info "Dry run only — no files changed."
+    exit 0
+fi
+
+mkdir -p "$(dirname "$BIN")" 2>/dev/null || true
+BIN_TMP=$(mktemp "$PREFIX/bin/.pkg-manager.XXXXXX" 2>/dev/null) || BIN_TMP=$(mktemp "${TMPDIR:-$HOME}/.pkg-manager-install.XXXXXX") || { warn "Cannot create a temp file"; exit 1; }
+FONT_TMP=$(mktemp "$HOME/.termux/.font.ttf.XXXXXX" 2>/dev/null) || FONT_TMP=$(mktemp "${TMPDIR:-$HOME}/.pkg-manager-font.XXXXXX")
 
 trap 'rm -f "$BIN_TMP" "$FONT_TMP"; exit 130' INT TERM
 trap 'rm -f "$BIN_TMP" "$FONT_TMP"' EXIT
 
-# ── Helper tools: fzf is the interactive UI ─────────────────────────────
-declare -a MISSING=()
-command -v fzf >/dev/null 2>&1 || MISSING+=("fzf")
-if [ ${#MISSING[@]} -gt 0 ]; then
-    hdr "Installing helper tools:${MISSING[*]}"
-    if command -v pkg >/dev/null 2>&1; then
-        pkg install -y "${MISSING[@]}" >/dev/null 2>&1 || warn "install of ${MISSING[*]} failed — the app still works in text mode"
-    elif command -v apt >/dev/null 2>&1; then
-        apt install -y "${MISSING[@]}" >/dev/null 2>&1 || warn "install of ${MISSING[*]} failed — the app still works in text mode"
-    else
-        warn "Cannot install ${MISSING[*]} automatically (no pkg/apt on PATH)"
-    fi
+# ── Helper tools: fzf is optional, never installed by this script ────────
+if ! command -v fzf >/dev/null 2>&1; then
+    warn "fzf not found — the app works in text mode; install fzf separately for the fuzzy UI."
 fi
 
 # ── Version (read from manager.sh so the installer can never drift) ───────
@@ -122,9 +199,20 @@ if ! "$BIN_TMP" --version >/dev/null 2>&1; then
     warn "Re-run this installer; if it keeps failing, report it with your Termux version."
     exit 1
 fi
-mv -f "$BIN_TMP" "$BIN" || { warn "Failed to move $BIN_TMP to $BIN"; exit 1; }
-chmod +x "$BIN" || { warn "Failed to chmod $BIN"; exit 1; }
-ok "Smoke test passed ($("$BIN" --version 2>/dev/null | head -n1))"
+if [ -f "$BIN" ] && cmp -s "$BIN_TMP" "$BIN"; then
+    rm -f "$BIN_TMP"
+    ok "Already up to date → ${BD}${BIN}${R}"
+else
+    if [ -f "$BIN" ]; then
+        bak="$BIN.bak-$(date +%Y%m%d-%H%M%S)-$$"
+        cp -a "$BIN" "$bak" || { warn "Failed to back up $BIN"; exit 1; }
+        ok "Backup → ${BD}${bak}${R}"
+    fi
+    mv -f "$BIN_TMP" "$BIN" || { warn "Failed to move $BIN_TMP to $BIN"; exit 1; }
+    chmod +x "$BIN" || { warn "Failed to chmod $BIN"; exit 1; }
+    manifest_upsert "$BIN" || warn "Could not record $BIN for uninstall"
+    ok "Smoke test passed ($("$BIN" --version 2>/dev/null | head -n1))"
+fi
 
 divider
 ok "Installed → ${BD}${BIN}${R}"
@@ -155,6 +243,11 @@ install_font() {
     else
         curl -fsSL "$FONT_REMOTE_DIR/$font" -o "$FONT_TMP" || { warn "Failed to download $FONT_REMOTE_DIR/$font to $FONT_TMP"; return 1; }
     fi
+    if [ -f "$TERMUX_FONT" ]; then
+        font_bak="$TERMUX_FONT.bak-$(date +%Y%m%d-%H%M%S)-$$"
+        cp -a "$TERMUX_FONT" "$font_bak" || { warn "Failed to back up $TERMUX_FONT"; return 1; }
+        ok "Backup → ${BD}${font_bak}${R}"
+    fi
     mv -f "$FONT_TMP" "$TERMUX_FONT" || { warn "Failed to move $FONT_TMP to $TERMUX_FONT"; return 1; }
     ok "$font installed → $TERMUX_FONT"
     if command -v termux-reload-settings >/dev/null 2>&1; then
@@ -182,17 +275,21 @@ elif [ -d "$HOME/.termux" ]; then
     printf '%b\n' "  ${CYN}[2]${R} ${BD}FiraCode${R} (alternative)      — the classic coding font"
     printf '%b\n' "  ${DM}[s]${R} Skip (icons fall back to emoji inside the app)"
     printf '%b\n' "  ${DM}Tip: an invalid choice simply skips the install — no harm done. 💡${R}"
-    printf '%b'   "Choice ${CYN}[1]${R} or ${DM}[s]${R}: "
-    if [ -t 0 ]; then
-        read -r _ans
+    if command -v fzf >/dev/null 2>&1; then
+        _ans=$(printf 'CaskaydiaCove (recommended)\nFiraCode\nSkip\n' | fzf --reverse --height=30% --border --prompt='Nerd Font> ' 2>/dev/null) || _ans="skip"
     else
-        read -r _ans < /dev/tty 2>/dev/null || _ans="s"
+        printf '%b'   "Choice ${CYN}[1]${R} or ${DM}[s]${R}: "
+        if [ -t 0 ]; then
+            read -r _ans
+        else
+            read -r _ans < /dev/tty 2>/dev/null || _ans="s"
+        fi
     fi
     case "${_ans,,}" in
-        ""|1) install_font "CaskaydiaCoveNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
-        2)    install_font "FiraCodeNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
-        s)    warn "Skipping the font install." ;;
-        *)    warn "Invalid choice — skipping the font install." ;;
+        ""|1|cask*) install_font "CaskaydiaCoveNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        2|fira*)    install_font "FiraCodeNerdFont-Regular.ttf" || warn "Font install failed — continuing (the app works without it)." ;;
+        s|skip*)    warn "Skipping the font install." ;;
+        *)          warn "Invalid choice — skipping the font install." ;;
     esac
 else
     warn "$HOME/.termux not found — skipping the font install."

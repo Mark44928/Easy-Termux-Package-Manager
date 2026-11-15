@@ -30,8 +30,7 @@ install: ## Install to PREFIX/bin/pkg-manager via install.sh
 	bash install.sh
 
 uninstall: ## Remove the installed binary (keeps ~/ config/log/favs)
-	rm -f "$(BIN)"
-	@echo "Removed $(BIN)"
+	bash install.sh --uninstall --yes
 
 clean: ## Delete test artifacts (tests/tmp)
 	rm -rf tests/tmp
