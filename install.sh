@@ -76,7 +76,7 @@ fi
 detect_version() {
     local f="$1" v=""
     [ -f "$f" ] || { echo ""; return; }
-    v=$(grep -m1 -oP '^VERSION="\K[^"]+' "$f" 2>/dev/null || true)
+    v=$(grep -m1 -oE '^VERSION="[0-9A-Za-z.+-]+"' "$f" 2>/dev/null | cut -d'"' -f2 || true)
     echo "$v"
 }
 VERSION="$(detect_version "$DIR/manager.sh")"

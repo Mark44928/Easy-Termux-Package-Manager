@@ -407,6 +407,8 @@ case "${1:-}" in
     --theme-info)             CLI_MODE="theme-info" ;;
     --search)                 CLI_MODE="search" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
+    --stats)                  CLI_MODE="stats" ;;
+    --stats-json)             CLI_MODE="stats-json" ;;
     --quiet)                  CLI_MODE="check-updates-quiet" ;;
     --doctor)                 CLI_MODE="doctor" ;;
     "")                       CLI_MODE="" ;;
@@ -1237,7 +1239,7 @@ apt_hint() {
 run_multi_op() {
     local op="$1" out hint
     shift
-    local total=$# ok=0 fail=0
+    local total=$# ok=0 fail=0 pkg
     local -a failed=() uniq=()
     local p seen_str=" "
     for p in "$@"; do
@@ -5279,6 +5281,8 @@ Usage:
                                   truecolor theme into <dir>
   pkg-manager --theme-info <name> show every role of a theme's palette
   pkg-manager --search <term>     search package names (apt-cache)
+  pkg-manager --stats            quick system/package statistics
+  pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
                                   (scriptable: prints the count and list)
   pkg-manager --quiet            print only the upgradable count (machine
@@ -5340,6 +5344,25 @@ USAGE
     export-all-themes)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-all-themes <dir>\n' >&2; exit 2; }
         export_all_themes "$2" || exit 1
+        exit 0
+        ;;
+    stats|stats-json)
+        inst=$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | grep -c . || true)
+        up=$(list_upgradable 2>/dev/null | grep -c . || true)
+        aptdir="$PREFIX/var/lib/apt/lists"
+        cache=$(du -sh "$aptdir" 2>/dev/null | awk '{print $1}')
+        if [ "$CLI_MODE" = "stats-json" ]; then
+            printf '{"version":"%s","installed":%s,"upgradable":%s,"apt_lists_bytes":%s,"themes":%s}\n' \
+                "$VERSION" "${inst:-0}" "${up:-0}" \
+                "$(du -sb "$aptdir" 2>/dev/null | awk '{print $1}' || echo 0)" \
+                "${#THEME_NAMES[@]}"
+        else
+            printf 'pkg-manager %s\n' "$VERSION"
+            printf '  packages installed : %s\n' "${inst:-?}"
+            printf '  upgradable         : %s\n' "${up:-?}"
+            printf '  apt lists          : %s\n' "${cache:-n/a}"
+            printf '  themes             : %s\n' "${#THEME_NAMES[@]}"
+        fi
         exit 0
         ;;
     check-updates|check-updates-quiet)
