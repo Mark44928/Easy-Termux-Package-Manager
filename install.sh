@@ -74,6 +74,11 @@ while [ $# -ge 1 ]; do
     esac
 done
 
+case "$PREFIX" in
+    /*) ;;
+    *) PREFIX="$PWD/$PREFIX"; BIN="$PREFIX/bin/pkg-manager" ;;
+esac
+
 hash_file() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
     elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
