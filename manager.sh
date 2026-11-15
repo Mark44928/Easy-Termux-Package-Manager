@@ -411,6 +411,7 @@ case "${1:-}" in
     --stats-json)             CLI_MODE="stats-json" ;;
     --quiet)                  CLI_MODE="check-updates-quiet" ;;
     --doctor)                 CLI_MODE="doctor" ;;
+    --backup)                 CLI_MODE="backup" ;;
     "")                       CLI_MODE="" ;;
     *)                        CLI_MODE="unknown:$1" ;;
 esac
@@ -2327,15 +2328,35 @@ do_favs() {
 
 do_backup() {
     local file tmp
-    file="$HOME/pkg-backup-$(date +%Y%m%d-%H%M%S)-$$.txt"
+    file="${1:-}"
+    if [ -n "$file" ]; then
+        case "$file" in
+            -*) err "Invalid path — must not start with '-'."; return 1 ;;
+        esac
+        case "$file" in
+            /*) ;;
+            *)  file="$HOME/$file" ;;
+        esac
+        if [ -e "$file" ]; then
+            err "Backup target already exists: $file"
+            return 1
+        fi
+        if [ ! -d "$(dirname -- "$file")" ]; then
+            err "Backup directory does not exist: $(dirname -- "$file")"
+            return 1
+        fi
+    else
+        file="$HOME/pkg-backup-$(date +%Y%m%d-%H%M%S)-$$.txt"
+    fi
     say "$ICON_BACKUP Backing up installed packages..."
-    if ! tmp=$(scratch_new); then err "Could not create temp file for backup."; return; fi
+    if ! tmp=$(scratch_new); then err "Could not create temp file for backup."; return 1; fi
     if list_installed_names > "$tmp" 2>/dev/null && [ -s "$tmp" ] && mv -f "$tmp" "$file"; then
         log "backup → $file"
         ok "Backed up $(wc -l < "$file") packages → $file"
     else
         rm -f "$tmp" "$file"
         err "Backup failed"
+        return 1
     fi
 }
 
@@ -5288,6 +5309,8 @@ Usage:
   pkg-manager --quiet            print only the upgradable count (machine
                                   readable, for cron / status lines)
   pkg-manager --doctor           run the full system audit and exit
+  pkg-manager --backup [path]    write the installed package list to path
+                                  (default: ~/pkg-backup-<date>-<pid>.txt)
 
 Environment:
   NO_COLOR=1                     strip all ANSI color output (CI / logs)
@@ -5390,6 +5413,11 @@ USAGE
     doctor)
         # v5.1: the full system audit without the menu.
         do_audit
+        exit 0
+        ;;
+    backup)
+        # v5.4: scriptable snapshot without opening the menu.
+        do_backup "${2:-}" || exit 1
         exit 0
         ;;
     "unknown:"*)

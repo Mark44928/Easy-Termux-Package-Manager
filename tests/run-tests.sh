@@ -723,6 +723,7 @@ if [ -z "$geo_out" ]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); FAILED+=
 cli cli_check_upd    "--check-updates"        "package(s) can be upgraded"
 cli cli_quiet        "--quiet"                "1"
 cli cli_doctor       "--doctor"               "Health score"
+cli cli_backup       "--backup $PWD/tmp/cli_backup/pkg.txt" "Backed up"
 
 # --- v5.2: nala as a manager, with apt fallback when it is missing ---
 cli cli_mgr_nala_cfg  "--version"     "pkg-manager v5.3.1"

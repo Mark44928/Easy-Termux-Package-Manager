@@ -181,6 +181,7 @@ pkg-manager --theme-info nord   # every role of a palette: bg, fg, red, bright_c
 pkg-manager --search bash       # apt-cache package-name search (read-only)
 pkg-manager --stats             # installed/upgradable counts, apt lists, themes
 pkg-manager --stats-json        # same numbers as JSON
+pkg-manager --backup ~/pkgs.txt # non-interactive package snapshot (new)
 ```
 
 > `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts truecolor themes only (the 9 "real" palettes); the 8 legacy 256-color themes can't be expressed as a full ANSI table.
