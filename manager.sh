@@ -512,6 +512,7 @@ case "${1:-}" in
     --theme-info)             CLI_MODE="theme-info" ;;
     --search)                 CLI_MODE="search" ;;
     --why)                    CLI_MODE="why" ;;
+    --largest)                CLI_MODE="largest" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --stats)                  CLI_MODE="stats" ;;
     --stats-json)             CLI_MODE="stats-json" ;;
@@ -3346,6 +3347,33 @@ do_why() {
     fi
 }
 
+do_largest() {
+    local limit="${1:-15}" total manual auto kib pkg mb reason
+    case "$limit" in
+        ''|*[!0-9]*) err "largest needs a whole number"; return 2 ;;
+    esac
+    [ "$limit" -ge 1 ] && [ "$limit" -le 200 ] || { err "largest count must be 1-200"; return 2; }
+    command -v dpkg-query >/dev/null 2>&1 || { err "dpkg-query is required"; return 1; }
+    manual=$(apt-mark showmanual 2>/dev/null || true)
+    auto=$(apt-mark showauto 2>/dev/null || true)
+    total=$(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    [ "${total:-0}" -gt 0 ] 2>/dev/null || { err "could not read installed package sizes"; return 1; }
+    printf 'Largest installed packages (%d shown)\n' "$limit"
+    printf 'Total installed size: %s MiB\n\n' "$(awk -v k="$total" 'BEGIN {printf "%.1f", k/1024}')"
+    printf '  %8s  %-32s %s\n' 'SIZE' 'PACKAGE' 'INSTALL REASON'
+    while IFS=$'\t' read -r kib pkg; do
+        [ -n "$pkg" ] || continue
+        reason='unknown'
+        if printf '%s\n' "$manual" | grep -Fxq "$pkg"; then
+            reason='manual'
+        elif printf '%s\n' "$auto" | grep -Fxq "$pkg"; then
+            reason='auto'
+        fi
+        mb=$(awk -v k="$kib" 'BEGIN {printf "%.1f", k/1024}')
+        printf '  %6s MB  %-32s %s\n' "$mb" "$pkg" "$reason"
+    done < <(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null | sort -rn | head -n "$limit")
+}
+
 do_notes() {
     local NOTES_FILE="$HOME/.pkg-manager-notes"
     local a
@@ -5494,6 +5522,8 @@ Usage:
   pkg-manager --search <term>     search package names (apt-cache)
   pkg-manager --why <package>     explain manual/auto install reason and
                                   reverse dependencies without opening the app
+  pkg-manager --largest [n]       show the n largest installed packages
+                                  (default 15, with manual/auto reason)
   pkg-manager --stats            quick system/package statistics
   pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
@@ -5587,6 +5617,10 @@ USAGE
     why)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --why <package>\n' >&2; exit 2; }
         do_why "$2" || exit 1
+        exit 0
+        ;;
+    largest)
+        do_largest "${2:-15}" || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)
