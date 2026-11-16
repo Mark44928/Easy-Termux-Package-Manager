@@ -417,6 +417,7 @@ cli cli_version     "--version"             "pkg-manager v5.3.1"
 cli cli_list_themes "--list-themes"         "Theme preview"
 cli cli_theme       "--theme dracula"       "Theme set to dracula"
 cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepine)"
+cli cli_why         "--why python3"         "Why is python3 installed?"
 
 # --- v5.1: fzf rewrite regressions ---
 # The menu must call fzf exactly ONCE (a duplicated block made ESC reopen it).

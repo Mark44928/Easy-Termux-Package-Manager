@@ -184,7 +184,45 @@ RED=196
 YELLOW=220
 DIM=240
 
-THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo gruvbox onedark solarized everforest rosepine)
+THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo gruvbox onedark solarized everforest rosepine greenit bluney)
+CUSTOM_THEME_DIR="$HOME/.pkg-manager-themes"
+declare -A CUSTOM_CYAN=() CUSTOM_PINK=() CUSTOM_GREEN=() CUSTOM_YELLOW=() CUSTOM_RED=() CUSTOM_DIM=()
+
+# load_custom_themes — read one small JSON file per user theme. Values are
+# validated again in bash; python3 is only the JSON parser.
+load_custom_themes() {
+    local f vals name c p g y r d
+    [ -d "$CUSTOM_THEME_DIR" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    for f in "$CUSTOM_THEME_DIR"/*.json; do
+        [ -f "$f" ] || continue
+        [ "$(wc -c < "$f" 2>/dev/null || echo 99999)" -le 4096 ] || continue
+        vals=$(python3 - "$f" <<'PY' 2>/dev/null
+import json, sys
+try:
+    o = json.load(open(sys.argv[1], encoding="utf-8"))
+    print("\t".join(str(o.get(k, "")) for k in ("name","cyan","pink","green","yellow","red","dim")))
+except Exception:
+    pass
+PY
+)
+        IFS=$'\t' read -r name c p g y r d <<< "$vals"
+        [[ "$name" =~ ^custom-[A-Za-z0-9_-]{1,24}$ ]] || continue
+        for v in "$c" "$p" "$g" "$y" "$r" "$d"; do
+            if [[ "$v" =~ ^\#[0-9A-Fa-f]{6}$ ]]; then
+                :
+            elif [[ "$v" =~ ^[0-9]{1,3}$ ]] && [ "$v" -ge 0 ] && [ "$v" -le 255 ]; then
+                :
+            else
+                continue 2
+            fi
+        done
+        CUSTOM_CYAN[$name]="$c"; CUSTOM_PINK[$name]="$p"; CUSTOM_GREEN[$name]="$g"
+        CUSTOM_YELLOW[$name]="$y"; CUSTOM_RED[$name]="$r"; CUSTOM_DIM[$name]="$d"
+        case " ${THEME_NAMES[*]} " in *" $name "*) ;; *) THEME_NAMES+=("$name") ;; esac
+    done
+}
+load_custom_themes
 
 # paint <color> <text...> — wrap text in an ANSI escape for a 256-color number
 # or a #RRGGBB hex value (text mode).
@@ -223,6 +261,14 @@ mix_colors() {
 }
 
 set_theme() {
+    if [[ "$THEME" == custom-* ]]; then
+        if [ -n "${CUSTOM_CYAN[$THEME]:-}" ]; then
+            CYAN="${CUSTOM_CYAN[$THEME]}"; PINK="${CUSTOM_PINK[$THEME]}"
+            GREEN="${CUSTOM_GREEN[$THEME]}"; YELLOW="${CUSTOM_YELLOW[$THEME]}"
+            RED="${CUSTOM_RED[$THEME]}"; DIM="${CUSTOM_DIM[$THEME]}"
+        fi
+        return 0
+    fi
     case "$THEME" in
         # Legacy 256-color themes: both dominant roles (CYAN accents/headers,
         # PINK cursor/selection) stay in the color family the title names —
@@ -244,6 +290,8 @@ set_theme() {
         solarized)  CYAN="#2AA198"; PINK="#D33682"; GREEN="#859900"; YELLOW="#B58900"; RED="#DC322F"; DIM="#586E75" ;;
         everforest) CYAN="#83C092"; PINK="#D699B6"; GREEN="#A7C080"; YELLOW="#DBBC7F"; RED="#E67E80"; DIM="#859289" ;;
         rosepine)   CYAN="#9CCFD8"; PINK="#C4A7E7"; GREEN="#31748F"; YELLOW="#F6C177"; RED="#EB6F92"; DIM="#6E6A86" ;;
+        greenit)    CYAN="#7BD88F"; PINK="#B6F5C6"; GREEN="#7BD88F"; YELLOW="#D7A657"; RED="#E06C75"; DIM="#6F917B" ;;
+        bluney)     CYAN="#7DBBFF"; PINK="#B9A8E0"; GREEN="#7DBBFF"; YELLOW="#FFB86C"; RED="#F07178"; DIM="#5C7C9C" ;;
         green|*)    CYAN=40;        PINK=119;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
     esac
 }
@@ -252,6 +300,60 @@ set_theme
 # theme_ansi <name> — full 18-color terminal palette (bg fg color0..color15) as
 # bare hex for the real terminal themes, so they can be exported to
 # ~/.termux/colors.properties. Legacy 256-color themes have no table (return 1).
+# ansi256_to_hex <n> — xterm 256-color index to #rrggbb (custom-theme export).
+ansi256_to_hex() {
+    local n=$1 c r g b v
+    if [ "$n" -eq 0 ]; then printf '#000000'; elif [ "$n" -eq 1 ]; then printf '#800000'
+    elif [ "$n" -eq 2 ]; then printf '#008000'; elif [ "$n" -eq 3 ]; then printf '#808000'
+    elif [ "$n" -eq 4 ]; then printf '#000080'; elif [ "$n" -eq 5 ]; then printf '#800080'
+    elif [ "$n" -eq 6 ]; then printf '#008080'; elif [ "$n" -eq 7 ]; then printf '#c0c0c0'
+    elif [ "$n" -eq 8 ]; then printf '#808080'; elif [ "$n" -eq 9 ]; then printf '#ff0000'
+    elif [ "$n" -eq 10 ]; then printf '#00ff00'; elif [ "$n" -eq 11 ]; then printf '#ffff00'
+    elif [ "$n" -eq 12 ]; then printf '#0000ff'; elif [ "$n" -eq 13 ]; then printf '#ff00ff'
+    elif [ "$n" -eq 14 ]; then printf '#00ffff'; elif [ "$n" -eq 15 ]; then printf '#ffffff'
+    elif [ "$n" -lt 232 ]; then
+        c=$((n - 16)); r=$((c / 36)); g=$(((c % 36) / 6)); b=$((c % 6))
+        printf '#%02x%02x%02x' $((r == 0 ? 0 : r * 40 + 55)) $((g == 0 ? 0 : g * 40 + 55)) $((b == 0 ? 0 : b * 40 + 55))
+    else
+        v=$(((n - 232) * 10 + 8)); printf '#%02x%02x%02x' "$v" "$v" "$v"
+    fi
+}
+
+# hex_of_custom <color> — #rrggbb from a custom theme slot (hex or 256-index).
+hex_of_custom() {
+    case "$1" in
+        \#*) printf '%s' "$1" ;;
+        *)   ansi256_to_hex "$1" ;;
+    esac
+}
+
+# custom_ansi <name> — synthesize the 18-slot ANSI table for a custom theme.
+# Background derives from the dim slot (darkened), foreground brightened; the
+# 16 palette slots map onto the six accent roles with highlights mixed in.
+custom_ansi() {
+    local t="$1" c p g y r d cf pf gf yf rf df
+    c="${CUSTOM_CYAN[$t]:-}"; p="${CUSTOM_PINK[$t]:-}"; g="${CUSTOM_GREEN[$t]:-}"
+    y="${CUSTOM_YELLOW[$t]:-}"; r="${CUSTOM_RED[$t]:-}"; d="${CUSTOM_DIM[$t]:-}"
+    [ -n "$c" ] && [ -n "$p" ] && [ -n "$g" ] && [ -n "$y" ] && [ -n "$r" ] && [ -n "$d" ] || return 1
+    cf=$(hex_of_custom "$c"); pf=$(hex_of_custom "$p"); gf=$(hex_of_custom "$g")
+    yf=$(hex_of_custom "$y"); rf=$(hex_of_custom "$r"); df=$(hex_of_custom "$d")
+    printf '%s\n' \
+        "$(mix_colors "$df" '#000000' 84 | sed 's/^#//')" \
+        "$(mix_colors "$df" '#ffffff' 80 | sed 's/^#//')" \
+        "$(mix_colors "$df" '#000000' 55 | sed 's/^#//')" \
+        "$(printf '%s' "${rf#\#}")" "$(printf '%s' "${gf#\#}")" "$(printf '%s' "${yf#\#}")" \
+        "$(printf '%s' "${cf#\#}")" "$(printf '%s' "${pf#\#}")" "$(printf '%s' "${cf#\#}")" \
+        "$(printf '%s' "${df#\#}")" \
+        "$(mix_colors "$df" '#ffffff' 80 | sed 's/^#//')" \
+        "$(mix_colors "$rf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$gf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$yf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$cf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$pf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$cf" '#ffffff' 18 | sed 's/^#//')" \
+        "$(mix_colors "$df" '#ffffff' 80 | sed 's/^#//')"
+}
+
 theme_ansi() {
     case "$1" in
         dracula)    printf '%s\n' 282A36 F8F8F2 21222C FF5555 50FA7B F1FA8C BD93F9 FF79C6 8BE9FD F8F8F2 6272A4 FF6E6E 69FF94 FFFFA5 D6ACFF FF92DF A4FFFF FFFFFF ;;
@@ -263,6 +365,9 @@ theme_ansi() {
         solarized)  printf '%s\n' 002B36 839496 073642 DC322F 859900 B58900 268BD2 D33682 2AA198 EEE8D5 073642 CB4B16 586E75 657B83 839496 6C71C4 93A1A1 FDF6E3 ;;
         everforest) printf '%s\n' 2D353B D3C6AA 475258 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 D3C6AA 7A8478 E67E80 A7C080 DBBC7F 7FBBB3 D699B6 83C092 9DA9A0 ;;
         rosepine)   printf '%s\n' 191724 E0DEF4 26233A EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 6E6A86 EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 ;;
+        greenit)    printf '%s\n' 0C1F17 C9E4CE 1A331C A88EA0 7BD88F B8CC7A 63C9A8 A88EA0 7FD7C4 A7C4A3 78997F D4B4C0 9BEDAF D4E49A 8FE4C4 D4B4C0 A7EBDC C9E4CE ;;
+        bluney)     printf '%s\n' 0E1B2E D5E5F2 16283E E18B8B 7DBBFF E0CD97 4F8FE0 B9A8E0 7FD7F2 D5E5F2 5F7E9E F0A8A8 A8D4FF EBDFA8 7FA9E8 CDBEF0 A8E8F8 FFFFFF ;;
+        custom-*)   custom_ansi "$1" ;;
         *) return 1 ;;
     esac
 }
@@ -406,6 +511,7 @@ case "${1:-}" in
     --export-all-themes)      CLI_MODE="export-all-themes" ;;
     --theme-info)             CLI_MODE="theme-info" ;;
     --search)                 CLI_MODE="search" ;;
+    --why)                    CLI_MODE="why" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --stats)                  CLI_MODE="stats" ;;
     --stats-json)             CLI_MODE="stats-json" ;;
@@ -1040,20 +1146,28 @@ set_theme_pick() {
         "nord (icy/rose · truecolor)" "amber (gold/peach)" "teal (teal/aqua)" "mono (grayscale)"
         "dracula (truecolor)" "catppuccin (truecolor)" "tokyo-night (truecolor)" "gruvbox (truecolor)"
         "one-dark (truecolor)" "solarized (truecolor)" "everforest (truecolor)" "rose-pine (truecolor)"
+        "greenit (truecolor)" "bluney (truecolor)"
     )
+    for n in "${THEME_NAMES[@]}"; do
+        case "$n" in custom-*) labels+=("$n (custom)") ;; esac
+    done
     if have_fzf; then
         t=$(pick_menu "$ICON_THEME  Select theme (current: $THEME)" "${labels[@]}")
     else
         list_numbered 0 "${labels[@]}"
         printf '❯ ' >&2
         read -r t
-        case "$t" in
-            [1-9]|1[0-6]) t="${labels[$((t-1))]}" ;;
-            *) return ;;
-        esac
+        if [[ "$t" =~ ^[0-9]+$ ]] && [ "$t" -ge 1 ] && [ "$t" -le "${#labels[@]}" ]; then
+            t="${labels[$((t-1))]}"
+        else
+            return
+        fi
     fi
     [ -n "$t" ] || return
     case "$t" in
+        custom-*)   THEME="${t%% *}" ;;
+        greenit*)   THEME="greenit" ;;
+        bluney*)    THEME="bluney" ;;
         green*)     THEME="green" ;;
         blue*)      THEME="blue" ;;
         purple*)    THEME="purple" ;;
@@ -2676,6 +2790,20 @@ do_inspect() {
         else
             echo "(not installed — no file list)"
         fi
+        printf '\n═══ Why is this installed? ═══\n'
+        manuallist=$(apt-mark showmanual 2>/dev/null || true)
+        autolist=$(apt-mark showauto 2>/dev/null || true)
+        if grep -Fxq -- "$PKG_NAME" <<< "$manuallist"; then
+            echo "install reason: manually installed"
+        elif grep -Fxq -- "$PKG_NAME" <<< "$autolist"; then
+            echo "install reason: installed as a dependency"
+        else
+            echo "install reason: unknown (not in apt-mark lists)"
+        fi
+        origin=$(apt-cache policy "$PKG_NAME" 2>/dev/null | awk '/http/ {print $1; exit}')
+        [ -n "$origin" ] && echo "repo origin: $origin" || echo "repo origin: unknown"
+        echo "safe removal: pkg uninstall $PKG_NAME"
+        echo "               (review reverse dependencies above first)"
         printf '\n═══ Hold status ═══\n'
         if heldlist=$(apt-mark showhold 2>/dev/null); then
             if grep -Fxq -- "$PKG_NAME" <<< "$heldlist"; then
@@ -3191,7 +3319,16 @@ do_changelog() {
 }
 
 do_why() {
-    ask_name "Package to explain"
+    local target="${1:-}"
+    if [ -n "$target" ]; then
+        if ! valid_pkg_name "$target"; then
+            err "Invalid package name: '$target'"
+            return 1
+        fi
+        PKG_NAME="$target"
+    else
+        ask_name "Package to explain"
+    fi
     [ -n "$PKG_NAME" ] || { warn "No package name given."; return; }
     log "why $PKG_NAME"
     say "$ICON_DEPENDS Why is $PKG_NAME installed?"
@@ -4354,20 +4491,72 @@ pin_install() {
     fi
 }
 
+# normalize_theme_color <hex|256-index> — validate and echo a safe value.
+normalize_theme_color() {
+    local val="$1"
+    if [[ "$val" =~ ^\#[0-9A-Fa-f]{6}$ ]]; then printf '%s' "$val"; return 0; fi
+    if [[ "$val" =~ ^[0-9]{1,3}$ ]] && [ "$val" -ge 0 ] && [ "$val" -le 255 ]; then printf '%s' "$val"; return 0; fi
+    return 1
+}
+
+# do_theme_edit — create or edit a small JSON theme file and apply it.
+do_theme_edit() {
+    local name slug c p g y r d cur tmp
+    printf 'Custom theme name [custom-1]: '
+    read -r name
+    name="${name:-custom-1}"
+    slug=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_-' '-' | cut -c1-24)
+    case "$slug" in custom-*) ;; *) slug="custom-$slug" ;; esac
+    case " ${THEME_NAMES[*]} " in
+        *" $slug "*) [ -n "${CUSTOM_CYAN[$slug]:-}" ] || { err "That name belongs to a built-in theme."; return 1; } ;;
+    esac
+    cur="${CUSTOM_CYAN[$slug]:-$CYAN}"
+    printf 'Accent   [%s]: ' "$cur"; read -r c; c="${c:-$cur}"
+    cur="${CUSTOM_PINK[$slug]:-$PINK}"
+    printf 'Secondary[%s]: ' "$cur"; read -r p; p="${p:-$cur}"
+    cur="${CUSTOM_GREEN[$slug]:-$GREEN}"
+    printf 'OK/success[%s]: ' "$cur"; read -r g; g="${g:-$cur}"
+    cur="${CUSTOM_YELLOW[$slug]:-$YELLOW}"
+    printf 'Warning  [%s]: ' "$cur"; read -r y; y="${y:-$cur}"
+    cur="${CUSTOM_RED[$slug]:-$RED}"
+    printf 'Error    [%s]: ' "$cur"; read -r r; r="${r:-$cur}"
+    cur="${CUSTOM_DIM[$slug]:-$DIM}"
+    printf 'Dim      [%s]: ' "$cur"; read -r d; d="${d:-$cur}"
+    for v in "$c" "$p" "$g" "$y" "$r" "$d"; do
+        normalize_theme_color "$v" >/dev/null || { err "Invalid color: $v (use #rrggbb or 0-255)"; return 1; }
+    done
+    mkdir -p "$CUSTOM_THEME_DIR" || { err "Cannot create $CUSTOM_THEME_DIR"; return 1; }
+    tmp="$CUSTOM_THEME_DIR/.$slug.json.$$"
+    if ! printf '{\n  "name": "%s",\n  "cyan": "%s",\n  "pink": "%s",\n  "green": "%s",\n  "yellow": "%s",\n  "red": "%s",\n  "dim": "%s"\n}\n' \
+        "$slug" "$c" "$p" "$g" "$y" "$r" "$d" > "$tmp"; then
+        err "Could not write theme file."; rm -f "$tmp"; return 1
+    fi
+    # rename(2) replaces the destination entry itself, so a planted symlink at
+    # the target is replaced rather than followed — same class of guard as
+    # refuse_symlink()/safe_cp(), one step further.
+    mv -f "$tmp" "$CUSTOM_THEME_DIR/$slug.json" || { err "Could not store theme file."; rm -f "$tmp"; return 1; }
+    CUSTOM_CYAN[$slug]="$c"; CUSTOM_PINK[$slug]="$p"; CUSTOM_GREEN[$slug]="$g"
+    CUSTOM_YELLOW[$slug]="$y"; CUSTOM_RED[$slug]="$r"; CUSTOM_DIM[$slug]="$d"
+    case " ${THEME_NAMES[*]} " in *" $slug "*) ;; *) THEME_NAMES+=("$slug") ;; esac
+    THEME="$slug"; set_theme; save_config
+    ok "Theme set to $THEME → $CUSTOM_THEME_DIR/$slug.json"
+}
+
 # Theme hub — pick a theme, preview them all, or push the palette into the
 # Termux terminal itself via ~/.termux/colors.properties
 do_theme() {
     local choice
     if have_fzf; then
-        choice=$(pick_menu "$ICON_WAND  Theme hub (current: $THEME)" "Pick a theme" "Preview all themes" "Apply '$THEME' to the Termux terminal" "Restore backed-up Termux colors" "$ICON_BACK  Back")
+        choice=$(pick_menu "$ICON_WAND  Theme hub (current: $THEME)" "Pick a theme" "Preview all themes" "Apply '$THEME' to the Termux terminal" "Restore backed-up Termux colors" "Create or edit a custom theme" "$ICON_BACK  Back")
     else
-        printf '1) Pick a theme\n2) Preview all themes\n3) Apply current theme (%s) to the Termux terminal\n4) Restore backed-up Termux colors\n5) Back\n> ' "$THEME" >&2
+        printf '1) Pick a theme\n2) Preview all themes\n3) Apply current theme (%s) to the Termux terminal\n4) Restore backed-up Termux colors\n5) Create or edit a custom theme\n6) Back\n> ' "$THEME" >&2
         read -r choice
         case "$choice" in
             1) choice="Pick a theme" ;;
             2) choice="Preview all themes" ;;
             3) choice="Apply '$THEME' to the Termux terminal" ;;
             4) choice="Restore backed-up Termux colors" ;;
+            5) choice="Create or edit a custom theme" ;;
             *) return ;;
         esac
     fi
@@ -4375,6 +4564,7 @@ do_theme() {
     case "$choice" in
         "Pick a theme")       set_theme_pick ;;
         "Preview all themes") theme_preview ;;
+        "Create"*)            do_theme_edit ;;
         "Apply"*"terminal"*)  apply_termux_theme "$THEME" ;;
         "Restore"*)           restore_termux_theme ;;
         *) return ;;
@@ -5302,6 +5492,8 @@ Usage:
                                   truecolor theme into <dir>
   pkg-manager --theme-info <name> show every role of a theme's palette
   pkg-manager --search <term>     search package names (apt-cache)
+  pkg-manager --why <package>     explain manual/auto install reason and
+                                  reverse dependencies without opening the app
   pkg-manager --stats            quick system/package statistics
   pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
@@ -5333,8 +5525,8 @@ USAGE
     set-theme)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
         THEME=$2
-        case "$THEME" in
-            green|blue|purple|red|nord|amber|teal|mono|dracula|catppuccin|tokyo|gruvbox|onedark|solarized|everforest|rosepine) ;;
+        case " ${THEME_NAMES[*]} " in
+            *" $2 "*) ;;
             *) printf 'unknown theme: %s (run: pkg-manager --list-themes)\n' "$THEME" >&2; exit 2 ;;
         esac
         set_theme
@@ -5344,6 +5536,10 @@ USAGE
         ;;
     export-theme)
         [ -n "${2:-}" ] || { printf 'usage: pkg-manager --export-theme <name> (%s)\n' "${THEME_NAMES[*]}" >&2; exit 2; }
+        case " ${THEME_NAMES[*]} " in
+            *" $2 "*) ;;
+            *) printf 'unknown theme: %s (run: pkg-manager --list-themes)\n' "$2" >&2; exit 2 ;;
+        esac
         apply_termux_theme "$2" || exit 1
         exit 0
         ;;
@@ -5386,6 +5582,11 @@ USAGE
             printf '  apt lists          : %s\n' "${cache:-n/a}"
             printf '  themes             : %s\n' "${#THEME_NAMES[@]}"
         fi
+        exit 0
+        ;;
+    why)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --why <package>\n' >&2; exit 2; }
+        do_why "$2" || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)

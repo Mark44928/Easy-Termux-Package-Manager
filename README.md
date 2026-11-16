@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-184%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-186%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
@@ -74,10 +74,10 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
 | 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
-| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **16 themes** (9 truecolor) + Nerd Font or emoji icons |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **18 themes** (11 truecolor) + custom themes + Nerd Font or emoji icons |
 | 🛟 **Plain-text fallback** — works without `fzf` | 📋 **Timestamped history** of every action |
 | 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test** (all 65 official mirrors), **watchlist**, **history charts** | 43–47 |
-| 🚀 **New 5.0** | **9 real truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine — official palettes) + **theme hub** (preview all, export to `~/.termux/colors.properties`), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 42, 54–57, 58 |
+| 🚀 **New 5.0** | **11 truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine, Greenit, Bluney) + **theme hub** (preview all, export to `~/.termux/colors.properties`, create/edit custom themes), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 42, 54–57, 58 |
 | ⌨️ **Consistent ESC** | ESC cancels everywhere — submenus go back a level, the top menu exits with a goodbye, and the package pickers say `Canceled.` and return (no more typed-name detours). If fzf itself ever breaks, the app explains why and finishes the session in numbered text mode | all views |
 | 🖥️ **New 5.1** | **Scriptable CLI**: `--check-updates` lists upgradable packages, `--quiet` prints just the count (for cron/status lines), `--doctor` runs the full system audit and exits — no menu needed | CLI |
 | 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (it travels inside the picker as its header, so a terminal resize cannot wipe it), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
@@ -169,7 +169,7 @@ pkg-manager      # installed via install.sh / manual method
 ```bash
 pkg-manager --help             # full help text
 pkg-manager --version          # v5.3.1
-pkg-manager --list-themes      # palette preview of all 16 themes
+pkg-manager --list-themes      # palette preview of all 18 built-in + custom themes
 pkg-manager --theme dracula    # set the app theme (writes ~/.pkg-manager.conf)
 pkg-manager --export-theme tokyo
                                 # write that palette to ~/.termux/colors.properties,
@@ -179,12 +179,15 @@ pkg-manager --export-all-themes ~/palettes
                                 # theme into a folder (great for dotfile repos)
 pkg-manager --theme-info nord   # every role of a palette: bg, fg, red, bright_cyan…
 pkg-manager --search bash       # apt-cache package-name search (read-only)
+pkg-manager --why bash          # manual/auto reason + reverse dependencies
 pkg-manager --stats             # installed/upgradable counts, apt lists, themes
 pkg-manager --stats-json        # same numbers as JSON
 pkg-manager --backup ~/pkgs.txt # non-interactive package snapshot (new)
 ```
 
-> `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts truecolor themes only (the 9 "real" palettes); the 8 legacy 256-color themes can't be expressed as a full ANSI table.
+> `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts the 11 truecolor themes plus any custom theme (it derives a full 18-slot palette from the six accent colors); the 7 legacy 256-color themes can't be expressed as a full ANSI table.
+
+**Custom themes:** Settings → Themes & terminal colors → Create or edit a custom theme. The editor asks for six colors (hex or 0–255), writes `~/.pkg-manager-themes/<name>.json`, and adds the theme to the picker and `--list-themes`. Re-run it with the same name to edit.
 
 ### 🔍 fzf pickers
 
@@ -277,7 +280,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 | 25 | 📊 Package stats & disk | overview, per-directory disk usage, largest files, cache breakdown |
 | 26 | 🗃️  Cache manager | `apt clean`, `apt autoclean`, or browse cached `.deb` files |
 | 27 | 🌳 Dependency tools | recursive dependency tree + orphan finder |
-| 30 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status in one screen |
+| 30 | 🔍 Package inspector | info + dependencies + reverse deps + installed files + hold status + **why it is installed** (manual/auto, repo origin, safe-removal hint) in one screen |
 
 #### 📚 Bulk, favorites & groups (28–29, 32)
 
@@ -367,7 +370,7 @@ tr ' ' '\n' < ~/pkg-backup-*.txt | xargs apt install -y
 
 ### ⚙️ Settings & config
 
-Inside **⚙️ Settings** (main menu 59, last item) you get: package manager, **Themes & terminal colors** (the single theme entry — opens the theme hub: pick / preview all / apply to Termux / export palette / restore), icons, safety confirms, history log, show config file, quiet mode, safety lock, maintenance on launch, recycle bin, **fzf picker** (on/off), and Back.
+Inside **⚙️ Settings** (main menu 57, the last numbered row) you get: package manager, **Themes & terminal colors** (the single theme entry — opens the theme hub: pick / preview all / create or edit a custom theme / apply to Termux / export palette / restore), icons, safety confirms, history log, show config file, quiet mode, safety lock, maintenance on launch, recycle bin, **fzf picker** (on/off), and Back.
 
 Settings are persisted to `~/.pkg-manager.conf`:
 
@@ -405,7 +408,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 184 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 186 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -444,7 +447,7 @@ A few ground rules to keep the docs in sync:
   ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
 - Run `make lint` (`bash -n` + shellcheck) after every edit — it takes seconds.
-- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 184 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
+- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 186 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
 
 ### 🛠️ Make targets (developers)
 
@@ -454,7 +457,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
-| `make test` | full 184-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
+| `make test` | full 186-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
@@ -493,7 +496,7 @@ Tiny, dependency-free tools from the same family:
 
 - [plusafetch](https://github.com/Mark44928/plusafetch) — C++23 fetch for Termux — ~23 ms, zero subprocesses on the default path
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
-- [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Worms-style artillery in one HTML file — 70 weapons, fully destructible terrain
+- [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
 - [SnakTUI](https://github.com/Mark44928/SnakTUI) — modern Snake for your terminal — Textual + Python
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json

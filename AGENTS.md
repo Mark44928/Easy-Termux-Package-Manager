@@ -7,7 +7,7 @@
 | Target | What |
 |--------|------|
 | `make run` | Launch app (text mode: `NO_FZF=1 make run`) |
-| `make test` | **Full** suite — 184 tests, **~6 min**. NOT a routine check: see [Verification workflow](#verification-workflow--read-first) |
+| `make test` | **Full** suite — 186 tests, **~6 min**. NOT a routine check: see [Verification workflow](#verification-workflow--read-first) |
 | `make lint` | `bash -n` + `shellcheck --severity=style` (0 findings; SC2015/SC2119/SC2120 excluded) |
 | `make check` | lint **+ full suite** — only at the end of a cross-cutting change |
 | `make install` / `make uninstall` | Via `install.sh` / `rm $PREFIX/bin/pkg-manager` |
@@ -19,7 +19,7 @@ bash manager.sh                # run the app
 make lint                      # after every edit — seconds, not minutes
 ```
 
-Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 184 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
+Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`/`apt-mark`/`fzf`/`curl`/`python3` — no real Termux or package changes. 186 scenario tests; `tests/tmp/` is gitignored. fzf answers come from `FZF_QUEUE` (plain lines, `MULTI:` prefix splits into several selections; fake aborts with exit 1 when empty = ESC → typed fallback).
 
 ## Hard Rules
 
@@ -69,7 +69,7 @@ Tests use `tests/fakebin/` stubs for `apt`/`pkg`/`dpkg`/`dpkg-query`/`apt-cache`
   - Package previews (`pkg_preview_cmd <install|remove>`) show the dpkg status line, a mode-specific line (candidate version / "WILL BE REMOVED") plus a size-humanized `apt-cache show` record, colored by `bat` when installed. The install picker lists **not-installed** packages only (filtered against `dpkg-query`); uninstall gets its own prompt/header/footer and installed-only rows.
   - Prompt glyph is `❯ ` everywhere (menus, palette, package pickers).
   - `main_menu` has exactly ONE fzf block — a duplicate call made ESC reopen the menu (fixed in v5.1); the `menu_unique` test guards the row set.
-- **CLI mode:** `--help --version --list-themes --theme <n> --export-theme <n>` are parsed before the main loop. v5.1 adds `--check-updates` (list upgradable), `--quiet` (count only, machine-readable) and `--doctor` (full audit, then exit) — all non-interactive (`CLI_MODE`) and exit before `FIRST_LOOP`. `install.sh --theme <n>` calls `pkg-manager --export-theme <n>` so palettes live in one place.
+- **CLI mode:** `--help --version --list-themes --theme <n> --export-theme <n>` are parsed before the main loop. v5.1 adds `--check-updates` (list upgradable), `--quiet` (count only, machine-readable) and `--doctor` (full audit, then exit) — all non-interactive (`CLI_MODE`) and exit before `FIRST_LOOP`. `--why <package>` reuses `do_why` with a target argument for a scriptable install-reason/reverse-dependency report. `install.sh --theme <n>` calls `pkg-manager --export-theme <n>` so palettes live in one place.
 - **Upgrade center fzf picker** (`do_upgrade_center`): instead of printing the list and
   wiping it with the picker, rows are `【 】 name  installed → candidate` (US-separated,
   search covers label+description) with a dedicated preview — the from→to transition is
@@ -270,7 +270,7 @@ FZF_QUEUE="$h/queue" FZF_CALL_LOG="$h/calls" HOME="$h" PREFIX="$h" MGR=apt ICONS
 Cross-cutting changes (shared chokepoints), before declaring work finished, or when a test you
 added is the point: `make test`. Then run `make check` (lint + suite) once at the very end.
 
-The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs all 184 tests.
+The runner has **no per-test filter** — `bash tests/run-tests.sh` always runs all 186 tests.
 
 ## Debugging Workflow
 
