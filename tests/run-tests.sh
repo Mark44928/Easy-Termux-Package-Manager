@@ -421,6 +421,31 @@ cli cli_why         "--why python3"         "Why is python3 installed?"
 cli cli_largest     "--largest 2"           "Largest installed packages"
 cli cli_triage      "--triage"              "Package triage"
 
+# --- package lock export / restore dry-run ---
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/lock_export"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+lock_file="$home/pkg-lock.txt"
+timeout 30 bash "$MANAGER" --lock "$lock_file" < /dev/null > "$home/run.log" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$lock_file" ] && grep -qx 'python3=3.12' "$lock_file" && grep -qx 'git=2.40.0' "$lock_file"; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("lock_export")
+fi
+
+TOTAL=$((TOTAL + 1))
+timeout 30 bash "$MANAGER" --restore-lock "$lock_file" --dry-run < /dev/null > "$home/restore.log" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && grep -Fq "Would install 2 package pins" "$home/restore.log"; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("restore_lock_dry_run")
+fi
+unset HOME PREFIX MGR
+
 # --- v5.1: fzf rewrite regressions ---
 # The menu must call fzf exactly ONCE (a duplicated block made ESC reopen it).
 TOTAL=$((TOTAL + 1))

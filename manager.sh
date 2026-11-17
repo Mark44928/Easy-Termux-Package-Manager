@@ -514,6 +514,8 @@ case "${1:-}" in
     --why)                    CLI_MODE="why" ;;
     --largest)                CLI_MODE="largest" ;;
     --triage)                 CLI_MODE="triage" ;;
+    --lock)                   CLI_MODE="lock" ;;
+    --restore-lock)           CLI_MODE="restore-lock" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --stats)                  CLI_MODE="stats" ;;
     --stats-json)             CLI_MODE="stats-json" ;;
@@ -3425,6 +3427,65 @@ do_triage() {
     printf '\nSuggested next steps: pkg-manager --why <package> for important keeps; run autoremove only after review.\n'
 }
 
+do_lock() {
+    local path="${1:-$HOME/pkg-lock.txt}" tmp old_backup
+    [ -n "$path" ] || { err "lock needs a path (or use the default $HOME/pkg-lock.txt)"; return 2; }
+    command -v dpkg-query >/dev/null 2>&1 || { err "dpkg-query is required"; return 1; }
+    tmp=$(scratch_new) || { err "Could not create a temporary lock file"; return 1; }
+    if ! dpkg-query -W -f='${Package}=${Version}\n' 2>/dev/null | sort > "$tmp"; then
+        err "could not read installed package versions"
+        rm -f "$tmp"
+        return 1
+    fi
+    if [ ! -s "$tmp" ]; then
+        err "dpkg-query returned no packages"
+        rm -f "$tmp"
+        return 1
+    fi
+    if [ -e "$path" ]; then
+        old_backup="$path.bak-$(date +%Y%m%d%H%M%S)"
+        safe_cp "$path" "$old_backup" || { rm -f "$tmp"; return 1; }
+    fi
+    mv -f "$tmp" "$path" || { err "Could not write lock file: $path"; rm -f "$tmp"; return 1; }
+    printf 'Wrote %s package pins to %s\n' "$(wc -l < "$path")" "$path"
+}
+
+do_restore_lock() {
+    local path="${1:-$HOME/pkg-lock.txt}" mode="${2:---dry-run}" line pkg version i=0 total=0 batch_count=0
+    local pkgs=()
+    case "$mode" in --dry-run|--apply) ;; *) err "usage: --restore-lock [path] [--dry-run|--apply]"; return 2 ;; esac
+    [ -f "$path" ] || { err "lock file not found: $path"; return 1; }
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(printf '%s' "$line" | tr -d '\r')
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        pkg=${line%%=*}
+        version=${line#*=}
+        case "$line" in *=*) ;; *) err "invalid lock line: $line"; return 2 ;; esac
+        valid_pkg_name "$pkg" || { err "invalid package in lock file: $pkg"; return 2; }
+        case "$version" in
+            ''|*' '*) err "invalid version for $pkg in lock file: $version"; return 2 ;;
+            *[!A-Za-z0-9+.:~-]*) err "invalid version for $pkg in lock file: $version"; return 2 ;;
+        esac
+        pkgs+=("$pkg=$version")
+        i=$((i + 1))
+    done < "$path"
+    [ "$i" -gt 0 ] || { err "lock file has no packages: $path"; return 1; }
+    total=$i
+    if [ "$mode" = "--dry-run" ]; then
+        printf 'Would install %s package pins from %s:\n' "$total" "$path"
+        printf '  apt install -y %s\n' "${pkgs[@]}"
+        return 0
+    fi
+    while [ "$batch_count" -lt "$total" ]; do
+        batch=("${pkgs[@]:$batch_count:40}")
+        apt install -y "${batch[@]}" >/dev/null || { err "apt could not install one or more lock pins"; return 1; }
+        batch_count=$((batch_count + ${#batch[@]}))
+    done
+    printf 'Installed %s package pins from %s\n' "$total" "$path"
+}
+
 do_notes() {
     local NOTES_FILE="$HOME/.pkg-manager-notes"
     local a
@@ -4653,7 +4714,7 @@ do_theme() {
 # Essential toolkit — curated bundles of the most-installed Termux packages,
 # installed in one batched apt call.
 do_essentials() {
-    local pick pkgs="" n
+    local pick pkgs=() n
     local bundles=(
         "Core — git curl wget nano termux-tools"
         "Dev — python nodejs jq"
@@ -4675,15 +4736,15 @@ do_essentials() {
     fi
     [ -n "$pick" ] || return
     case "$pick" in
-        Core*)         pkgs="git curl wget nano termux-tools" ;;
-        Dev*)          pkgs="python nodejs jq" ;;
-        "Net & security"*) pkgs="openssh rsync nmap" ;;
-        "Power utils"*)    pkgs="htop ripgrep fd tree bat" ;;
-        Everything*)  pkgs="git curl wget nano termux-tools python nodejs jq openssh rsync nmap htop ripgrep fd tree bat" ;;
+        Core*)         pkgs=(git curl wget nano termux-tools) ;;
+        Dev*)          pkgs=(python nodejs jq) ;;
+        "Net & security"*) pkgs=(openssh rsync nmap) ;;
+        "Power utils"*)    pkgs=(htop ripgrep fd tree bat) ;;
+        Everything*)  pkgs=(git curl wget nano termux-tools python nodejs jq openssh rsync nmap htop ripgrep fd tree bat) ;;
         *) return ;;
     esac
     local -a list=()
-    mapfile -t list <<< "$(printf '%s\n' $pkgs | filter_pkgs)"
+    mapfile -t list < <(printf '%s\n' "${pkgs[@]}" | filter_pkgs)
     n=${#list[@]}
     [ "$n" -gt 0 ] || { warn "Nothing valid to install."; return; }
     say "$ICON_BOLT  Bundle: $pick"
@@ -5577,6 +5638,11 @@ Usage:
                                   (default 15, with manual/auto reason)
   pkg-manager --triage           report upgrades, orphan risk, residual
                                   configs and reclaimable cache/list space
+  pkg-manager --lock [path]      write exact package=version pins of the
+                                  installed system (default ~/pkg-lock.txt)
+  pkg-manager --restore-lock [path] [--dry-run|--apply]
+                                  preview or apply the package pins in a lock
+                                  file; defaults to ~/pkg-lock.txt and --dry-run
   pkg-manager --stats            quick system/package statistics
   pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
@@ -5678,6 +5744,14 @@ USAGE
         ;;
     triage)
         do_triage || exit 1
+        exit 0
+        ;;
+    lock)
+        do_lock "$2" || exit 1
+        exit 0
+        ;;
+    restore-lock)
+        do_restore_lock "${2:-$HOME/pkg-lock.txt}" "${3:---dry-run}" || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)
