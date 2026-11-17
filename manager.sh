@@ -3448,7 +3448,7 @@ do_lock() {
         old_backup="$path.bak-$(date +%Y%m%d%H%M%S)"
         safe_cp "$path" "$old_backup" || { rm -f "$tmp"; return 1; }
     fi
-    mv -f "$tmp" "$path" || { err "Could not write lock file: $path"; rm -f "$tmp"; return 1; }
+    mv -f -- "$tmp" "$path" || { err "Could not write lock file: $path"; rm -f "$tmp"; return 1; }
     printf 'Wrote %s package pins to %s\n' "$(wc -l < "$path")" "$path"
 }
 

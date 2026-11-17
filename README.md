@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
   <img src="https://img.shields.io/badge/platform-Termux-4EAA25?logo=terminal" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-187%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-192%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml"><img src="https://github.com/Mark44928/Easy-Termux-Package-Manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 <p align="center">
@@ -338,7 +338,7 @@ Disable it entirely with `FZF_ENABLED=0` in `~/.pkg-manager.conf` (or `NO_FZF=1`
 | # | Option | What it does |
 |:-:|--------|--------------|
 | 53 | ⬆️ Update pkg-manager | downloads the latest `manager.sh` from GitHub, syntax-checks it (`bash -n`), then atomically replaces the running copy |
-| 54 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net & security (openssh, rsync, nmap) · Power utils (htop, ripgrep, fd, tree, bat) · or everything |
+| 54 | ⚡ Essential toolkit | one-tap bundles: Core (git, curl, wget, nano, termux-tools) · Dev (python, nodejs, jq) · Net (openssh, rsync, nmap) · Power (htop, ripgrep, fd, tree, bat) · Media (ffmpeg, mpv, yt-dlp) · Themes (starship, micro, neovim, lazygit) · or everything |
 | 55 | 🌐 System & network info | read-only dashboard: kernel, CPU, RAM, disk, Termux version, batteries via `termux-battery-status`, public IP via curl |
 | 56 | 🚀 What's new in v5.3.1 | the changelog screen for this release |
 
@@ -453,7 +453,7 @@ A few ground rules to keep the docs in sync:
   ```
 - Test locally by running `bash manager.sh` in a bare Termux — `fzf` is optional and the script degrades to numbered lists.
 - Run `make lint` (`bash -n` + shellcheck) after every edit — it takes seconds.
-- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 187 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
+- Run the full suite only at the end of a cross-cutting change: `bash tests/run-tests.sh` (fakebin stubs for `apt`/`dpkg`/`fzf` + 192 scenario tests, ~6 min). It has no per-test filter, so don't use it as a routine check.
 
 ### 🛠️ Make targets (developers)
 
@@ -463,7 +463,7 @@ Termux needs `pkg install make shellcheck` once. From the repo root:
 |---------|--------------|
 | `make` / `make help` | list targets |
 | `make run` | launch the app (`NO_FZF=1 make run` for text mode) |
-| `make test` | full 187-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
+| `make test` | full 192-test suite (~6 min, fakebin — no real apt) — **run it at the end, not per edit** |
 | `make lint` | `bash -n` + `shellcheck --severity=style` on every shell script |
 | `make check` | lint + test |
 | `make install` | run `install.sh` → `$PREFIX/bin/pkg-manager` |
