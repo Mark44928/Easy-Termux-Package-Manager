@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pkg-manager — Termux package manager</title>
+<style>
+:root{color-scheme:dark;--bg:#07130d;--p:#0d1c14;--b:#2a4938;--t:#e7f5eb;--m:#9bbdab;--a:#7bd88f;--a2:#63c9a8}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(80% 55% at 50% 0,#163e2b,var(--bg));color:var(--t);font:16px/1.55 ui-sans-serif,system-ui,sans-serif}
+main{max-width:800px;margin:auto;padding:42px 20px 64px}a{color:var(--a2)}.back{font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;color:var(--m)}
+.k{color:var(--a);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;margin:28px 0 8px}h1{font-size:clamp(2.8rem,10vw,5.8rem);line-height:.9;letter-spacing:-.06em;margin:0}
+.lede{font-size:1.16rem;color:var(--m);max-width:60ch}.buttons{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0}.btn{padding:9px 14px;border:1px solid var(--b);border-radius:9px;background:var(--p);color:var(--t);text-decoration:none}.btn.primary{border-color:var(--a);color:var(--a)}
+pre{background:var(--p);border:1px solid var(--b);border-radius:10px;padding:13px;overflow:auto}img{width:100%;border:1px solid var(--b);border-radius:14px;margin:24px 0 8px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:0;list-style:none}.grid li{background:var(--p);border:1px solid var(--b);border-radius:10px;padding:12px;color:var(--m)}.grid b{display:block;color:var(--a2)}footer{margin-top:32px;border-top:1px solid var(--b);padding-top:14px;color:var(--m);font-size:.78rem}
+</style>
+<main>
+<a class="back" href="https://github.com/Mark44928">← Mark44928 / projects</a>
+<p class="k">System · Bash + fzf · Termux</p>
+<h1>pkg-manager</h1>
+<p class="lede">A friendlier face for apt and pkg: fuzzy package pickers, profiles, exact lock files, health history and an inspector that explains what it is about to do.</p>
+<div class="buttons"><a class="btn primary" href="https://github.com/Mark44928/Easy-Termux-Package-Manager">Source &amp; install</a><a class="btn" href="https://github.com/Mark44928/Easy-Termux-Package-Manager/releases">Releases</a><a class="btn" href="https://github.com/Mark44928">Project hub</a></div>
+<pre>pkg install curl -y
+curl -fsSL https://raw.githubusercontent.com/Mark44928/Easy-Termux-Package-Manager/master/install.sh | bash
+pkg-manager</pre>
+<img src="docs/menu.png" alt="pkg-manager menu">
+<ul class="grid"><li><b>57 actions</b>one menu, text or fzf</li><li><b>Profiles</b>core, dev, net, power, media, themes</li><li><b>Lock files</b>exact package=version pins</li><li><b>193 tests</b>hermetic fakebin suite</li></ul>
+<footer>Read the script before piping it into bash. The one-liner is convenient, not compulsory.</footer>
+</main>
+</html>
