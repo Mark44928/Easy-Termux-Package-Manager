@@ -414,7 +414,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 192 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 193 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 

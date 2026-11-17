@@ -514,6 +514,8 @@ case "${1:-}" in
     --why)                    CLI_MODE="why" ;;
     --largest)                CLI_MODE="largest" ;;
     --triage)                 CLI_MODE="triage" ;;
+    --health-history)         CLI_MODE="health-history" ;;
+    --moo)                    CLI_MODE="moo" ;;
     --lock)                   CLI_MODE="lock" ;;
     --restore-lock)           CLI_MODE="restore-lock" ;;
     --profiles)               CLI_MODE="profiles" ;;
@@ -3427,6 +3429,41 @@ do_triage() {
         printf '\nOrphan candidates (manual review only; nothing was removed):\n%s\n' "$orphans"
     fi
     printf '\nSuggested next steps: pkg-manager --why <package> for important keeps; run autoremove only after review.\n'
+    record_health_snapshot "$installed" "$up" "$held" "$residual" "$broken" "$(printf '%s\n' "$orphans" | grep -c . || true)" "$orphan_kib"
+}
+
+HealthFile() { printf '%s/.pkg-manager-health.tsv' "$HOME"; }
+
+record_health_snapshot() {
+    local installed="$1" upgradable="$2" held="$3" residual="$4" broken="$5" orphans="$6" orphan_kib="$7" file tmp
+    file=$(HealthFile)
+    [ -L "$file" ] && return 0
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${installed:-0}" "${upgradable:-0}" "${held:-0}" \
+        "${residual:-0}" "${broken:-0}" "${orphans:-0}" "${orphan_kib:-0}" >> "$file" 2>/dev/null || return 0
+    if [ "$(wc -l < "$file" 2>/dev/null || printf 0)" -gt 100 ]; then
+        tmp=$(scratch_new) || return 0
+        tail -n 100 "$file" > "$tmp" && mv -f -- "$tmp" "$file" || rm -f "$tmp"
+    fi
+}
+
+do_health_history() {
+    local limit="${1:-10}" file first last total
+    case "$limit" in ''|*[!0-9]*) err "health-history needs a whole number"; return 2 ;; esac
+    [ "$limit" -ge 1 ] && [ "$limit" -le 100 ] || { err "health-history count must be 1-100"; return 2; }
+    file=$(HealthFile)
+    [ -s "$file" ] || { say "No health history yet. Run pkg-manager --triage first."; return 0; }
+    total=$(wc -l < "$file")
+    printf 'Health timeline (last %s of %s snapshots)\n' "$limit" "$total"
+    tail -n "$limit" "$file" | awk -F '\t' '{
+        printf "  %s  installed %s  upgrades %s  orphans %s  residual %s  audit %s\n", $1, $2, $3, $7, $5, $6
+    }'
+    first=$(tail -n "$limit" "$file" | head -n 1)
+    last=$(tail -n 1 "$file")
+    IFS=$'\t' read -r _ f_inst f_up _ f_res f_broken _ _ <<< "$first"
+    IFS=$'\t' read -r _ l_inst l_up _ l_res l_broken _ _ <<< "$last"
+    printf '\nChange over window: installed %+d · upgrades %+d · residual %+d · audit issues %+d\n' \
+        "$((l_inst - f_inst))" "$((l_up - f_up))" "$((l_res - f_res))" "$((l_broken - f_broken))"
 }
 
 do_lock() {
@@ -5652,6 +5689,19 @@ case "$CLI_MODE" in
         printf 'pkg-manager v%s — Easy Termux Package Manager\n' "$VERSION"
         exit 0
         ;;
+    moo)
+        cat <<'MOO'
+ _________________________________________
+< There is no apt-get moo. Only apt-itude. >
+ -----------------------------------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+MOO
+        exit 0
+        ;;
     help)
         cat <<USAGE
 pkg-manager v$VERSION — Easy Termux Package Manager
@@ -5677,6 +5727,8 @@ Usage:
                                   (default 15, with manual/auto reason)
   pkg-manager --triage           report upgrades, orphan risk, residual
                                   configs and reclaimable cache/list space
+  pkg-manager --health-history [n] show the last n triage snapshots
+                                  (default 10, stored in ~/.pkg-manager-health.tsv)
   pkg-manager --lock [path]      write exact package=version pins of the
                                   installed system (default ~/pkg-lock.txt)
   pkg-manager --restore-lock [path] [--dry-run|--apply]
@@ -5786,6 +5838,10 @@ USAGE
         ;;
     triage)
         do_triage || exit 1
+        exit 0
+        ;;
+    health-history)
+        do_health_history "${2:-10}" || exit 1
         exit 0
         ;;
     lock)

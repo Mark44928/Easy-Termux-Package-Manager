@@ -420,6 +420,22 @@ cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepin
 cli cli_why         "--why python3"         "Why is python3 installed?"
 cli cli_largest     "--largest 2"           "Largest installed packages"
 cli cli_triage      "--triage"              "Package triage"
+
+TOTAL=$((TOTAL + 1))
+home="$PWD/tmp/health_history"
+rm -rf "$home"; mkdir -p "$home/var/cache/apt/archives"
+touch "$home/var/cache/apt/archives/python3_3.12_arm64.deb"
+export HOME="$home" PREFIX="$home" MGR=apt
+timeout 30 bash "$MANAGER" --triage >/dev/null 2>&1
+timeout 30 bash "$MANAGER" --triage >/dev/null 2>&1
+timeout 30 bash "$MANAGER" --health-history 2 < /dev/null > "$home/history.log" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && grep -Fq "Health timeline (last 2 of 2 snapshots)" "$home/history.log" && grep -Fq "Change over window:" "$home/history.log"; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("health_history")
+fi
+unset HOME PREFIX MGR
 cli cli_profiles    "--profiles"            "Available package profiles"
 cli cli_profile_apply "--profile-apply dev" "Would install profile dev"
 
