@@ -183,6 +183,9 @@ pkg-manager --triage           # read-only upgrade/orphan/residual-config/cache 
 pkg-manager --lock ~/pkg.lock # write exact package=version pins (default ~/pkg-lock.txt)
 pkg-manager --restore-lock ~/pkg.lock # dry-run the pins from that file
 pkg-manager --restore-lock ~/pkg.lock --apply # install the exact pins
+pkg-manager --profiles         # core, dev, net, power, media, themes, everything
+pkg-manager --profile-apply media   # dry-run built-in media profile
+pkg-manager --profile-apply dev --apply # apply the development profile
 pkg-manager --stats             # installed/upgradable counts, apt lists, themes
 pkg-manager --stats-json        # same numbers as JSON
 pkg-manager --backup ~/pkgs.txt # non-interactive package snapshot (new)
@@ -411,7 +414,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 190 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 192 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 

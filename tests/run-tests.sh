@@ -329,7 +329,7 @@ T theme_preview    <(printf '57\n2\n2\n')                     "Theme preview" "|
 
 # --- v5.0 new main-menu features ---
 T essentials_core  <(printf '54\n1\ny\n')                  "✓ git"
-T essentials_all   <(printf '54\n5\ny\n')                  "✓ bat"
+T essentials_all   <(printf '54\n7\ny\n')                  "✓ bat"
 T sysinfo_ok       <(printf '55\n')                        "System & network info"
 T whatsnew_ok      <(printf '56\n')                        "What's new"
 
@@ -420,6 +420,8 @@ cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepin
 cli cli_why         "--why python3"         "Why is python3 installed?"
 cli cli_largest     "--largest 2"           "Largest installed packages"
 cli cli_triage      "--triage"              "Package triage"
+cli cli_profiles    "--profiles"            "Available package profiles"
+cli cli_profile_apply "--profile-apply dev" "Would install profile dev"
 
 # --- package lock export / restore dry-run ---
 TOTAL=$((TOTAL + 1))

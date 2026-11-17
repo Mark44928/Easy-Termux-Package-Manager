@@ -516,6 +516,8 @@ case "${1:-}" in
     --triage)                 CLI_MODE="triage" ;;
     --lock)                   CLI_MODE="lock" ;;
     --restore-lock)           CLI_MODE="restore-lock" ;;
+    --profiles)               CLI_MODE="profiles" ;;
+    --profile-apply)          CLI_MODE="profile-apply" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --stats)                  CLI_MODE="stats" ;;
     --stats-json)             CLI_MODE="stats-json" ;;
@@ -4716,45 +4718,82 @@ do_theme() {
 do_essentials() {
     local pick pkgs=() n
     local bundles=(
-        "Core — git curl wget nano termux-tools"
-        "Dev — python nodejs jq"
-        "Net & security — openssh rsync nmap"
-        "Power utils — htop ripgrep fd tree bat"
-        "Everything above"
+        "core — git curl wget nano termux-tools"
+        "dev — python nodejs jq"
+        "net — openssh rsync nmap"
+        "power — htop ripgrep fd tree bat"
+        "media — ffmpeg mpv yt-dlp"
+        "themes — starship micro neovim lazygit"
+        "everything — all profiles above"
     )
     if have_fzf; then
         pick=$(pick_menu "$ICON_BOLT  Essential toolkit — pick a bundle" "${bundles[@]}" "$ICON_BACK  Back")
     else
         local i=1
         list_numbered 0 "${bundles[@]}"
-        printf '❯ 6) Back\n' >&2
+        printf '❯ 8) Back\n' >&2
         read -r pick
         case "$pick" in
-            1|2|3|4|5) pick="${bundles[$((pick-1))]}" ;;
+            1|2|3|4|5|6|7) pick="${bundles[$((pick-1))]}" ;;
             *) return ;;
         esac
     fi
     [ -n "$pick" ] || return
-    case "$pick" in
-        Core*)         pkgs=(git curl wget nano termux-tools) ;;
-        Dev*)          pkgs=(python nodejs jq) ;;
-        "Net & security"*) pkgs=(openssh rsync nmap) ;;
-        "Power utils"*)    pkgs=(htop ripgrep fd tree bat) ;;
-        Everything*)  pkgs=(git curl wget nano termux-tools python nodejs jq openssh rsync nmap htop ripgrep fd tree bat) ;;
-        *) return ;;
-    esac
-    local -a list=()
-    mapfile -t list < <(printf '%s\n' "${pkgs[@]}" | filter_pkgs)
-    n=${#list[@]}
+    mapfile -t pkgs < <(profile_packages "${pick%% *}")
+    mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | filter_pkgs)
+    n=${#pkgs[@]}
     [ "$n" -gt 0 ] || { warn "Nothing valid to install."; return; }
     say "$ICON_BOLT  Bundle: $pick"
-    printf '  %s\n' "${list[@]}"
+    printf '  %s\n' "${pkgs[@]}"
     if confirm_danger "$ICON_BOLT  Install $n essential packages?"; then
-        log "essentials $pick"
-        run_multi_op install "${list[@]}"
+        log "essentials ${pick%% *}"
+        run_multi_op install "${pkgs[@]}"
     else
         say "Canceled."
     fi
+}
+
+# Profile service — curated, scriptable package sets for the common device shapes.
+profile_packages() {
+    case "${1:-}" in
+        core)    printf '%s\n' git curl wget nano termux-tools ;;
+        dev)     printf '%s\n' python nodejs jq ;;
+        net)     printf '%s\n' openssh rsync nmap ;;
+        power)   printf '%s\n' htop ripgrep fd tree bat ;;
+        media)   printf '%s\n' ffmpeg mpv yt-dlp ;;
+        themes)  printf '%s\n' starship micro neovim lazygit ;;
+        everything)
+            printf '%s\n' git curl wget nano termux-tools python nodejs jq openssh rsync nmap htop ripgrep fd tree bat ffmpeg mpv yt-dlp starship micro neovim lazygit
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+do_profiles() {
+    printf 'Available package profiles:\n'
+    local name
+    for name in core dev net power media themes everything; do
+        printf '  %-10s ' "$name"
+        profile_packages "$name" | tr '\n' ' '
+        printf '\n'
+    done
+}
+
+do_profile_apply() {
+    local target="${1:-}" mode="${2:---dry-run}" package_list packages=() name suffix
+    case "$mode" in --dry-run|--apply) ;; *) err "usage: --profile-apply NAME [--dry-run|--apply]"; return 2 ;; esac
+    if ! package_list=$(profile_packages "$target"); then
+        err "unknown profile: ${target:-<empty>} (try --profiles)"
+        return 2
+    fi
+    mapfile -t packages < <(printf '%s\n' "$package_list" | filter_pkgs)
+    [ "${#packages[@]}" -gt 0 ] || { err "profile has no packages"; return 1; }
+    if [ "$mode" = "--dry-run" ]; then
+        printf 'Would install profile %s:\n' "$target"
+        printf '  apt install -y %s\n' "${packages[*]}"
+        return 0
+    fi
+    run_multi_op install "${packages[@]}"
 }
 
 # System & network dashboard — read-only info, no package changes.
@@ -5643,6 +5682,9 @@ Usage:
   pkg-manager --restore-lock [path] [--dry-run|--apply]
                                   preview or apply the package pins in a lock
                                   file; defaults to ~/pkg-lock.txt and --dry-run
+  pkg-manager --profiles         list the built-in package profiles
+  pkg-manager --profile-apply NAME [--apply]
+                                  apply a profile; defaults to --dry-run
   pkg-manager --stats            quick system/package statistics
   pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
@@ -5752,6 +5794,15 @@ USAGE
         ;;
     restore-lock)
         do_restore_lock "${2:-$HOME/pkg-lock.txt}" "${3:---dry-run}" || exit 1
+        exit 0
+        ;;
+    profiles)
+        do_profiles || exit 1
+        exit 0
+        ;;
+    profile-apply)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --profile-apply NAME [--dry-run|--apply]\n' >&2; exit 2; }
+        do_profile_apply "$2" "${3:---dry-run}" || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)
