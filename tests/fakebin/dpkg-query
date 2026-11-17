@@ -16,7 +16,7 @@ while [ $i -lt ${#args[@]} ]; do
 done
 
 if [ -n "$fmt" ]; then
-    if printf '%s' "$fmt" | grep -Fq '${Package}=${Version}'; then
+    if printf '%s' "$fmt" | grep -Fq "\${Package}=\${Version}"; then
         printf 'python3=3.12\ngit=2.40.0\n'
         exit 0
     fi
