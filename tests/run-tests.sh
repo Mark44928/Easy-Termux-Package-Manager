@@ -419,6 +419,7 @@ cli cli_theme       "--theme dracula"       "Theme set to dracula"
 cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepine)"
 cli cli_why         "--why python3"         "Why is python3 installed?"
 cli cli_largest     "--largest 2"           "Largest installed packages"
+cli cli_triage      "--triage"              "Package triage"
 
 # --- v5.1: fzf rewrite regressions ---
 # The menu must call fzf exactly ONCE (a duplicated block made ESC reopen it).

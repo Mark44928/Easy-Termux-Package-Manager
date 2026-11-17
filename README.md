@@ -181,6 +181,7 @@ pkg-manager --theme-info nord   # every role of a palette: bg, fg, red, bright_c
 pkg-manager --search bash       # apt-cache package-name search (read-only)
 pkg-manager --why bash          # manual/auto reason + reverse dependencies
 pkg-manager --largest 15        # largest installed packages + total size
+pkg-manager --triage           # read-only upgrade/orphan/residual-config/cache report
 pkg-manager --stats             # installed/upgradable counts, apt lists, themes
 pkg-manager --stats-json        # same numbers as JSON
 pkg-manager --backup ~/pkgs.txt # non-interactive package snapshot (new)

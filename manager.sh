@@ -513,6 +513,7 @@ case "${1:-}" in
     --search)                 CLI_MODE="search" ;;
     --why)                    CLI_MODE="why" ;;
     --largest)                CLI_MODE="largest" ;;
+    --triage)                 CLI_MODE="triage" ;;
     --check-updates)          CLI_MODE="check-updates" ;;
     --stats)                  CLI_MODE="stats" ;;
     --stats-json)             CLI_MODE="stats-json" ;;
@@ -3374,6 +3375,60 @@ do_largest() {
     done < <(dpkg-query -W -f='${Installed-Size}\t${Package}\n' 2>/dev/null | sort -rn | head -n "$limit")
 }
 
+do_triage() {
+    local installed manual auto up held residual broken orphans orphan_kib orphan_mib total_kib lists_bytes archives_bytes
+    command -v dpkg-query >/dev/null 2>&1 || { err "dpkg-query is required"; return 1; }
+    installed=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -c . || true)
+    manual=$(apt-mark showmanual 2>/dev/null | grep -c . || true)
+    auto=$(apt-mark showauto 2>/dev/null | grep -c . || true)
+    total_kib=$(dpkg-query -W -f='${Installed-Size}\n' 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    up=$(list_upgradable 2>/dev/null | grep -c . || true)
+    if simout=$(apt autoremove --simulate -y 2>&1); then
+        orphans=$(printf '%s\n' "$simout" | awk '
+            /will be REMOVED:/ {on=1; next}
+            on && /upgraded|newly installed|not upgraded|after this operation/ {on=0}
+            on { for (i=1;i<=NF;i++)
+                    if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }
+        ' | sort -u)
+    else
+        orphans=''
+    fi
+    orphan_kib=$(printf '%s\n' "$orphans" | while IFS= read -r pkg; do
+        [ -n "$pkg" ] || continue
+        dpkg-query -W -f='${Installed-Size}\n' -- "$pkg" 2>/dev/null || printf '0\n'
+    done | awk '{s+=$1} END {print s+0}')
+    orphan_mib=$(awk -v k="${orphan_kib:-0}" 'BEGIN {printf "%.1f", k/1024}')
+    held=$(apt-mark showhold 2>/dev/null | grep -c . || true)
+    residual=$(dpkg -l 2>/dev/null | awk '$1 == "rc" {n++} END {print n+0}')
+    if audit_out=$(dpkg --audit 2>&1); then
+        broken=$(printf '%s\n' "$audit_out" | grep -c . || true)
+    else
+        broken=0
+    fi
+    lists_bytes=$(du -sb "$PREFIX/var/lib/apt/lists" 2>/dev/null | awk '{print $1}' || printf 0)
+    archives_bytes=$(du -sb "$PREFIX/var/cache/apt/archives" 2>/dev/null | awk '{print $1}' || printf 0)
+    printf 'Package triage\n'
+    printf '  installed           %s\n' "${installed:-?}"
+    printf '  manual              %s\n' "${manual:-?}"
+    printf '  automatic           %s\n' "${auto:-?}"
+    printf '  total installed    %s MiB\n' "$(awk -v k="${total_kib:-0}" 'BEGIN {printf "%.1f", k/1024}')"
+    printf '  upgradable          %s\n' "${up:-?}"
+    printf '  held                %s\n' "${held:-?}"
+    printf '  residual configs    %s\n' "${residual:-?}"
+    printf '  dpkg audit          %s\n' "${broken:-?}"
+    printf '  orphan candidates   %s package(s), %s MiB reclaimable\n' "$(printf '%s\n' "$orphans" | grep -c . || true)" "$orphan_mib"
+    if [ -z "${up:-}" ]; then up=0; fi
+    if [ -z "${manual:-}" ]; then manual=0; fi
+    if [ -z "${auto:-}" ]; then auto=0; fi
+    if [ -z "${held:-}" ]; then held=0; fi
+    printf '  apt lists           %s bytes\n' "${lists_bytes:-0}"
+    printf '  cached .deb files   %s bytes\n' "${archives_bytes:-0}"
+    if [ -n "$orphans" ]; then
+        printf '\nOrphan candidates (manual review only; nothing was removed):\n%s\n' "$orphans"
+    fi
+    printf '\nSuggested next steps: pkg-manager --why <package> for important keeps; run autoremove only after review.\n'
+}
+
 do_notes() {
     local NOTES_FILE="$HOME/.pkg-manager-notes"
     local a
@@ -5524,6 +5579,8 @@ Usage:
                                   reverse dependencies without opening the app
   pkg-manager --largest [n]       show the n largest installed packages
                                   (default 15, with manual/auto reason)
+  pkg-manager --triage           report upgrades, orphan risk, residual
+                                  configs and reclaimable cache/list space
   pkg-manager --stats            quick system/package statistics
   pkg-manager --stats-json       the same numbers as machine-readable JSON
   pkg-manager --check-updates    list packages with available upgrades
@@ -5621,6 +5678,10 @@ USAGE
         ;;
     largest)
         do_largest "${2:-15}" || exit 1
+        exit 0
+        ;;
+    triage)
+        do_triage || exit 1
         exit 0
         ;;
     check-updates|check-updates-quiet)
