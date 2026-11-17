@@ -1,4 +1,4 @@
-> This repo is vibe-coded, but AGENTS.md makes this repo stable and it works.
+> Maintained with an `AGENTS.md` review workflow and an automated package-manager test suite.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Easy%20Termux%20Pkg%20Manager-v5.3.1-000000?logo=termux" alt="Version">
@@ -15,9 +15,7 @@
 
 # Easy Termux Package Manager
 
-Install, remove, inspect, back up, and repair packages on Termux — without ~ever~ touching a `pkg` or `apt` command ~again.~
-
-Wait that's boring, let's try again.
+Install, remove, inspect, back up, and repair packages on Termux — without memorizing `apt` or `pkg` syntax.
 
 `apt` or `pkg` for Newbies.
 
@@ -410,7 +408,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 187 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 188 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
@@ -496,10 +494,13 @@ Made with ❤️ for the Termux community — found a bug? [open an issue](https
 
 Tiny, dependency-free tools from the same family:
 
+- [Pythonator](https://github.com/Mark44928/Pythonator) — Python rewrite of Plusalator — stdlib-only, `--eval`/`--json`
+- [Bluney](https://github.com/Mark44928/Bluney) — blue-injected theme family — dark + light, single palette.json
+- [Mark44928](https://github.com/Mark44928) — profile and project index
 - [plusafetch](https://github.com/Mark44928/plusafetch) — C++23 fetch for Termux — ~23 ms, zero subprocesses on the default path
 - [Plusalator](https://github.com/Mark44928/Plusalator) — C++17 calculator REPL — Qalculate-flavored, ghost autosuggest, 18 themes
 - [GrubBlastersHTML](https://github.com/Mark44928/GrubBlastersHTML) — Turn-based artillery in one HTML file — 72 weapons, fully destructible terrain
-- [SnakTUI](https://github.com/Mark44928/SnakTUI) — modern Snake for your terminal — Textual + Python
+- [SnakTUI](https://github.com/Mark44928/SnakTUI) — Snake game for the terminal — Textual + Python
 - [NoNameOS](https://github.com/Mark44928/NoNameOS) — OS simulation in a single C++17 file — virtual FS, real shell
 - [Greenit](https://github.com/Mark44928/Greenit) — green-injected theme family — dark + light, single palette.json
 - [CalculaHTML](https://github.com/Mark44928/CalculaHTML) — static HTML calculator — 15 themes + System mode, zero deps

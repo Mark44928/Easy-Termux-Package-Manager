@@ -2138,7 +2138,9 @@ do_deptools() {
                     on { for (i=1;i<=NF;i++)
                             if ($i ~ /^[A-Za-z][A-Za-z0-9+.:~-]*$/ && $i !~ /^[0-9][0-9.:-]+$/) print $i }
                 ')
-                if [ -n "$orphans" ]; then
+    printf '  apt lists           %s bytes\n' "${lists_bytes:-0}"
+    printf '  cached .deb files   %s bytes\n' "${archives_bytes:-0}"
+    if [ -n "$orphans" ]; then
                     n=$(printf '%s\n' "$orphans" | wc -l)
                     say "Found $n orphaned package(s):"
                     printf '%s\n' "$orphans"
@@ -3417,12 +3419,6 @@ do_triage() {
     printf '  residual configs    %s\n' "${residual:-?}"
     printf '  dpkg audit          %s\n' "${broken:-?}"
     printf '  orphan candidates   %s package(s), %s MiB reclaimable\n' "$(printf '%s\n' "$orphans" | grep -c . || true)" "$orphan_mib"
-    if [ -z "${up:-}" ]; then up=0; fi
-    if [ -z "${manual:-}" ]; then manual=0; fi
-    if [ -z "${auto:-}" ]; then auto=0; fi
-    if [ -z "${held:-}" ]; then held=0; fi
-    printf '  apt lists           %s bytes\n' "${lists_bytes:-0}"
-    printf '  cached .deb files   %s bytes\n' "${archives_bytes:-0}"
     if [ -n "$orphans" ]; then
         printf '\nOrphan candidates (manual review only; nothing was removed):\n%s\n' "$orphans"
     fi
