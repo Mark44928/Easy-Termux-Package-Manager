@@ -437,9 +437,11 @@ else
 fi
 TOTAL=$((TOTAL + 1))
 dashboard="$home/health-dashboard.html"
+printf '2026-01-01T00:00:00+0000\t40\t2\t1\t0\t0\t0\t0\n2026-01-02T00:00:00+0000\t80\t4\t1\t0\t0\t8\t4096\n' > "$home/.pkg-manager-health.tsv"
 timeout 30 bash "$MANAGER" --health-dashboard "$dashboard" < /dev/null > "$home/dashboard.log" 2>&1
 rc=$?
-if [ "$rc" -eq 0 ] && grep -Fq "Package health, at a glance" "$dashboard" && grep -Fq "Reclaimable space" "$dashboard"; then
+heights=$(grep -o 'height="[0-9]*"' "$dashboard" 2>/dev/null | sort -u | wc -l)
+if [ "$rc" -eq 0 ] && grep -Fq "Package health, at a glance" "$dashboard" && grep -Fq "Reclaimable space" "$dashboard" && [ "$heights" -ge 2 ]; then
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1)); FAILED+=("health_dashboard")

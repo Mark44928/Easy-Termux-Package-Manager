@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" width="760" alt="pkg-manager logo"></p>
+
 > Maintained with an `AGENTS.md` review workflow and an automated package-manager test suite.
 
 <p align="center">

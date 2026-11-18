@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-labelledby="t d">
+  <title id="t">pkg-manager</title>
+  <desc id="d">Easy Termux Package Manager logo: a green package cube with a terminal prompt.</desc>
+  <rect width="1200" height="300" rx="28" fill="#0C1F17"/>
+  <rect x="1" y="1" width="1198" height="298" rx="27" fill="none" stroke="#2F6B4C" stroke-opacity=".7" stroke-width="2"/>
+  <circle cx="150" cy="150" r="96" fill="#102A1F" stroke="#28543E" stroke-width="2"/>
+  <path d="M150 72 219 108v76l-69 38-69-38v-76z" fill="#163D2B" stroke="#7BD88F" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M81 108l69 39 69-39M150 147v75" fill="none" stroke="#7BD88F" stroke-width="4"/>
+  <rect x="194" y="171" width="55" height="45" rx="8" fill="#07140E" stroke="#63C9A8" stroke-width="2"/>
+  <path d="M205 184l9 8-9 8M220 201h13" fill="none" stroke="#63E6A4" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="306" y="151" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="86" font-weight="800" letter-spacing="3" fill="#DEF4E5">pkg-manager</text>
+  <text x="310" y="201" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="18" letter-spacing="4" fill="#8CB9A2">EASY TERMUX PACKAGE MANAGER</text>
+  <text x="1138" y="252" text-anchor="end" font-family="ui-monospace,monospace" font-size="14" letter-spacing="3" fill="#52705F">MARK44928</text>
+</svg>

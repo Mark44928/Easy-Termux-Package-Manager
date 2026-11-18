@@ -3529,13 +3529,13 @@ HTML
 <line x1="20" y1="132" x2="780" y2="132" stroke="#28503a"/>
 <line x1="20" y1="20" x2="780" y2="20" stroke="#183225"/>
 HTML
-        while IFS=$'\t' read -r _ts _up _held _res _broken row_orphans _kib; do
+        while IFS=$'\t' read -r _ts row_installed _up _held _res _broken row_orphans _kib; do
             x=$((20 + index * 25))
-            insth=$((installed * 112 / maxinst))
+            insth=$((row_installed * 112 / maxinst))
             [ "$insth" -ge 2 ] || insth=2
             orphh=$((row_orphans * 44 / maxorph))
             [ "$orphh" -le 0 ] || [ "$orphh" -ge 2 ] || orphh=2
-            insty=$((132 - (installed * 112 / maxinst)))
+            insty=$((132 - (row_installed * 112 / maxinst)))
             [ "$insty" -le 120 ] || insty=120
             orphy=$((132 - orphh))
             printf '<rect x="%d" y="%d" width="8" height="%d" rx="2" fill="#58f29a"/>\n' "$x" "$insty" "$insth"
