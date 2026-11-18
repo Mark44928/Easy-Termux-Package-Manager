@@ -435,6 +435,15 @@ if [ "$rc" -eq 0 ] && grep -Fq "Health timeline (last 2 of 2 snapshots)" "$home/
 else
     FAIL=$((FAIL + 1)); FAILED+=("health_history")
 fi
+TOTAL=$((TOTAL + 1))
+dashboard="$home/health-dashboard.html"
+timeout 30 bash "$MANAGER" --health-dashboard "$dashboard" < /dev/null > "$home/dashboard.log" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ] && grep -Fq "Package health, at a glance" "$dashboard" && grep -Fq "Reclaimable space" "$dashboard"; then
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1)); FAILED+=("health_dashboard")
+fi
 unset HOME PREFIX MGR
 cli cli_profiles    "--profiles"            "Available package profiles"
 cli cli_profile_apply "--profile-apply dev" "Would install profile dev"

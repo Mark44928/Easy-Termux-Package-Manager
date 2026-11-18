@@ -515,6 +515,7 @@ case "${1:-}" in
     --largest)                CLI_MODE="largest" ;;
     --triage)                 CLI_MODE="triage" ;;
     --health-history)         CLI_MODE="health-history" ;;
+    --health-dashboard)       CLI_MODE="health-dashboard" ;;
     --moo)                    CLI_MODE="moo" ;;
     --lock)                   CLI_MODE="lock" ;;
     --restore-lock)           CLI_MODE="restore-lock" ;;
@@ -3466,6 +3467,105 @@ do_health_history() {
         "$((l_inst - f_inst))" "$((l_up - f_up))" "$((l_res - f_res))" "$((l_broken - f_broken))"
 }
 
+do_health_dashboard() {
+    local output="${1:-$HOME/pkg-manager-health-dashboard.html}" file tmp series latest
+    local stamp installed upgradable held residual broken orphans orphan_kib
+    local total maxinst maxorph reclaim index=0 x insth orphh insty orphy
+    file=$(HealthFile)
+    [ -n "$output" ] || { err "health-dashboard needs an output path"; return 2; }
+    [ -L "$output" ] && { err "refusing to overwrite a symlink: $output"; return 1; }
+    [ -s "$file" ] || { say "No health history yet. Run pkg-manager --triage first."; return 0; }
+    series=$(awk -F '\t' '
+        NF == 8 && $1 ~ /^[0-9T:+ -]+$/ {
+            ok = 1
+            for (i = 2; i <= 8; i++) if ($i !~ /^[0-9]+$/) ok = 0
+            if (ok) print
+        }' "$file" | tail -n 30)
+    [ -n "$series" ] || { err "health history has no valid snapshots"; return 1; }
+    total=$(printf '%s\n' "$series" | grep -c .)
+    latest=$(printf '%s\n' "$series" | tail -n 1)
+    IFS=$'\t' read -r stamp installed upgradable held residual broken orphans orphan_kib <<< "$latest"
+    maxinst=$(printf '%s\n' "$series" | awk -F '\t' 'BEGIN{m=1} $2>m{m=$2} END{print m}')
+    maxorph=$(printf '%s\n' "$series" | awk -F '\t' 'BEGIN{m=1} $7>m{m=$7} END{print m}')
+    reclaim=$(awk -v k="${orphan_kib:-0}" 'BEGIN {printf "%.1f", k/1024}')
+    tmp=$(scratch_new) || return 1
+    {
+        cat <<HTML
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ETPM Health Dashboard</title>
+<style>
+:root{color-scheme:dark;--bg:#07140f;--panel:#0d2219;--panel2:#123526;--text:#eaffef;--muted:#92b7a3;--accent:#58f29a;--warn:#ffd166;--bad:#ff6f61}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 82% -10%,#1f4d31 0,transparent 42%),var(--bg);color:var(--text);font:16px system-ui,sans-serif}
+main{max-width:1180px;margin:auto;padding:34px 22px 48px}header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;border-bottom:1px solid #28503a;padding-bottom:24px}
+.kicker{color:var(--accent);letter-spacing:.18em;text-transform:uppercase;font-size:.74rem;font-weight:800}h1{margin:.2rem 0 0;font-size:clamp(2rem,6vw,4.2rem);line-height:.92;letter-spacing:-.06em}.meta{max-width:24rem;color:var(--muted);line-height:1.5;text-align:right}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:22px 0}article{background:linear-gradient(160deg,var(--panel),#091912);border:1px solid #27543b;border-radius:18px;padding:18px;box-shadow:0 12px 34px #0006}article span{color:var(--muted);display:block;font-size:.78rem;font-weight:700}article strong{display:block;margin-top:.25rem;font-size:2.1rem;letter-spacing:-.05em}
+.hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:14px}.panel{background:var(--panel);border:1px solid #27543b;border-radius:20px;padding:20px;min-height:240px}h2{margin:0 0 14px;font-size:.88rem;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}svg{width:100%;height:auto;overflow:visible}
+.legend,.reclaim{color:var(--muted);font-size:.86rem}.reclaim strong{color:var(--warn);font-size:2.25rem;display:block;letter-spacing:-.06em}table{width:100%;border-collapse:collapse;font-size:.84rem;overflow:hidden;border-radius:12px}th,td{text-align:right;padding:10px;border-bottom:1px solid #21402f}th:first-child,td:first-child{text-align:left}th{color:var(--muted);background:var(--panel2)}code{color:var(--accent)}
+@media(max-width:760px){header,.hero{grid-template-columns:1fr}.meta{text-align:left}}@media print{body{background:#fff;color:#111}article,.panel{border-color:#ccc;box-shadow:none}.kicker,h2,.legend,.reclaim,article span,.meta{color:#444}}
+</style>
+</head>
+<body><main>
+<header>
+<div><div class="kicker">Easy Termux Package Manager</div><h1>Package health, at a glance.</h1></div>
+<div class="meta">Generated $stamp<br>Read-only snapshot · $total recorded triage points · no package names or logs included</div>
+</header>
+<section class="grid">
+HTML
+        printf '<article><span>Installed</span><strong>%s</strong></article>\n' "$installed"
+        printf '<article><span>Upgradable</span><strong>%s</strong></article>\n' "$upgradable"
+        printf '<article><span>Held</span><strong>%s</strong></article>\n' "$held"
+        printf '<article><span>Residual</span><strong>%s</strong></article>\n' "$residual"
+        printf '<article><span>Audit</span><strong>%s</strong></article>\n' "$broken"
+        printf '<article><span>Orphans</span><strong>%s</strong></article>\n' "$orphans"
+        cat <<HTML
+</section>
+<section class="hero">
+<div class="panel"><h2>Growth and drift · $total snapshots</h2>
+<svg viewBox="0 0 800 155" role="img" aria-label="Installed package and orphan trend">
+<line x1="20" y1="132" x2="780" y2="132" stroke="#28503a"/>
+<line x1="20" y1="20" x2="780" y2="20" stroke="#183225"/>
+HTML
+        while IFS=$'\t' read -r _ts _up _held _res _broken row_orphans _kib; do
+            x=$((20 + index * 25))
+            insth=$((installed * 112 / maxinst))
+            [ "$insth" -ge 2 ] || insth=2
+            orphh=$((row_orphans * 44 / maxorph))
+            [ "$orphh" -le 0 ] || [ "$orphh" -ge 2 ] || orphh=2
+            insty=$((132 - (installed * 112 / maxinst)))
+            [ "$insty" -le 120 ] || insty=120
+            orphy=$((132 - orphh))
+            printf '<rect x="%d" y="%d" width="8" height="%d" rx="2" fill="#58f29a"/>\n' "$x" "$insty" "$insth"
+            [ "$orphh" -le 0 ] || printf '<rect x="%d" y="%d" width="4" height="%d" rx="1" fill="#ff6f61"/>\n' "$((x + 10))" "$orphy" "$orphh"
+            index=$((index + 1))
+        done <<< "$series"
+        cat <<HTML
+</svg><p class="legend">Green: installed packages · Red: orphan candidates</p></div>
+<div class="panel reclaim"><h2>Reclaimable space</h2><strong>$reclaim MiB</strong>latest estimate from orphan candidates. Review with <code>pkg-manager --why</code> before removing anything.<div style="margin-top:24px"><h2>Needs attention</h2><table>
+HTML
+        printf '<tr><th>Residual</th><th>Audit</th><th>Held</th></tr><tr><td>%s</td><td>%s</td><td>%s</td></tr>\n' "$residual" "$broken" "$held"
+        cat <<'HTML'
+</table></div></div>
+</section>
+<section class="panel" style="margin-top:14px"><h2>Recent snapshots · newest first</h2><table><thead><tr><th>When</th><th>Installed</th><th>Upgradable</th><th>Held</th><th>Residual</th><th>Audit</th><th>Orphans</th></tr></thead><tbody>
+HTML
+        printf '%s\n' "$series" | tail -n 20 | awk '{a[NR]=$0} END {for (i=NR; i>=1; i--) print a[i]}' |
+            while IFS=$'\t' read -r row_stamp row_installed row_up row_held row_residual row_broken row_orphans row_kib; do
+                printf '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' \
+                    "$row_stamp" "$row_installed" "$row_up" "$row_held" "$row_residual" "$row_broken" "$row_orphans"
+            done
+        cat <<'HTML'
+</tbody></table></section>
+</main></body></html>
+HTML
+    } > "$tmp"
+    mv -f -- "$tmp" "$output" || { rm -f "$tmp"; return 1; }
+    printf 'Wrote %s (%s snapshots, latest %s)\n' "$output" "$total" "$stamp"
+}
+
 do_lock() {
     local path="${1:-$HOME/pkg-lock.txt}" tmp old_backup
     [ -n "$path" ] || { err "lock needs a path (or use the default $HOME/pkg-lock.txt)"; return 2; }
@@ -5729,6 +5829,9 @@ Usage:
                                   configs and reclaimable cache/list space
   pkg-manager --health-history [n] show the last n triage snapshots
                                   (default 10, stored in ~/.pkg-manager-health.tsv)
+  pkg-manager --health-dashboard [html]
+                                  write a standalone visual health dashboard
+                                  (default ~/pkg-manager-health-dashboard.html)
   pkg-manager --lock [path]      write exact package=version pins of the
                                   installed system (default ~/pkg-lock.txt)
   pkg-manager --restore-lock [path] [--dry-run|--apply]
@@ -5842,6 +5945,10 @@ USAGE
         ;;
     health-history)
         do_health_history "${2:-10}" || exit 1
+        exit 0
+        ;;
+    health-dashboard)
+        do_health_dashboard "${2:-}" || exit 1
         exit 0
         ;;
     lock)

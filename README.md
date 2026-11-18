@@ -180,6 +180,8 @@ pkg-manager --search bash       # apt-cache package-name search (read-only)
 pkg-manager --why bash          # manual/auto reason + reverse dependencies
 pkg-manager --largest 15        # largest installed packages + total size
 pkg-manager --triage           # read-only upgrade/orphan/residual-config/cache report
+pkg-manager --health-dashboard # write a standalone visual health dashboard
+pkg-manager --health-dashboard ~/package-health.html
 pkg-manager --lock ~/pkg.lock # write exact package=version pins (default ~/pkg-lock.txt)
 pkg-manager --restore-lock ~/pkg.lock # dry-run the pins from that file
 pkg-manager --restore-lock ~/pkg.lock --apply # install the exact pins
@@ -414,7 +416,7 @@ Easy-Termux-Package-Manager/
 ├── install.sh      # installer → global $PREFIX/bin/pkg-manager (uses local manager.sh, else downloads)
 ├── manager.sh      # the entire app (~5k lines, single file)
 ├── Makefile        # dev tasks: run / test / lint / check / install / uninstall / clean
-├── tests/          # automated harness (fakebin stubs + 193 tests) — bash tests/run-tests.sh
+├── tests/          # automated harness (fakebin stubs + 194 tests) — bash tests/run-tests.sh
 ├── LICENSE         # MIT License
 └── README.md       # Docs
 
