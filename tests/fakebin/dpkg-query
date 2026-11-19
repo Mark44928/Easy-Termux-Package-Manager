@@ -16,6 +16,10 @@ while [ $i -lt ${#args[@]} ]; do
 done
 
 if [ -n "$fmt" ]; then
+    if printf '%s' "$fmt" | grep -Fq "\${Status}"; then
+        printf 'install ok installed\tpython3=3.12\ninstall ok installed\tgit=2.40.0\nconfig-files\tremoved-but-config=1.0\n'
+        exit 0
+    fi
     if printf '%s' "$fmt" | grep -Fq "\${Package}=\${Version}"; then
         printf 'python3=3.12\ngit=2.40.0\n'
         exit 0

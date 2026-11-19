@@ -1109,6 +1109,11 @@ save_config() {
         printf 'FAVS_PINNED=%s\n' "$FAVS_PINNED"
         printf 'RECYCLE=%s\n' "$RECYCLE"
         printf 'FZF_ENABLED=%s\n' "$FZF_ENABLED"
+        if [ -f "$HOME/.pkg-manager.conf" ]; then
+            # keep hand-edited keys the app does not know about
+            grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$HOME/.pkg-manager.conf" \
+                | grep -Ev '^(MGR|THEME|CONFIRM|LOG_ENABLED|ICONS|QUIET|LOCK|STARTUP_CHECK|FAVS_PINNED|RECYCLE|FZF_ENABLED)=' || true
+        fi
     } > "$tmp" || { err "Could not write config temp file."; rm -f "$tmp"; return 1; }
     if ! [ -s "$tmp" ]; then err "Config temp file is empty — leaving your settings alone."; rm -f "$tmp"; return 1; fi
     # keep the previous config — hand-edits should survive a settings toggle
@@ -2487,8 +2492,22 @@ do_backup() {
 
 install_from_list() {
     local file="$1" action="$2" list
-    list=$(awk 'NF' "$file" | filter_pkgs)
-    [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
+    if command -v python3 >/dev/null 2>&1 && head -c 1 "$file" | grep -q '{'; then
+        # JSON export from this tool: {"packages": [...]}
+        list=$(python3 -c 'import json,sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+pkgs = data.get("packages") if isinstance(data, dict) else None
+if not isinstance(pkgs, list):
+    sys.exit(1)
+print("\n".join(p for p in pkgs if isinstance(p, str)))' "$file" | filter_pkgs) || { err "Not a valid packages JSON export: $file"; return 1; }
+        [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
+    else
+        list=$(awk 'NF' "$file" | filter_pkgs)
+        [ -n "$list" ] || { err "No valid package names in $file"; return 1; }
+    fi
     local -a _pkgs=()
     mapfile -t _pkgs <<< "$list"
     say "$action — installing ${#_pkgs[@]} package(s)..."
@@ -2531,6 +2550,7 @@ do_export() {
     case "$file" in
         -* ) err "Invalid path — must not start with '-'."; return ;;
     esac
+    [ -d "$file" ] && { err "$file is a directory — pick a file path."; return; }
     if [ -e "$file" ] && ! confirm_danger "$ICON_EXPORT  File $file exists — overwrite it?"; then
         say "Canceled."
         return
@@ -3571,7 +3591,8 @@ do_lock() {
     [ -n "$path" ] || { err "lock needs a path (or use the default $HOME/pkg-lock.txt)"; return 2; }
     command -v dpkg-query >/dev/null 2>&1 || { err "dpkg-query is required"; return 1; }
     tmp=$(scratch_new) || { err "Could not create a temporary lock file"; return 1; }
-    if ! dpkg-query -W -f='${Package}=${Version}\n' 2>/dev/null | sort > "$tmp"; then
+    if ! dpkg-query -W -f='${Status}\t${Package}=${Version}\n' 2>/dev/null \
+        | awk -F'\t' '$1 == "install ok installed" { print $2 }' | sort > "$tmp"; then
         err "could not read installed package versions"
         rm -f "$tmp"
         return 1
