@@ -184,7 +184,7 @@ RED=196
 YELLOW=220
 DIM=240
 
-THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo gruvbox onedark solarized everforest rosepine greenit bluney)
+THEME_NAMES=(green blue purple red nord amber teal mono dracula catppuccin tokyo gruvbox onedark solarized everforest rosepine greenit bluney yellen)
 CUSTOM_THEME_DIR="$HOME/.pkg-manager-themes"
 declare -A CUSTOM_CYAN=() CUSTOM_PINK=() CUSTOM_GREEN=() CUSTOM_YELLOW=() CUSTOM_RED=() CUSTOM_DIM=()
 
@@ -290,6 +290,7 @@ set_theme() {
         solarized)  CYAN="#2AA198"; PINK="#D33682"; GREEN="#859900"; YELLOW="#B58900"; RED="#DC322F"; DIM="#586E75" ;;
         everforest) CYAN="#83C092"; PINK="#D699B6"; GREEN="#A7C080"; YELLOW="#DBBC7F"; RED="#E67E80"; DIM="#859289" ;;
         rosepine)   CYAN="#9CCFD8"; PINK="#C4A7E7"; GREEN="#31748F"; YELLOW="#F6C177"; RED="#EB6F92"; DIM="#6E6A86" ;;
+        yellen)     CYAN="#F2D14E"; PINK="#E6C15A"; GREEN="#A9B85A"; YELLOW="#F7DE72"; RED="#C76A52"; DIM="#87763B" ;;
         greenit)    CYAN="#7BD88F"; PINK="#B6F5C6"; GREEN="#7BD88F"; YELLOW="#D7A657"; RED="#E06C75"; DIM="#6F917B" ;;
         bluney)     CYAN="#7DBBFF"; PINK="#B9A8E0"; GREEN="#7DBBFF"; YELLOW="#FFB86C"; RED="#F07178"; DIM="#5C7C9C" ;;
         green|*)    CYAN=40;        PINK=119;       GREEN=46;   YELLOW=220;    RED=196;      DIM=245 ;;
@@ -367,6 +368,7 @@ theme_ansi() {
         rosepine)   printf '%s\n' 191724 E0DEF4 26233A EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 6E6A86 EB6F92 31748F F6C177 9CCFD8 C4A7E7 EBBCBA E0DEF4 ;;
         greenit)    printf '%s\n' 0C1F17 C9E4CE 1A331C A88EA0 7BD88F B8CC7A 63C9A8 A88EA0 7FD7C4 A7C4A3 78997F D4B4C0 9BEDAF D4E49A 8FE4C4 D4B4C0 A7EBDC C9E4CE ;;
         bluney)     printf '%s\n' 0E1B2E D5E5F2 16283E E18B8B 7DBBFF E0CD97 4F8FE0 B9A8E0 7FD7F2 D5E5F2 5F7E9E F0A8A8 A8D4FF EBDFA8 7FA9E8 CDBEF0 A8E8F8 FFFFFF ;;
+        yellen)     printf '%s\n' 171408 F3E8B8 2A2612 C76A52 A9B85A F2D14E D6A843 C6986A D8B85A E6D7A4 745F2B E08A6A C2D26A F7DE72 E8BD54 D8AD70 F0CB68 FBF1C7 ;;
         custom-*)   custom_ansi "$1" ;;
         *) return 1 ;;
     esac
@@ -1160,7 +1162,7 @@ set_theme_pick() {
         "nord (icy/rose · truecolor)" "amber (gold/peach)" "teal (teal/aqua)" "mono (grayscale)"
         "dracula (truecolor)" "catppuccin (truecolor)" "tokyo-night (truecolor)" "gruvbox (truecolor)"
         "one-dark (truecolor)" "solarized (truecolor)" "everforest (truecolor)" "rose-pine (truecolor)"
-        "greenit (truecolor)" "bluney (truecolor)"
+        "greenit (truecolor)" "bluney (truecolor)" "yellen (truecolor)"
     )
     for n in "${THEME_NAMES[@]}"; do
         case "$n" in custom-*) labels+=("$n (custom)") ;; esac
@@ -1182,6 +1184,7 @@ set_theme_pick() {
         custom-*)   THEME="${t%% *}" ;;
         greenit*)   THEME="greenit" ;;
         bluney*)    THEME="bluney" ;;
+        yellen*)    THEME="yellen" ;;
         green*)     THEME="green" ;;
         blue*)      THEME="blue" ;;
         purple*)    THEME="purple" ;;

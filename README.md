@@ -74,10 +74,10 @@ The installer drops the app at `$PREFIX/bin/pkg-manager`, then offers to install
 | 🔒 **Quiet mode + safety lock** — skip or force all confirms | 💾 **Backup & restore** — your exact package set |
 | 📤 **Export/import** — plain text or JSON | 🔗 **Deep-dive tools** — deps, reverse deps, sizes, file lists |
 | 📌 **Pin/hold packages** — upgrades never break them | 🩹 **Self-healing** — fix broken dependencies with one tap |
-| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **18 themes** (11 truecolor) + custom themes + Nerd Font or emoji icons |
+| ⚙️ **Persistent settings** — stored in `~/.pkg-manager.conf` | 🎨 **18 themes** (12 truecolor) + custom themes + Nerd Font or emoji icons |
 | 🛟 **Plain-text fallback** — works without `fzf` | 📋 **Timestamped history** of every action |
 | 🆕 **New 4.0** | **Recycle bin** (reinstall from `.deb` offline), **system audit** (health score), **mark manual/auto**, **mirror speed test** (all 65 official mirrors), **watchlist**, **history charts** | 43–47 |
-| 🚀 **New 5.0** | **11 truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine, Greenit, Bluney) + **theme hub** (preview all, export to `~/.termux/colors.properties`, create/edit custom themes), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 42, 54–57, 58 |
+| 🚀 **New 5.0** | **12 truecolor themes** (Dracula, Catppuccin, Tokyo Night, Nord, Gruvbox, One Dark, Solarized, Everforest, Rosé Pine, Greenit, Bluney, Yellen) + **theme hub** (preview all, export to `~/.termux/colors.properties`, create/edit custom themes), **essential toolkit** bundles, **system & network dashboard**, themed text mode, banner status strip, **fzf-first pickers** everywhere | 1–3, 42, 54–57, 58 |
 | ⌨️ **Consistent ESC** | ESC cancels everywhere — submenus go back a level, the top menu exits with a goodbye, and the package pickers say `Canceled.` and return (no more typed-name detours). If fzf itself ever breaks, the app explains why and finishes the session in numbered text mode | all views |
 | 🖥️ **New 5.1** | **Scriptable CLI**: `--check-updates` lists upgradable packages, `--quiet` prints just the count (for cron/status lines), `--doctor` runs the full system audit and exits — no menu needed | CLI |
 | 🧰 **New 5.2** | **live package-info preview panes** in the install/uninstall pickers, a **not-installed-only** install list, uninstall's own finder, a **pre-flight batch preview** (aligned version column, installed-size total, already-present and not-found flags), a **banner that never hides** (it travels inside the picker as its header, so a terminal resize cannot wipe it), and a **text-mode fallback with an explanation** if fzf ever fails | 1, 2, all pickers |
@@ -195,7 +195,7 @@ pkg-manager --stats-json        # same numbers as JSON
 pkg-manager --backup ~/pkgs.txt # non-interactive package snapshot (new)
 ```
 
-> `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts the 11 truecolor themes plus any custom theme (it derives a full 18-slot palette from the six accent colors); the 7 legacy 256-color themes can't be expressed as a full ANSI table.
+> `install.sh --theme <name>` does the export for you right after installing. `--export-theme` accepts the 12 truecolor themes plus any custom theme (it derives a full 18-slot palette from the six accent colors); the 7 legacy 256-color themes can't be expressed as a full ANSI table.
 
 **Custom themes:** Settings → Themes & terminal colors → Create or edit a custom theme. The editor asks for six colors (hex or 0–255), writes `~/.pkg-manager-themes/<name>.json`, and adds the theme to the picker and `--list-themes`. Re-run it with the same name to edit.
 
