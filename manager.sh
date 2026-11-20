@@ -513,6 +513,8 @@ case "${1:-}" in
     --export-all-themes)      CLI_MODE="export-all-themes" ;;
     --theme-info)             CLI_MODE="theme-info" ;;
     --search)                 CLI_MODE="search" ;;
+    --info)                   CLI_MODE="info" ;;
+    --files)                  CLI_MODE="files" ;;
     --why)                    CLI_MODE="why" ;;
     --largest)                CLI_MODE="largest" ;;
     --triage)                 CLI_MODE="triage" ;;
@@ -5845,6 +5847,8 @@ Usage:
                                   truecolor theme into <dir>
   pkg-manager --theme-info <name> show every role of a theme's palette
   pkg-manager --search <term>     search package names (apt-cache)
+  pkg-manager --info <package>    print the apt record for one package
+  pkg-manager --files <package>   list files installed by a package
   pkg-manager --why <package>     explain manual/auto install reason and
                                   reverse dependencies without opening the app
   pkg-manager --largest [n]       show the n largest installed packages
@@ -5928,6 +5932,26 @@ USAGE
             exit 0
         fi
         printf 'apt-cache is not available — install it with: pkg install apt\n' >&2
+        exit 1
+        ;;
+    info)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --info <package>\n' >&2; exit 2; }
+        if out=$("$MGR" show "$2" 2>/dev/null | grep -v '^WARNING:'); then
+            [ -n "$out" ] || { printf 'Package not found: %s\n' "$2" >&2; exit 1; }
+            printf '%s\n' "$out"
+            exit 0
+        fi
+        printf 'Package not found: %s\n' "$2" >&2
+        exit 1
+        ;;
+    files)
+        [ -n "${2:-}" ] || { printf 'usage: pkg-manager --files <package>\n' >&2; exit 2; }
+        if out=$(dpkg -L "$2" 2>/dev/null); then
+            [ -n "$out" ] || { printf 'No files listed for: %s\n' "$2" >&2; exit 1; }
+            printf '%s\n' "$out"
+            exit 0
+        fi
+        printf 'Package is not installed: %s\n' "$2" >&2
         exit 1
         ;;
     export-all-themes)

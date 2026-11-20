@@ -418,6 +418,8 @@ cli cli_list_themes "--list-themes"         "Theme preview"
 cli cli_theme       "--theme dracula"       "Theme set to dracula"
 cli cli_export      "--export-theme rosepine" "colors.properties (theme: rosepine)"
 cli cli_why         "--why python3"         "Why is python3 installed?"
+cli cli_info        "--info python3"        "Package: python3"
+cli cli_files       "--files python3"       "/data/data/com.termux/files/usr/bin/python3"
 cli cli_largest     "--largest 2"           "Largest installed packages"
 cli cli_triage      "--triage"              "Package triage"
 
